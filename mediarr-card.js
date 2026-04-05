@@ -577,6 +577,43 @@ const EDITOR_SECTION_DEFINITIONS = [
 
 const DEFAULT_EDITOR_VISIBLE_SECTIONS = ['tmdb', 'seer', 'immaculaterr'];
 
+const EDITOR_FIELD_MATCHERS = {
+  plex_entity: [(entityId) => entityId.includes('plex_mediarr')],
+  jellyfin_entity: [(entityId) => entityId.includes('jellyfin_mediarr')],
+  sonarr_entity: [(entityId) => entityId.includes('sonarr_mediarr') && !entityId.includes('sonarr2_mediarr')],
+  sonarr2_entity: [(entityId) => entityId.includes('sonarr2_mediarr')],
+  radarr_entity: [(entityId) => entityId.includes('radarr_mediarr') && !entityId.includes('radarr2_mediarr')],
+  radarr2_entity: [(entityId) => entityId.includes('radarr2_mediarr')],
+  trakt_entity: [(entityId) => entityId.includes('trakt_mediarr')],
+  seer_entity: [
+    (entityId) =>
+      entityId.includes('seer_mediarr') &&
+      !entityId.includes('trending') &&
+      !entityId.includes('discover') &&
+      !entityId.includes('popular_movies') &&
+      !entityId.includes('popular_tv')
+  ],
+  seer_trending_entity: [(entityId) => entityId.includes('seer_mediarr_trending')],
+  seer_discover_entity: [(entityId) => entityId.includes('seer_mediarr_discover')],
+  seer_popular_movies_entity: [(entityId) => entityId.includes('seer_mediarr_popular_movies')],
+  seer_popular_tv_entity: [(entityId) => entityId.includes('seer_mediarr_popular_tv')],
+  tmdb_entity: [(entityId) => entityId === 'sensor.tmdb_mediarr' || entityId.includes('tmdb_mediarr_trending')],
+  tmdb_airing_today_entity: [(entityId) => entityId.includes('tmdb_mediarr_airing_today')],
+  tmdb_now_playing_entity: [(entityId) => entityId.includes('tmdb_mediarr_now_playing')],
+  tmdb_on_air_entity: [(entityId) => entityId.includes('tmdb_mediarr_on_air')],
+  tmdb_upcoming_entity: [(entityId) => entityId.includes('tmdb_mediarr_upcoming')],
+  tmdb_popular_movies_entity: [(entityId) => entityId.includes('tmdb_mediarr_popular_movies')],
+  tmdb_popular_tv_entity: [(entityId) => entityId.includes('tmdb_mediarr_popular_tv')],
+  immaculaterr_movies_entity: [
+    (entityId) => entityId.includes('immaculaterr_mediarr_movies'),
+    (entityId) => entityId.includes('immaculaterr_mediarr_movie')
+  ],
+  immaculaterr_tv_entity: [
+    (entityId) => entityId.includes('immaculaterr_mediarr_tv'),
+    (entityId) => entityId.includes('immaculaterr_mediarr_series')
+  ]
+};
+
 const fireEditorEvent = (node, type, detail = {}) =>
   node.dispatchEvent(
     new CustomEvent(type, {
@@ -600,13 +637,87 @@ class MediarrCardEditor extends HTMLElement {
     this._render();
   }
 
+  _getActiveSensorIds() {
+    if (!this._hass?.states) return [];
+    return Object.entries(this._hass.states)
+      .filter(([entityId, stateObj]) => {
+        if (!entityId.startsWith('sensor.')) return false;
+        if (!stateObj) return false;
+        return stateObj.state !== 'unavailable';
+      })
+      .map(([entityId]) => entityId)
+      .sort();
+  }
+
+  _getEntityLabel(entityId) {
+    const stateObj = this._hass?.states?.[entityId];
+    const friendly = stateObj?.attributes?.friendly_name;
+    return friendly ? `${friendly} (${entityId})` : entityId;
+  }
+
+  _getFieldCandidates(fieldKey) {
+    const activeSensorIds = this._getActiveSensorIds();
+    const matchers = EDITOR_FIELD_MATCHERS[fieldKey] || [];
+    const candidates = activeSensorIds.filter((entityId) =>
+      matchers.some((matcher) => matcher(entityId))
+    );
+
+    const configured = (this._config?.[fieldKey] || '').toString().trim();
+    if (configured && !candidates.includes(configured)) {
+      candidates.unshift(configured);
+    }
+
+    return [...new Set(candidates)];
+  }
+
+  _getAvailableSections() {
+    return EDITOR_SECTION_DEFINITIONS
+      .map((section) => {
+        const fields = section.fields
+          .map((field) => ({
+            ...field,
+            candidates: this._getFieldCandidates(field.key)
+          }))
+          .filter((field) => field.candidates.length > 0);
+
+        const hasConfiguredField = section.fields.some((field) =>
+          (this._config?.[field.key] || '').toString().trim().length > 0
+        );
+
+        if (fields.length === 0 && !hasConfiguredField) {
+          return null;
+        }
+
+        if (fields.length === 0 && hasConfiguredField) {
+          return {
+            ...section,
+            fields: section.fields.map((field) => ({
+              ...field,
+              candidates: this._getFieldCandidates(field.key)
+            }))
+          };
+        }
+
+        return { ...section, fields };
+      })
+      .filter(Boolean);
+  }
+
   _deriveVisibleSections(config) {
-    const visible = EDITOR_SECTION_DEFINITIONS
+    const visible = this._getAvailableSections()
       .filter((section) =>
         section.fields.some((field) => (config[field.key] || '').toString().trim().length > 0)
       )
       .map((section) => section.key);
-    return visible.length > 0 ? visible : [...DEFAULT_EDITOR_VISIBLE_SECTIONS];
+
+    if (visible.length > 0) return visible;
+    const availableDefault = this._getAvailableSections().map((section) => section.key);
+    if (availableDefault.length > 0) {
+      return DEFAULT_EDITOR_VISIBLE_SECTIONS.filter((sectionKey) =>
+        availableDefault.includes(sectionKey)
+      );
+    }
+    return [...DEFAULT_EDITOR_VISIBLE_SECTIONS];
   }
 
   _isSectionVisible(sectionKey) {
@@ -649,6 +760,7 @@ class MediarrCardEditor extends HTMLElement {
 
   _render() {
     if (!this._config) return;
+    const availableSections = this._getAvailableSections();
 
     this.innerHTML = `
       <style>
@@ -668,9 +780,9 @@ class MediarrCardEditor extends HTMLElement {
       <div class="editor-root">
         <div class="editor-card">
           <div class="editor-title">Visible Sections</div>
-          <div class="editor-subtitle">Enable only the modules you want to show on the card.</div>
+          <div class="editor-subtitle">Only active Mediarr sensors are shown here.</div>
           <div class="module-list">
-            ${EDITOR_SECTION_DEFINITIONS.map((section) => `
+            ${availableSections.map((section) => `
               <div class="module-row">
                 <label class="module-toggle">
                   <input type="checkbox" data-section-toggle="${section.key}" ${this._isSectionVisible(section.key) ? 'checked' : ''}>
@@ -681,7 +793,14 @@ class MediarrCardEditor extends HTMLElement {
                     ${section.fields.map((field) => `
                       <div>
                         <div class="field-label">${field.label}</div>
-                        <ha-entity-picker class="entity-picker" data-entity-key="${field.key}" include-domains="sensor"></ha-entity-picker>
+                        <select class="entity-picker" data-entity-select="${field.key}">
+                          <option value="">Not configured</option>
+                          ${field.candidates.map((entityId) => `
+                            <option value="${entityId}" ${this._config[field.key] === entityId ? 'selected' : ''}>
+                              ${this._getEntityLabel(entityId)}
+                            </option>
+                          `).join('')}
+                        </select>
                       </div>
                     `).join('')}
                   </div>
@@ -719,9 +838,24 @@ class MediarrCardEditor extends HTMLElement {
       </div>
     `;
 
+    if (availableSections.length === 0) {
+      this.querySelector('.module-list').innerHTML = `
+        <div class="module-row">
+          <div class="editor-subtitle">No active Mediarr sensors found. Configure sensors first, then reopen the editor.</div>
+        </div>
+      `;
+    }
+
     this.querySelectorAll('[data-section-toggle]').forEach((checkbox) => {
       checkbox.addEventListener('change', (event) => {
         this._toggleSection(event.currentTarget.dataset.sectionToggle, Boolean(event.currentTarget.checked));
+      });
+    });
+
+    this.querySelectorAll('[data-entity-select]').forEach((select) => {
+      const key = select.dataset.entitySelect;
+      select.addEventListener('change', (event) => {
+        this._updateConfigValue(key, event.currentTarget.value || '');
       });
     });
 
