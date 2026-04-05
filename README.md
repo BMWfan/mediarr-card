@@ -163,8 +163,8 @@ Upcoming Features
 
 Contributors
 
-👤 Vansmak (aka Vanhacked)
-👤 BMWfan
+- 👤 Vansmak (aka Vanhacked)
+- 👤 BMWfan
 
 
 ---
