@@ -1,0 +1,7 @@
+{
+  "name": "mediarr-card",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Mediarr Card for Home Assistant",
+  "license": "MIT"
+}
