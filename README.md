@@ -67,6 +67,12 @@ Step 1: Install and configure the Mediarr Server sensors
 Step 2: Add the Card to Lovelace
 
 Mediarr Card Configuration Guide
+
+UI Configuration (recommended):
+- In Lovelace, add `custom:mediarr-card`.
+- Use the card editor to choose visible sections and assign sensor entities.
+- You no longer need to manage section visibility via YAML manually.
+
 Basic Configuration
 Add the following YAML to your dashboard. The sections will appear in the same order as they are listed in this configuration:
 Labels are optional 
