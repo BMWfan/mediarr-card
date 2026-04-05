@@ -1,14 +1,14 @@
 // main-card.js
-import { PlexSection } from './plex-section.js';
-import { JellyfinSection } from './jellyfin-section.js';
-import { SonarrSection } from './sonarr-section.js';
-import { RadarrSection } from './radarr-section.js';
-import { SeerSection } from './seer-section.js';
-import { TMDBSection } from './tmdb-section.js';
-import { TraktSection } from './trakt-section.js';
-import { Sonarr2Section } from './sonarr2-section.js';
-import { Radarr2Section } from './radarr2-section.js';
-import { styles } from './styles.js';
+import { PlexSection } from './plex-section.js?v=20260403-20';
+import { JellyfinSection } from './jellyfin-section.js?v=20260403-20';
+import { SonarrSection } from './sonarr-section.js?v=20260403-20';
+import { RadarrSection } from './radarr-section.js?v=20260403-20';
+import { SeerSection } from './seer-section.js?v=20260403-20';
+import { TMDBSection } from './tmdb-section.js?v=20260403-20';
+import { TraktSection } from './trakt-section.js?v=20260403-20';
+import { Sonarr2Section } from './sonarr2-section.js?v=20260403-20';
+import { Radarr2Section } from './radarr2-section.js?v=20260403-20';
+import { styles } from './styles.js?v=20260403-20';
 
 
 class MediarrCard extends HTMLElement {
@@ -223,7 +223,7 @@ class MediarrCard extends HTMLElement {
             .map(key => {
               const section = this.sections[key];
               // Always just call generateTemplate once, no special handling for tmdb needed
-              return section.generateTemplate(this.config);
+              return section.generateTemplate(this.config, this);
             })
             .join('')}            
              
@@ -314,6 +314,7 @@ class MediarrCard extends HTMLElement {
   }
 
   set hass(hass) {
+    this._hass = hass;
     if (!this.content) {
       this.initializeCard(hass);
     }

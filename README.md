@@ -1,111 +1,61 @@
-Mediarr for Home Assistant (Inspired by Upcoming Media Card)
-A comprehensive visual of the state of your media management for Home Assistant that brings together your media servers, management tools, and discovery services in one place.
+# Mediarr Card for Home Assistant
 
-Support This Project
-If you find this project helpful, please consider supporting it. Your contributions help maintain and improve the project. Any support is greatly appreciated! ❤️ https://buymeacoffee.com/vansmak Thank you for your support!
+A visual overview card for Home Assistant that combines media servers, media managers, and discovery/request sources in one Lovelace card.
 
-***Features
+## Fork Notes
 
-Modular Design
+This fork includes significant UX and maintenance updates compared to the upstream baseline.
+See [CHANGELOG.md](CHANGELOG.md) for full details.
 
-✅ Collapsible sections
-✅ Dynamic backgrounds
+Highlights in this fork:
 
-✅ Media Server Integration
+- Improved readability and contrast behavior for dark/bright backdrops
+- Centralized EN/DE label system with dynamic section-title localization
+- Better Seer request/status UX (modal-based actions, toast feedback)
+- HACS-ready metadata updates (`content_in_root`) and migration notes
+- Cache-friendly module versioning improvements for submodule imports
 
-Plex: View recently added content
+## Features
 
-Jellyfin: View recently added content
-
-Emby: (may come soon!)
-
-✅ Media Management
-
-Sonarr: (up to 2 instances) View upcoming TV shows and episodes
-
-Radarr: (up to 2 instances) Track upcoming movie releases
-
-✅ Media Discovery
-
-Overseerr / Jellyseer: View     media requests with status and requestor  
-![request](https://github.com/user-attachments/assets/dc794192-cb27-4d9a-b57c-95dc33d25d22) ![status](https://github.com/user-attachments/assets/6819af31-05c6-4c82-8660-0bf337dcb809)
-- View all media requests with their current status
-- Request new movies and TV shows directly from the discover sections
-- **New: Status Management** - Click on any request's status to:
-  - Approve requests
-  - Decline requests
-  - Remove requests from the queue
-- Status changes are instant and sync with Overseerr/Jellyseerr
-- Works seamlessly with both movies and TV shows
-- Uses built-in Home Assistant services for request management
-
-Trakt: Browse popular TV shows and movies
-   - may be adding trakt calendar lists, i make no promises.  I do not use trakt
-TMDB: Explore trending content (configurable for TV, movies, or both)
- 
-*Media Player State (may remove)  currently if you and a media_player.jelly_or_plex it will show a small overlay of what is playing
+- Collapsible sections
+- Dynamic card/media backdrops
+- Plex and Jellyfin recently-added support
+- Sonarr and Radarr support (up to 2 instances each)
+- Overseerr/Jellyseerr requests with status actions
+- Trakt and TMDB discovery sections
 
 ## Screenshots
 
-![VIEW](https://github.com/user-attachments/assets/e5eda74d-e50b-4dde-9985-45282dc99a51) ![Screenshot 2025-01-21 at 14-51-50 mediarr – Home Assistant](https://github.com/user-attachments/assets/4c73b44a-680a-42ea-8d2b-0d96806fb1c6)
+![VIEW](https://github.com/user-attachments/assets/e5eda74d-e50b-4dde-9985-45282dc99a51)
+![Screenshot 2025-01-21 at 14-51-50 mediarr – Home Assistant](https://github.com/user-attachments/assets/4c73b44a-680a-42ea-8d2b-0d96806fb1c6)
 
-**Installation 
-****Sensor Configuration
- ***see mediarr_sensor must have first https://github.com/Vansmak/mediarr_sensor
+## Installation
 
-HACS Installation 
+### Prerequisite
 
-1. Open HACS
+Install and configure the sensor backend first:
+https://github.com/Vansmak/mediarr_sensor
 
+### HACS (Recommended)
 
-2. Go to "Frontend"
+1. Open `HACS` -> `Frontend`.
+2. Open the menu `⋮` -> `Custom repositories`.
+3. Add your fork URL (example: `https://github.com/BMWfan/mediarr-card`).
+4. Category: `Dashboard`.
+5. Install `Mediarr Card`.
+6. Restart Home Assistant.
 
+If you migrate from manual `/local/mediarr-card/...` resources, remove the old manual resource after installing via HACS.
+Detailed migration steps: [MIGRATION_TO_HACS.md](MIGRATION_TO_HACS.md).
 
-3. Click the three dots (⋮) → "Custom repositories"
+### Manual Installation (Legacy)
 
-
-4. Add this repository URL:
-🔗 https://github.com/Vansmak/mediarr-card
-
-Select Category: Lovelace) Dashboard 
-
-5. Click "Add"
-
-6. Find and install "Mediarr card" from HACS
-
-7. Restart Home Assistant
-
-Manual Installation 
-
-1. Download the latest release from this repository.
-
-2. Copy main.js, styles js and /sections folder  into:
-
-/config/www/community/mediarr-card/
-│── mediarr-card.js
-│── styles.js
-│── sections/
-│   ├── section1.js
-│   ├── section2.js
-│   ├── section3.js
-
-
-
-3. Add the resource:
-
-Go to Settings → Dashboards → Resources
-
-Click "Add Resource"
-
-Enter the URL:
-
-/local/mediarr-card/main.js
-
-Select "JavaScript Module"
-
-Click "Create"
-
-4. Restart Home Assistant
+1. Copy this folder to:
+   `/config/www/mediarr-card/`
+2. Add Lovelace resource:
+   `/local/mediarr-card/mediarr-card.js`
+3. Type: `JavaScript Module`
+4. Restart Home Assistant.
 
 Configuration
 
@@ -213,7 +163,8 @@ Upcoming Features
 
 Contributors
 
-👤 Vansmak (aka Vanhacked)
+- 👤 Vansmak (aka Vanhacked)
+- 👤 BMWfan
 
 
 ---

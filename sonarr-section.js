@@ -1,14 +1,14 @@
 // sections/sonarr-section.js
-import { BaseSection } from './base-section.js';
+import { BaseSection } from './base-section.js?v=20260403-20';
 
 export class SonarrSection extends BaseSection {
   constructor() {
     super('sonarr', 'Sonarr Shows');  // Default name if no label provided
   }
 
-  generateTemplate(config) {
+  generateTemplate(config, cardInstance = this._currentCard) {
     // Get label from config or use default
-    const label = config?.sonarr_label ?? 'Upcoming Shows';
+    const label = config?.sonarr_label ?? this.t(cardInstance, 'sonarr_upcoming_shows', 'Upcoming Shows');
     return `
       <div class="section" data-section="${this.key}">
         <div class="section-header">
@@ -24,7 +24,13 @@ export class SonarrSection extends BaseSection {
     `;
   }
 
+  update(cardInstance, entity) {
+    this._currentCard = cardInstance;
+    super.update(cardInstance, entity);
+  }
+
   updateInfo(cardInstance, item) {
+    this._currentCard = cardInstance;
     super.updateInfo(cardInstance, item);  // Handle backgrounds
     
     if (!item) return;
@@ -45,7 +51,7 @@ export class SonarrSection extends BaseSection {
         <div class="title">${item.title}</div>
         <div class="details">${item.number || ''} - ${item.episode || ''}</div>
         <div class="metadata">
-            Airs: ${airDate}${item.network ? ` on ${item.network}` : ''}
+            ${this.t(cardInstance, 'airs', 'Airs')}: ${airDate}${item.network ? ` ${this.t(cardInstance, 'on', 'on')} ${item.network}` : ''}
         </div>
     `;
   }
@@ -55,7 +61,7 @@ export class SonarrSection extends BaseSection {
     if (item.title_default) {
       return `
         <div class="empty-section-content">
-          <div class="empty-message">No upcoming shows</div>
+          <div class="empty-message">${this.t(this._currentCard, 'no_upcoming_shows', 'No upcoming shows')}</div>
         </div>
       `;
     }
