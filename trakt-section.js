@@ -1,9 +1,15 @@
 // sections/trakt-section.js
-import { BaseSection } from './base-section.js';
+import { BaseSection } from './base-section.js?v=20260403-20';
 
 export class TraktSection extends BaseSection {
   constructor() {
     super('trakt', 'Trakt Popular');
+    this.titleKey = 'trakt_popular';
+  }
+
+  update(cardInstance, entity) {
+    this._currentCard = cardInstance;
+    super.update(cardInstance, entity);
   }
 
   generateMediaItem(item, index, selectedType, selectedIndex) {
@@ -18,6 +24,7 @@ export class TraktSection extends BaseSection {
   }
 
   updateInfo(cardInstance, item) {
+    this._currentCard = cardInstance;
     if (!item) return;
 
     const mediaBackground = item.backdrop || item.poster;
@@ -31,6 +38,7 @@ export class TraktSection extends BaseSection {
     if (cardBackground && cardInstance.cardBackground) {
         cardInstance.cardBackground.style.backgroundImage = `url('${cardBackground}')`;
     }
+    this.applyAdaptiveContrast(cardInstance, mediaBackground || cardBackground);
 
     // Enhanced info display for Trakt items
     cardInstance.info.innerHTML = `
@@ -51,7 +59,7 @@ export class TraktSection extends BaseSection {
               }
             }))">
               <ha-icon icon="mdi:plus-circle-outline"></ha-icon>
-              Request
+              ${this.t(cardInstance, 'request', 'Request')}
             </button>
           </div>
           ${item.ids ? `

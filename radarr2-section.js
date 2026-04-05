@@ -1,13 +1,13 @@
 // sections/radarr2-section.js
-import { BaseSection } from './base-section.js';
+import { BaseSection } from './base-section.js?v=20260403-20';
 export class Radarr2Section extends BaseSection {
   constructor() {
     super('radarr2', 'Radarr2 Movies');  // Default name if no label provided
   }
   
-  generateTemplate(config) {
+  generateTemplate(config, cardInstance = this._currentCard) {
     // Get label from config or use default
-    const label = config?.radarr2_label ?? 'Upcoming Movies';
+    const label = config?.radarr2_label ?? this.t(cardInstance, 'radarr2_upcoming_movies', 'Upcoming Movies');
     return `
       <div class="section" data-section="${this.key}">
         <div class="section-header">
@@ -24,6 +24,7 @@ export class Radarr2Section extends BaseSection {
   }
   
   update(cardInstance, entity) {
+    this._currentCard = cardInstance;
     const maxItems = cardInstance.config[`${this.key}_max_items`] || cardInstance.config.max_items || 10;
     const releaseTypes = cardInstance.config[`${this.key}_release_types`] || ['Digital', 'Theaters', 'Physical'];
    
@@ -81,7 +82,7 @@ export class Radarr2Section extends BaseSection {
     if (item.title_default) {
       return `
         <div class="empty-section-content">
-          <div class="empty-message">No upcoming Movies</div>
+          <div class="empty-message">${this.t(this._currentCard, 'no_upcoming_movies', 'No upcoming movies')}</div>
         </div>
       `;
     }

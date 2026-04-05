@@ -1,21 +1,21 @@
 // sections/tmdb-section.js
-import { BaseSection } from './base-section.js';
+import { BaseSection } from './base-section.js?v=20260403-20';
 
 export class TMDBSection extends BaseSection {
   constructor() {
     super('tmdb_container', '');
     this.sections = [
-      { key: 'tmdb', title: 'Trending on TMDB', entityKey: 'tmdb_entity', listClass: 'tmdb-list' },
-      { key: 'tmdb_airing_today', title: 'Airing Today', entityKey: 'tmdb_airing_today_entity', listClass: 'tmdb-airing-today-list' },
-      { key: 'tmdb_now_playing', title: 'Now Playing', entityKey: 'tmdb_now_playing_entity', listClass: 'tmdb-now-playing-list' },
-      { key: 'tmdb_on_air', title: 'On Air', entityKey: 'tmdb_on_air_entity', listClass: 'tmdb-on-air-list' },
-      { key: 'tmdb_upcoming', title: 'Upcoming', entityKey: 'tmdb_upcoming_entity', listClass: 'tmdb-upcoming-list' },
-      { key: 'tmdb_popular_movies', title: 'Popular Movies', entityKey: 'tmdb_popular_movies_entity', listClass: 'tmdb-popular-movies-list' },
-      { key: 'tmdb_popular_tv', title: 'Popular TV Shows', entityKey: 'tmdb_popular_tv_entity', listClass: 'tmdb-popular-tv-list' }
+      { key: 'tmdb', title: 'Trending on TMDB', titleKey: 'trending_on_tmdb', entityKey: 'tmdb_entity', listClass: 'tmdb-list' },
+      { key: 'tmdb_airing_today', title: 'Airing Today', titleKey: 'airing_today', entityKey: 'tmdb_airing_today_entity', listClass: 'tmdb-airing-today-list' },
+      { key: 'tmdb_now_playing', title: 'Now Playing', titleKey: 'now_playing', entityKey: 'tmdb_now_playing_entity', listClass: 'tmdb-now-playing-list' },
+      { key: 'tmdb_on_air', title: 'On Air', titleKey: 'on_air', entityKey: 'tmdb_on_air_entity', listClass: 'tmdb-on-air-list' },
+      { key: 'tmdb_upcoming', title: 'Upcoming', titleKey: 'upcoming', entityKey: 'tmdb_upcoming_entity', listClass: 'tmdb-upcoming-list' },
+      { key: 'tmdb_popular_movies', title: 'Popular Movies', titleKey: 'popular_movies', entityKey: 'tmdb_popular_movies_entity', listClass: 'tmdb-popular-movies-list' },
+      { key: 'tmdb_popular_tv', title: 'Popular TV Shows', titleKey: 'popular_tv_shows', entityKey: 'tmdb_popular_tv_entity', listClass: 'tmdb-popular-tv-list' }
     ];
   }
 
-  generateTemplate(config) {
+  generateTemplate(config, cardInstance = this._currentCard) {
     return this.sections
       .filter(section => config[section.entityKey])
       .map(section => `
@@ -23,7 +23,7 @@ export class TMDBSection extends BaseSection {
           <div class="section-header">
             <div class="section-header-content">
               <ha-icon class="section-toggle-icon" icon="mdi:chevron-down"></ha-icon>
-              <div class="section-label">${section.title}</div>
+              <div class="section-label">${this.t(cardInstance, section.titleKey, section.title)}</div>
             </div>
           </div>
           <div class="section-content">
@@ -45,6 +45,7 @@ export class TMDBSection extends BaseSection {
   }
   // In TMDBSection class update method
   update(cardInstance, entity) {
+    this._currentCard = cardInstance;
     const entityId = entity.entity_id;
     const sectionConfig = this.sections.find(section => 
       cardInstance.config[section.entityKey] === entityId
@@ -85,6 +86,7 @@ export class TMDBSection extends BaseSection {
   }
 
   updateInfo(cardInstance, item) {
+    this._currentCard = cardInstance;
     if (!item) return;
 
     const mediaBackground = item.backdrop || item.poster;
@@ -98,6 +100,7 @@ export class TMDBSection extends BaseSection {
     if (cardBackground && cardInstance.cardBackground) {
         cardInstance.cardBackground.style.backgroundImage = `url('${cardBackground}')`;
     }
+    this.applyAdaptiveContrast(cardInstance, mediaBackground || cardBackground);
 
     cardInstance.info.innerHTML = `
         <div class="type">${item.type.toUpperCase()}</div>
@@ -117,7 +120,7 @@ export class TMDBSection extends BaseSection {
               }
             }))">
               <ha-icon icon="mdi:plus-circle-outline"></ha-icon>
-              Request
+              ${this.t(cardInstance, 'request', 'Request')}
             </button>
           </div>
           ${item.vote_average ? `<div class="rating">Rating: ${item.vote_average}/10</div>` : ''}

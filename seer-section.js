@@ -1,14 +1,14 @@
-import { BaseSection } from './base-section.js';
+import { BaseSection } from './base-section.js?v=20260403-20';
 
 export class SeerSection extends BaseSection {
   constructor() {
     super('seer', 'Seer Content');
     this.sections = [
-      { key: 'seer', title: 'Media Requests', entityKey: 'seer_entity', listClass: 'seer-list' },
-      { key: 'seer_trending', title: 'Trending', entityKey: 'seer_trending_entity', listClass: 'seer-trending-list' },
-      { key: 'seer_popular_movies', title: 'Popular Movies', entityKey: 'seer_popular_movies_entity', listClass: 'seer-popular-movies-list' },
-      { key: 'seer_popular_tv', title: 'Popular TV', entityKey: 'seer_popular_tv_entity', listClass: 'seer-popular-tv-list' },
-      { key: 'seer_discover', title: 'Discover', entityKey: 'seer_discover_entity', listClass: 'seer-discover-list' }
+      { key: 'seer', title: 'Media Requests', titleKey: 'media_requests', entityKey: 'seer_entity', listClass: 'seer-list' },
+      { key: 'seer_trending', title: 'Trending', titleKey: 'trending', entityKey: 'seer_trending_entity', listClass: 'seer-trending-list' },
+      { key: 'seer_popular_movies', title: 'Popular Movies', titleKey: 'popular_movies', entityKey: 'seer_popular_movies_entity', listClass: 'seer-popular-movies-list' },
+      { key: 'seer_popular_tv', title: 'Popular TV', titleKey: 'popular_tv', entityKey: 'seer_popular_tv_entity', listClass: 'seer-popular-tv-list' },
+      { key: 'seer_discover', title: 'Discover', titleKey: 'discover', entityKey: 'seer_discover_entity', listClass: 'seer-discover-list' }
     ];
 
     this.statusMap = {
@@ -19,7 +19,34 @@ export class SeerSection extends BaseSection {
     };
   }
 
-  generateTemplate(config) {
+  update(cardInstance, entity) {
+    this._currentCard = cardInstance;
+    const entityId = entity.entity_id;
+    const sectionConfig = this.sections.find(section =>
+      cardInstance.config[section.entityKey] === entityId
+    );
+
+    if (!sectionConfig) return;
+
+    const maxItems = cardInstance.config.seer_max_items || cardInstance.config.max_items || 10;
+    let items = entity.attributes.data || [];
+    items = items.slice(0, maxItems);
+
+    const listElement = cardInstance.querySelector(`[data-list="${sectionConfig.key}"]`);
+    if (!listElement) return;
+
+    listElement.innerHTML = items.map((item, index) =>
+      this.generateMediaItem(item, index, cardInstance.selectedType, cardInstance.selectedIndex, sectionConfig.key)
+    ).join('');
+
+    this.addClickHandlers(cardInstance, listElement, items, sectionConfig.key);
+
+    if (entity.entity_id === cardInstance.config.seer_entity) {
+      this.existingRequests = items;
+    }
+  }
+
+  generateTemplate(config, cardInstance = this._currentCard) {
     return this.sections
       .filter(section => config[section.entityKey])
       .map(section => `
@@ -27,7 +54,7 @@ export class SeerSection extends BaseSection {
           <div class="section-header">
             <div class="section-header-content">
               <ha-icon class="section-toggle-icon" icon="mdi:chevron-down"></ha-icon>
-              <div class="section-label">${section.title}</div>
+              <div class="section-label">${this.t(cardInstance, section.titleKey, section.title)}</div>
             </div>
           </div>
           <div class="section-content">
@@ -49,36 +76,6 @@ export class SeerSection extends BaseSection {
         <div class="media-item-title">${item.title || item.name || ''}</div>
       </div>
     `;
-  }
-
-  // In SeerSection class update method
-  update(cardInstance, entity) {
-    const entityId = entity.entity_id;
-    const sectionConfig = this.sections.find(section => 
-      cardInstance.config[section.entityKey] === entityId
-    );
-    
-    if (!sectionConfig) return;
-
-    const maxItems = cardInstance.config[`seer_max_items`] || cardInstance.config.max_items || 10;
-    
-    let items = entity.attributes.data || [];
-    // Apply the limit from the card config
-    items = items.slice(0, maxItems);
-    
-    const listElement = cardInstance.querySelector(`[data-list="${sectionConfig.key}"]`);
-    if (!listElement) return;
-
-    listElement.innerHTML = items.map((item, index) => 
-      this.generateMediaItem(item, index, cardInstance.selectedType, cardInstance.selectedIndex, sectionConfig.key)
-    ).join('');
-
-    this.addClickHandlers(cardInstance, listElement, items, sectionConfig.key);
-
-    // Store the requests data for checking status
-    if (entity.entity_id === cardInstance.config.seer_entity) {
-      this.existingRequests = items;
-    }
   }
 
   async checkIfRequested(cardInstance, item) {
@@ -121,8 +118,6 @@ export class SeerSection extends BaseSection {
     const type = this._determineMediaType(item, sectionKey);
     
     const tmdbId = item.id;
-    console.log('Item full data:', item);
-    console.log('TMDB ID found:', tmdbId);
 
     const mediaBackground = item.fanart || item.poster || '';
     const cardBackground = item.fanart || item.poster || '';
@@ -135,6 +130,7 @@ export class SeerSection extends BaseSection {
     if (cardBackground && cardInstance.cardBackground) {
       cardInstance.cardBackground.style.backgroundImage = `url('${cardBackground}')`;
     }
+    this.applyAdaptiveContrast(cardInstance, mediaBackground || cardBackground);
 
     // Check if item is already requested
     const existingRequest = await this.checkIfRequested(cardInstance, item);
@@ -166,7 +162,7 @@ export class SeerSection extends BaseSection {
               }
             }))">
               <ha-icon icon="mdi:plus-circle-outline"></ha-icon>
-              Request
+              ${this.t(cardInstance, 'request', 'Request')}
             </button>
           </div>
         `;
@@ -213,6 +209,110 @@ export class SeerSection extends BaseSection {
     return 'movie';
   }
 
+  _showToast(cardInstance, message, kind = 'info') {
+    if (!cardInstance || !message) return;
+    const toast = document.createElement('div');
+    toast.className = `mediarr-toast mediarr-toast-${kind}`;
+    toast.textContent = message;
+    cardInstance.appendChild(toast);
+    requestAnimationFrame(() => toast.classList.add('show'));
+    setTimeout(() => {
+      toast.classList.remove('show');
+      setTimeout(() => toast.remove(), 250);
+    }, 2600);
+  }
+
+  _openStatusModal(title) {
+    return new Promise((resolve) => {
+      const modal = document.createElement('div');
+      modal.className = 'mediarr-modal-overlay';
+      modal.innerHTML = `
+        <div class="mediarr-modal">
+          <button class="mediarr-modal-close" type="button">
+            <ha-icon icon="mdi:close"></ha-icon>
+          </button>
+          <p class="mediarr-modal-title">${this.t(this._currentCard, 'update_status_for', 'Update status for')} "<strong>${title}</strong>"</p>
+          <select class="mediarr-modal-select" id="status-select">
+            <option value="approve">${this.t(this._currentCard, 'approve', 'Approve')}</option>
+            <option value="decline">${this.t(this._currentCard, 'decline', 'Decline')}</option>
+            <option value="remove">${this.t(this._currentCard, 'remove', 'Remove')}</option>
+          </select>
+          <div class="mediarr-modal-actions">
+            <button class="mediarr-btn mediarr-btn-confirm" type="button">${this.t(this._currentCard, 'confirm', 'Confirm')}</button>
+            <button class="mediarr-btn mediarr-btn-cancel" type="button">${this.t(this._currentCard, 'cancel', 'Cancel')}</button>
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(modal);
+
+      const close = () => {
+        if (document.body.contains(modal)) {
+          document.body.removeChild(modal);
+        }
+      };
+
+      modal.querySelector('.mediarr-modal-close').onclick = () => {
+        close();
+        resolve(null);
+      };
+      modal.querySelector('.mediarr-btn-cancel').onclick = () => {
+        close();
+        resolve(null);
+      };
+      modal.querySelector('.mediarr-btn-confirm').onclick = () => {
+        const value = modal.querySelector('#status-select').value;
+        close();
+        resolve(value);
+      };
+    });
+  }
+
+  _openSeasonModal(title) {
+    return new Promise((resolve) => {
+      const modal = document.createElement('div');
+      modal.className = 'mediarr-modal-overlay';
+      modal.innerHTML = `
+        <div class="mediarr-modal">
+          <button class="mediarr-modal-close" type="button">
+            <ha-icon icon="mdi:close"></ha-icon>
+          </button>
+          <p class="mediarr-modal-title">${this.t(this._currentCard, 'select_season_for', 'Select season for')} "<strong>${title}</strong>"</p>
+          <select class="mediarr-modal-select" id="season-select">
+            <option value="first">${this.t(this._currentCard, 'first', 'First')}</option>
+            <option value="latest">${this.t(this._currentCard, 'latest', 'Latest')}</option>
+            <option value="all" selected>${this.t(this._currentCard, 'all', 'All')}</option>
+          </select>
+          <div class="mediarr-modal-actions">
+            <button class="mediarr-btn mediarr-btn-confirm" type="button">${this.t(this._currentCard, 'confirm', 'Confirm')}</button>
+            <button class="mediarr-btn mediarr-btn-cancel" type="button">${this.t(this._currentCard, 'cancel', 'Cancel')}</button>
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(modal);
+      const close = () => {
+        if (document.body.contains(modal)) {
+          document.body.removeChild(modal);
+        }
+      };
+
+      modal.querySelector('.mediarr-modal-close').onclick = () => {
+        close();
+        resolve(null);
+      };
+      modal.querySelector('.mediarr-btn-cancel').onclick = () => {
+        close();
+        resolve(null);
+      };
+      modal.querySelector('.mediarr-btn-confirm').onclick = () => {
+        const value = modal.querySelector('#season-select').value;
+        close();
+        resolve(value);
+      };
+    });
+  }
+
   addClickHandlers(cardInstance, listElement, items, sectionKey) {
     listElement.querySelectorAll('.media-item').forEach(item => {
       item.onclick = () => {
@@ -231,68 +331,26 @@ export class SeerSection extends BaseSection {
     if (!cardInstance._statusChangeHandlerAdded) {
       cardInstance.addEventListener('change-status', async (e) => {
         const { title, type, request_id } = e.detail;
-    
-        const modal = document.createElement('div');
-        modal.style.position = 'fixed';
-        modal.style.top = '50%';
-        modal.style.left = '50%';
-        modal.style.transform = 'translate(-50%, -50%)';
-        modal.style.background = '#333';
-        modal.style.color = 'white';
-        modal.style.padding = '20px';
-        modal.style.boxShadow = '0px 0px 15px rgba(255,255,255,0.3)';
-        modal.style.borderRadius = '10px';
-        modal.style.textAlign = 'center';
-        modal.style.zIndex = '1000';
-    
-        modal.innerHTML = `
-          <div style="position:absolute; top:10px; right:10px; cursor:pointer;" id="close-modal">
-            <ha-icon icon="mdi:close" style="color:white;"></ha-icon>
-          </div>
-          <p style="margin-bottom:10px;">Update status for "<strong>${title}</strong>":</p>
-          <select id="status-select" style="padding:5px; font-size:16px;">
-            <option value="approve">Approve</option>
-            <option value="decline">Decline</option>
-            <option value="remove">Remove</option>
-          </select>
-          <br><br>
-          <div style="display:flex; justify-content:center; gap:10px;">
-            <button id="confirm-status" style="padding:10px 15px; background:#28a745; color:white; border:none; border-radius:5px; cursor:pointer;">Confirm</button>
-            <button id="cancel-status" style="padding:10px 15px; background:#dc3545; color:white; border:none; border-radius:5px; cursor:pointer;">Cancel</button>
-          </div>
-        `;
-    
-        document.body.appendChild(modal);
-    
-        // Add event listener for close button
-        document.getElementById('close-modal').onclick = () => {
-          document.body.removeChild(modal);
-        };
-    
-        // Add event listener for cancel button
-        document.getElementById('cancel-status').onclick = () => {
-          document.body.removeChild(modal);
-        };
-    
-        // Add event listener for confirm button
-        document.getElementById('confirm-status').onclick = async () => {
-          const new_status = document.getElementById('status-select').value;
-          document.body.removeChild(modal);
-    
+        const new_status = await this._openStatusModal(title);
+        if (!new_status) return;
+
+        try {
           await window.document.querySelector('home-assistant')
             ?.hass.callService('mediarr', 'update_request', {
               name: title,
-              type: type,
-              new_status: new_status,
-              request_id: request_id
+              type,
+              new_status,
+              request_id
             });
-    
-          // Force a re-render of the current item
+
           if (typeof cardInstance.selectedIndex !== 'undefined' && cardInstance.selectedType) {
-            const items = cardInstance._hass.states[cardInstance.config.seer_entity].attributes.data || [];
-            this.updateInfo(cardInstance, items[cardInstance.selectedIndex], cardInstance.selectedType);
+            const selectedItems = cardInstance._hass.states[cardInstance.config.seer_entity].attributes.data || [];
+            this.updateInfo(cardInstance, selectedItems[cardInstance.selectedIndex], cardInstance.selectedType);
           }
-        };
+          this._showToast(cardInstance, this.t(cardInstance, 'confirm', 'Confirm'), 'success');
+        } catch (error) {
+          this._showToast(cardInstance, error?.message || this.t(cardInstance, 'failed', 'Failed'), 'error');
+        }
       });
     
       cardInstance._statusChangeHandlerAdded = true;
@@ -323,69 +381,14 @@ export class SeerSection extends BaseSection {
           });
     
           if (existingRequest && type.toUpperCase() === 'MOVIE') {
-            alert(`"${title}" has already been requested.`);
+            this._showToast(cardInstance, `"${title}" ${this.t(cardInstance, 'already_requested', 'has already been requested.')}`, 'info');
             return;
           }
     
           let action, data;
     
           if (type.toUpperCase() === 'TV SHOW') {
-            const season = await new Promise((resolve, reject) => {
-              const modal = document.createElement('div');
-              modal.style.position = 'fixed';
-              modal.style.top = '50%';
-              modal.style.left = '50%';
-              modal.style.transform = 'translate(-50%, -50%)';
-              modal.style.background = '#333';
-              modal.style.color = 'white';
-              modal.style.padding = '20px';
-              modal.style.boxShadow = '0px 0px 15px rgba(255,255,255,0.3)';
-              modal.style.borderRadius = '10px';
-              modal.style.textAlign = 'center';
-              modal.style.zIndex = '1000';
-          
-              modal.innerHTML = `
-                <div style="position:absolute; top:10px; right:10px; cursor:pointer;" id="close-modal">
-                  <ha-icon icon="mdi:close" style="color:white;"></ha-icon>
-                </div>
-                <p style="margin-bottom:10px;">Select season for "<strong>${title}</strong>":</p>
-                <select id="season-select" style="padding:5px; font-size:16px;">
-                  <option value="first">First</option>
-                  <option value="latest">Latest</option>
-                  <option value="all" selected>All</option>
-                </select>
-                <br><br>
-                <div style="display:flex; justify-content:center; gap:10px;">
-                  <button id="confirm-season" style="padding:10px 15px; background:#28a745; color:white; border:none; border-radius:5px; cursor:pointer;">Confirm</button>
-                  <button id="cancel-season" style="padding:10px 15px; background:#dc3545; color:white; border:none; border-radius:5px; cursor:pointer;">Cancel</button>
-                </div>
-              `;
-          
-              document.body.appendChild(modal);
-          
-              // Add close functionality to both the X button and Cancel button
-              document.getElementById('close-modal').onclick = () => {
-                document.body.removeChild(modal);
-                resolve(null); // Cancel the operation
-              };
-          
-              document.getElementById('cancel-season').onclick = () => {
-                document.body.removeChild(modal);
-                resolve(null); // Cancel the operation
-              };
-          
-              document.getElementById('confirm-season').onclick = () => {
-                const selectedSeason = document.getElementById('season-select').value;
-                document.body.removeChild(modal);
-                resolve(selectedSeason);
-              };
-          
-              window.addEventListener('unhandledrejection', () => {
-                if (document.body.contains(modal)) {
-                  document.body.removeChild(modal);
-                }
-              }, { once: true });
-            });
+            const season = await this._openSeasonModal(title);
           
             // Check if user cancelled
             if (season === null) {
@@ -401,7 +404,7 @@ export class SeerSection extends BaseSection {
             data = { name: title };
             action = 'mediarr.submit_movie_request';
           } else {
-            throw new Error('Unknown media type');
+            throw new Error(this.t(cardInstance, 'unknown_media_type', 'Unknown media type'));
           }
     
           await window.document.querySelector('home-assistant')
@@ -411,13 +414,14 @@ export class SeerSection extends BaseSection {
           if (button) {
             button.innerHTML = `
               <ha-icon icon="mdi:check-circle-outline"></ha-icon>
-              Requested
+              ${this.t(cardInstance, 'requested', 'Requested')}
             `;
             button.classList.add('status-approved');
             button.disabled = true;
           }
     
           this.existingRequests = null;
+          this._showToast(cardInstance, this.t(cardInstance, 'requested', 'Requested'), 'success');
     
         } catch (error) {
           console.error('Error sending media request:', error);
@@ -425,10 +429,11 @@ export class SeerSection extends BaseSection {
           if (button) {
             button.innerHTML = `
               <ha-icon icon="mdi:alert-circle"></ha-icon>
-              Failed
+              ${this.t(cardInstance, 'failed', 'Failed')}
             `;
             button.classList.add('status-declined');
           }
+          this._showToast(cardInstance, error?.message || this.t(cardInstance, 'failed', 'Failed'), 'error');
         }
       });
     
@@ -437,10 +442,15 @@ export class SeerSection extends BaseSection {
   }
 
   _getStatusInfo(statusCode) {
-    return this.statusMap[statusCode] || {
+    const status = this.statusMap[statusCode] || {
       text: 'Unknown',
       icon: 'mdi:help-circle-outline',
       class: 'status-unknown'
+    };
+    const normalized = status.text.toLowerCase();
+    return {
+      ...status,
+      text: this.t(this._currentCard, normalized, status.text)
     };
   }
 }

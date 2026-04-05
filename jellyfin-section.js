@@ -1,12 +1,19 @@
 // sections/jellyfin-section.js
-import { BaseSection } from './base-section.js';
+import { BaseSection } from './base-section.js?v=20260403-20';
 
 export class JellyfinSection extends BaseSection {
   constructor() {
     super('jellyfin', 'Jellyfin Recently Added');
+    this.titleKey = 'jellyfin_recently_added';
+  }
+
+  update(cardInstance, entity) {
+    this._currentCard = cardInstance;
+    super.update(cardInstance, entity);
   }
 
   updateInfo(cardInstance, item) {
+    this._currentCard = cardInstance;
     // First handle backgrounds using base class logic
     super.updateInfo(cardInstance, item);
     
@@ -26,7 +33,7 @@ export class JellyfinSection extends BaseSection {
     cardInstance.info.innerHTML = `
       <div class="title">${item.title}${item.year ? ` (${item.year})` : ''}</div>
       <div class="details">${subtitle}</div>
-      <div class="metadata">Released: ${addedDate}${runtime ? ` | ${runtime}` : ''}</div>
+      <div class="metadata">${this.t(cardInstance, 'released', 'Released')}: ${addedDate}${runtime ? ` | ${runtime}` : ''}</div>
     `;
   }
 
@@ -35,7 +42,7 @@ export class JellyfinSection extends BaseSection {
     if (item.title_default) {
       return `
         <div class="empty-section-content">
-          <div class="empty-message">No recently added media</div>
+          <div class="empty-message">${this.t(this._currentCard, 'no_recent_media', 'No recently added media')}</div>
         </div>
       `;
     }

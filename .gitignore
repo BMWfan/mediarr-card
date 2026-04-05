@@ -23,3 +23,5 @@ yarn-error.log
 *.log
 *.tmp
 
+# Local cache-bust helper bundles (not for git/hacs releases)
+mediarr-card.[0-9]*.js

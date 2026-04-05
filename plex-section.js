@@ -1,12 +1,19 @@
 // sections/plex-section.js
-import { BaseSection } from './base-section.js';
+import { BaseSection } from './base-section.js?v=20260403-20';
 
 export class PlexSection extends BaseSection {
   constructor() {
     super('plex', 'Plex Recently Added');
+    this.titleKey = 'plex_recently_added';
+  }
+
+  update(cardInstance, entity) {
+    this._currentCard = cardInstance;
+    super.update(cardInstance, entity);
   }
 
   updateInfo(cardInstance, item) {
+    this._currentCard = cardInstance;
     super.updateInfo(cardInstance, item);  // Handle backgrounds
     
     if (!item) return;
@@ -22,7 +29,7 @@ export class PlexSection extends BaseSection {
     cardInstance.info.innerHTML = `
         <div class="title">${item.title}${item.year ? ` (${item.year})` : ''}</div>
         ${item.number ? `<div class="details">${item.number}${item.episode ? ` - ${item.episode}` : ''}</div>` : ''}
-        <div class="metadata">Released: ${releaseDate}</div>
+        <div class="metadata">${this.t(cardInstance, 'released', 'Released')}: ${releaseDate}</div>
     `;
   }
 
@@ -31,7 +38,7 @@ export class PlexSection extends BaseSection {
     if (item.title_default) {
       return `
         <div class="empty-section-content">
-          <div class="empty-message">No recently added media</div>
+          <div class="empty-message">${this.t(this._currentCard, 'no_recent_media', 'No recently added media')}</div>
         </div>
       `;
     }
