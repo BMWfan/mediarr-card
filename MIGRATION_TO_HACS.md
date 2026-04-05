@@ -1,11 +1,11 @@
-# Mediarr Card: Migration to HACS (this setup)
+# Mediarr Card: Migration to HACS
 
-These steps are tailored to the current configuration under `/home/daniel/ha-config`.
+These steps are generic and repository-safe.
 
 ## 1) Create your own GitHub repository
 
 1. Create a new repository, for example `yourname/mediarr-card`.
-2. Push the contents of `/home/daniel/ha-config/www/mediarr-card` to that repository.
+2. Push the contents of this card directory/repository to that repository.
 3. Verify that `hacs.json` is in the repository root.
 
 Note: This is already prepared in the current state (`content_in_root: true`, `filename: mediarr-card.js`).
@@ -28,7 +28,7 @@ Note: This is already prepared in the current state (`content_in_root: true`, `f
 
 Current manual resource:
 
-- `/local/mediarr-card/mediarr-card.20260403-20.js`
+- `/local/mediarr-card/mediarr-card.js` (or a previously versioned file)
 
 After HACS installation, remove the old manual resource to avoid duplicate card registrations.
 
@@ -48,7 +48,7 @@ Steps:
 
 After verification, you can delete local cache-bust helper bundles:
 
-- `mediarr-card.20260403-13.js` through `mediarr-card.20260403-20.js`
+- `mediarr-card.<version>.js` helper files
 
 and keep only `mediarr-card.js`.
 
@@ -58,4 +58,4 @@ and keep only `mediarr-card.js`.
 2. Create a release/tag.
 3. Update from HACS.
 
-If submodule cache issues still appear, bump query versions in imports (for example `?v=20260403-21`) to force fresh submodule loading.
+If submodule cache issues still appear, bump query versions in imports (for example `?v=<new-version>`) to force fresh submodule loading.
