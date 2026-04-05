@@ -22,6 +22,7 @@ Highlights in this fork:
 - Plex and Jellyfin recently-added support
 - Sonarr and Radarr support (up to 2 instances each)
 - Overseerr/Jellyseerr requests with status actions
+- Immaculaterr Observatory suggestions with `Request` and `Not interested` actions
 - Trakt and TMDB discovery sections
 
 ## Screenshots
@@ -87,6 +88,8 @@ sonarr2_label: 2nd sonarr instance
 radarr2_entity: sensor.radarr2_mediarr
 radarr2_label: 2nd radarr instance
 seer_entity: sensor.seer_mediarr
+immaculaterr_movies_entity: sensor.immaculaterr_mediarr_movies
+immaculaterr_tv_entity: sensor.immaculaterr_mediarr_tv
 trakt_entity: sensor.trakt_mediarr
 tmdb_entity: sensor.tmdb_mediarr
 ```
@@ -121,6 +124,13 @@ seer_trending_entity: sensor.seer_mediarr_trending
 seer_discover_entity: sensor.seer_mediarr_discover
 seer_popular_movies_entity: sensor.seer_mediarr_popular_movies
 seer_popular_tv_entity: sensor.seer_mediarr_popular_tv
+```
+Optional Immaculaterr Lists
+Add one or both Observatory suggestion sensors:
+```
+immaculaterr_movies_entity: sensor.immaculaterr_mediarr_movies
+immaculaterr_tv_entity: sensor.immaculaterr_mediarr_tv
+immaculaterr_max_items: 12
 ```
 Optional TMDB Lists
 Additional TMDB content sections can be added:

@@ -467,8 +467,46 @@ export const styles = `
     background: var(--primary-color-light, #35baf6);
   }
 
+  .request-button:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+  }
+
   .request-button ha-icon {
     --mdc-icon-size: 18px;
+  }
+
+  .request-button-secondary {
+    background: rgba(255, 255, 255, 0.14);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+  }
+
+  .request-button-secondary:hover {
+    background: rgba(255, 255, 255, 0.22);
+  }
+
+  .action-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+  }
+
+  .detail-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    border-radius: 999px;
+    font-size: var(--caption-size);
+    background: rgba(255, 255, 255, 0.14);
+    color: #ffffff;
+  }
+
+  .immaculaterr-note {
+    margin-top: 8px;
+    font-size: var(--caption-size);
+    color: rgba(255, 255, 255, 0.84);
   }
 
   /* Now Playing Section */

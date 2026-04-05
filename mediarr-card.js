@@ -8,7 +8,8 @@ import { TMDBSection } from './tmdb-section.js?v=20260403-20';
 import { TraktSection } from './trakt-section.js?v=20260403-20';
 import { Sonarr2Section } from './sonarr2-section.js?v=20260403-20';
 import { Radarr2Section } from './radarr2-section.js?v=20260403-20';
-import { styles } from './styles.js?v=20260403-20';
+import { ImmaculaterrSection } from './immaculaterr-section.js?v=20260405-01';
+import { styles } from './styles.js?v=20260405-01';
 
 
 class MediarrCard extends HTMLElement {
@@ -28,7 +29,8 @@ class MediarrCard extends HTMLElement {
       radarr2: new Radarr2Section(),
       seer: new SeerSection(),
       tmdb: new TMDBSection(),
-      trakt: new TraktSection()
+      trakt: new TraktSection(),
+      immaculaterr: new ImmaculaterrSection()
     };
   }
 
@@ -176,6 +178,7 @@ class MediarrCard extends HTMLElement {
       else if (key === 'radarr2_entity') sectionKey = 'radarr2';
       else if (key === 'seer_entity') sectionKey = 'seer';
       else if (key === 'trakt_entity') sectionKey = 'trakt';
+      else if (key === 'immaculaterr_movies_entity' || key === 'immaculaterr_tv_entity') sectionKey = 'immaculaterr';
       else if (key.startsWith('tmdb_')) sectionKey = 'tmdb';
  
       if (sectionKey && !sections.includes(sectionKey)) {
@@ -243,20 +246,61 @@ class MediarrCard extends HTMLElement {
    
     // Replace the background setting section with:
     const firstSectionKey = orderedSections[0];
-    const entityId = this.config[`${firstSectionKey}_entity`];
+    const section = this.sections[firstSectionKey];
+    let initialEntityId = this.config[`${firstSectionKey}_entity`];
+    let initialSelectedType = firstSectionKey;
 
-    if (entityId && hass.states[entityId]) {
-      const state = hass.states[entityId];
+    if (firstSectionKey === 'tmdb') {
+      const entityCandidates = [
+        ['tmdb_entity', 'tmdb'],
+        ['tmdb_airing_today_entity', 'tmdb_airing_today'],
+        ['tmdb_now_playing_entity', 'tmdb_now_playing'],
+        ['tmdb_on_air_entity', 'tmdb_on_air'],
+        ['tmdb_upcoming_entity', 'tmdb_upcoming'],
+        ['tmdb_popular_movies_entity', 'tmdb_popular_movies'],
+        ['tmdb_popular_tv_entity', 'tmdb_popular_tv']
+      ];
+      const initialEntity = entityCandidates.find(([entityKey]) => this.config[entityKey] && hass.states[this.config[entityKey]]);
+      if (initialEntity) {
+        initialEntityId = this.config[initialEntity[0]];
+        initialSelectedType = initialEntity[1];
+      }
+    } else if (firstSectionKey === 'seer') {
+      const entityCandidates = [
+        ['seer_entity', 'seer'],
+        ['seer_trending_entity', 'seer_trending'],
+        ['seer_discover_entity', 'seer_discover'],
+        ['seer_popular_movies_entity', 'seer_popular_movies'],
+        ['seer_popular_tv_entity', 'seer_popular_tv']
+      ];
+      const initialEntity = entityCandidates.find(([entityKey]) => this.config[entityKey] && hass.states[this.config[entityKey]]);
+      if (initialEntity) {
+        initialEntityId = this.config[initialEntity[0]];
+        initialSelectedType = initialEntity[1];
+      }
+    } else if (firstSectionKey === 'immaculaterr') {
+      const entityCandidates = [
+        ['immaculaterr_movies_entity', 'immaculaterr_movies'],
+        ['immaculaterr_tv_entity', 'immaculaterr_tv']
+      ];
+      const initialEntity = entityCandidates.find(([entityKey]) => this.config[entityKey] && hass.states[this.config[entityKey]]);
+      if (initialEntity) {
+        initialEntityId = this.config[initialEntity[0]];
+        initialSelectedType = initialEntity[1];
+      }
+    }
+
+    if (initialEntityId && hass.states[initialEntityId]) {
+      const state = hass.states[initialEntityId];
       if (state.attributes.data?.[0]) {
         const data = state.attributes.data[0];
-        const section = this.sections[firstSectionKey];
         
         // Set initial selection
-        this.selectedType = firstSectionKey;
+        this.selectedType = initialSelectedType;
         this.selectedIndex = 0;
         
         // Use section's update logic for initial background
-        section.updateInfo(this, data);
+        section.updateInfo(this, data, initialSelectedType);
         
         // Force immediate background update
         this._lastBackgroundUpdate = 0;
@@ -349,6 +393,14 @@ class MediarrCard extends HTMLElement {
             section.update(this, hass.states[entityId]);
           }
         });
+      } else if (key === 'immaculaterr') {
+        const entities = ['immaculaterr_movies_entity', 'immaculaterr_tv_entity'];
+        entities.forEach(entityKey => {
+          const entityId = this.config[entityKey];
+          if (entityId && hass.states[entityId]) {
+            section.update(this, hass.states[entityId]);
+          }
+        });
       } else {
         const entityId = this.config[`${key}_entity`];
         if (entityId && hass.states[entityId]) {
@@ -375,6 +427,10 @@ class MediarrCard extends HTMLElement {
         'seer_popular_movies_entity',
         'seer_popular_tv_entity',
         'seer_discover_entity'
+      ],
+      immaculaterr: [
+        'immaculaterr_movies_entity',
+        'immaculaterr_tv_entity'
       ]
     };
 
@@ -398,7 +454,7 @@ class MediarrCard extends HTMLElement {
       ...config                 // This will override defaults with user config
     };
     // Section-specific overrides
-    ['plex', 'jellyfin', 'sonarr', 'sonarr2', 'radarr', 'radarr2', 'seer', 'tmdb', 'trakt'].forEach(section => {
+    ['plex', 'jellyfin', 'sonarr', 'sonarr2', 'radarr', 'radarr2', 'seer', 'tmdb', 'trakt', 'immaculaterr'].forEach(section => {
       this.config[`${section}_max_items`] = this.config[`${section}_max_items`] || this.config.max_items;
     });
     
@@ -453,6 +509,8 @@ class MediarrCard extends HTMLElement {
       seer_discover_entity: 'sensor.seer_mediarr_discover',
       seer_popular_movies_entity: 'sensor.seer_mediarr_popular_movies',
       seer_popular_tv_entity: 'sensor.seer_mediarr_popular_tv',
+      immaculaterr_movies_entity: 'sensor.immaculaterr_mediarr_movies',
+      immaculaterr_tv_entity: 'sensor.immaculaterr_mediarr_tv',
       trakt_entity: 'sensor.trakt_mediarr',
       media_player_entity: '',
       opacity: 0.7,
