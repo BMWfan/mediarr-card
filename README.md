@@ -72,6 +72,7 @@ UI Configuration (recommended):
 - In Lovelace, add `custom:mediarr-card`.
 - Use the card editor to choose visible sections and assign sensor entities.
 - You no longer need to manage section visibility via YAML manually.
+- The editor now shows only sensor choices that are currently active in Home Assistant.
 
 Basic Configuration
 Add the following YAML to your dashboard. The sections will appear in the same order as they are listed in this configuration:
