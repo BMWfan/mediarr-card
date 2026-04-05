@@ -2,8 +2,5 @@
   "name": "Mediarr Card",
   "filename": "mediarr-card.js",
   "content_in_root": true,
-  "type": "module",
-  "render_readme": true,
-  "domains": ["lovelace"],
-  "country": "global"
+  "render_readme": true
 }
