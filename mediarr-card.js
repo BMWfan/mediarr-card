@@ -11,6 +11,66 @@ import { Radarr2Section } from './radarr2-section.js?v=20260403-20';
 import { ImmaculaterrSection } from './immaculaterr-section.js?v=20260405-01';
 import { styles } from './styles.js?v=20260405-01';
 
+const SECTION_ORDER = [
+  'plex',
+  'jellyfin',
+  'sonarr',
+  'sonarr2',
+  'radarr',
+  'radarr2',
+  'seer',
+  'tmdb',
+  'trakt',
+  'immaculaterr'
+];
+
+const SECTION_ENTITY_KEYS = {
+  plex: ['plex_entity'],
+  jellyfin: ['jellyfin_entity'],
+  sonarr: ['sonarr_entity'],
+  sonarr2: ['sonarr2_entity'],
+  radarr: ['radarr_entity'],
+  radarr2: ['radarr2_entity'],
+  seer: [
+    'seer_entity',
+    'seer_trending_entity',
+    'seer_discover_entity',
+    'seer_popular_movies_entity',
+    'seer_popular_tv_entity'
+  ],
+  tmdb: [
+    'tmdb_entity',
+    'tmdb_airing_today_entity',
+    'tmdb_now_playing_entity',
+    'tmdb_on_air_entity',
+    'tmdb_upcoming_entity',
+    'tmdb_popular_movies_entity',
+    'tmdb_popular_tv_entity'
+  ],
+  trakt: ['trakt_entity'],
+  immaculaterr: ['immaculaterr_movies_entity', 'immaculaterr_tv_entity']
+};
+
+function hasSectionEntities(config, sectionKey) {
+  const entityKeys = SECTION_ENTITY_KEYS[sectionKey] || [];
+  return entityKeys.some((entityKey) => {
+    const value = config?.[entityKey];
+    return typeof value === 'string' ? value.trim().length > 0 : Boolean(value);
+  });
+}
+
+function deriveVisibleSections(config) {
+  const explicit = Array.isArray(config?.visible_sections)
+    ? config.visible_sections.filter((sectionKey) => SECTION_ORDER.includes(sectionKey))
+    : [];
+
+  if (explicit.length > 0) {
+    return explicit;
+  }
+
+  return SECTION_ORDER.filter((sectionKey) => hasSectionEntities(config, sectionKey));
+}
+
 
 class MediarrCard extends HTMLElement {
   constructor() {
@@ -158,34 +218,10 @@ class MediarrCard extends HTMLElement {
   }
 
   initializeCard(hass) {
-    // Get the order of configuration keys from the user's configuration
-    const configKeys = Object.keys(this.config)
-      .filter(key => 
-        key.endsWith('_entity') && 
-        this.config[key] && 
-        this.config[key].length > 0
-      );
-    
-    // Build sections in the order specified by the configuration
-    const orderedSections = configKeys.reduce((sections, key) => {
-      let sectionKey = null;
-     
-      if (key === 'plex_entity') sectionKey = 'plex';
-      else if (key === 'jellyfin_entity') sectionKey = 'jellyfin';
-      else if (key === 'sonarr_entity') sectionKey = 'sonarr';
-      else if (key === 'radarr_entity') sectionKey = 'radarr';
-      else if (key === 'sonarr2_entity') sectionKey = 'sonarr2';
-      else if (key === 'radarr2_entity') sectionKey = 'radarr2';
-      else if (key === 'seer_entity') sectionKey = 'seer';
-      else if (key === 'trakt_entity') sectionKey = 'trakt';
-      else if (key === 'immaculaterr_movies_entity' || key === 'immaculaterr_tv_entity') sectionKey = 'immaculaterr';
-      else if (key.startsWith('tmdb_')) sectionKey = 'tmdb';
- 
-      if (sectionKey && !sections.includes(sectionKey)) {
-        sections.push(sectionKey);
-      }
-      return sections;
-    }, []);
+    const preferredSections = deriveVisibleSections(this.config);
+    const orderedSections = preferredSections.filter((sectionKey) =>
+      hasSectionEntities(this.config, sectionKey)
+    );
   
     this.innerHTML =
       `<ha-card>
@@ -411,35 +447,8 @@ class MediarrCard extends HTMLElement {
   }
 
   setConfig(config) {
-    const requiredEntities = {
-      tmdb: [
-        'tmdb_entity',
-        'tmdb_airing_today_entity',
-        'tmdb_now_playing_entity',
-        'tmdb_on_air_entity',
-        'tmdb_upcoming_entity',
-        'tmdb_popular_movies_entity',
-        'tmdb_popular_tv_entity'
-      ],
-      seer: [
-        'seer_entity',
-        'seer_trending_entity',
-        'seer_popular_movies_entity',
-        'seer_popular_tv_entity',
-        'seer_discover_entity'
-      ],
-      immaculaterr: [
-        'immaculaterr_movies_entity',
-        'immaculaterr_tv_entity'
-      ]
-    };
-
-    const hasEntity = Object.keys(this.sections).some(key => {
-      if (requiredEntities[key]) {
-        return requiredEntities[key].some(entityKey => config[entityKey]);
-      }
-      return config[`${key}_entity`];
-    });
+    const normalizedVisibleSections = deriveVisibleSections(config);
+    const hasEntity = SECTION_ORDER.some((sectionKey) => hasSectionEntities(config, sectionKey));
   
     if (!hasEntity) {
       throw new Error('Please define at least one media entity');
@@ -451,7 +460,8 @@ class MediarrCard extends HTMLElement {
       days_to_check: 60,        // Default days to check if not specified
       radarr_release_types: ['Digital', 'Theaters'], // Default to digital and theatrical, exclude physical
       radarr2_release_types: ['Digital', 'Theaters'],
-      ...config                 // This will override defaults with user config
+      ...config,                // This will override defaults with user config
+      visible_sections: normalizedVisibleSections
     };
     // Section-specific overrides
     ['plex', 'jellyfin', 'sonarr', 'sonarr2', 'radarr', 'radarr2', 'seer', 'tmdb', 'trakt', 'immaculaterr'].forEach(section => {
@@ -470,12 +480,17 @@ class MediarrCard extends HTMLElement {
     }
   }
     
+  static async getConfigElement() {
+    await import('./mediarr-card-editor.js?v=20260406-01');
+    return document.createElement('mediarr-card-editor');
+  }
 
   static getStubConfig() {
     return {
       // Default global values
       max_items: 10,
       days_to_check: 60,
+      visible_sections: ['tmdb', 'seer', 'immaculaterr'],
       // Release type filtering
       radarr_release_types: ['Digital', 'Theaters'],
       radarr2_release_types: ['Digital', 'Theaters'], 
