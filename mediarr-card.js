@@ -1,15 +1,15 @@
 // main-card.js
-import { PlexSection } from './plex-section.js?v=20260403-20';
-import { JellyfinSection } from './jellyfin-section.js?v=20260403-20';
-import { SonarrSection } from './sonarr-section.js?v=20260403-20';
-import { RadarrSection } from './radarr-section.js?v=20260403-20';
-import { SeerSection } from './seer-section.js?v=20260403-20';
-import { TMDBSection } from './tmdb-section.js?v=20260403-20';
-import { TraktSection } from './trakt-section.js?v=20260403-20';
-import { Sonarr2Section } from './sonarr2-section.js?v=20260403-20';
-import { Radarr2Section } from './radarr2-section.js?v=20260403-20';
-import { ImmaculaterrSection } from './immaculaterr-section.js?v=20260405-01';
-import { styles } from './styles.js?v=20260405-01';
+import { PlexSection } from './plex-section.js?v=20260406-01';
+import { JellyfinSection } from './jellyfin-section.js?v=20260406-01';
+import { SonarrSection } from './sonarr-section.js?v=20260406-01';
+import { RadarrSection } from './radarr-section.js?v=20260406-01';
+import { SeerSection } from './seer-section.js?v=20260406-01';
+import { TMDBSection } from './tmdb-section.js?v=20260406-01';
+import { TraktSection } from './trakt-section.js?v=20260406-01';
+import { Sonarr2Section } from './sonarr2-section.js?v=20260406-01';
+import { Radarr2Section } from './radarr2-section.js?v=20260406-01';
+import { ImmaculaterrSection } from './immaculaterr-section.js?v=20260406-01';
+import { styles } from './styles.js?v=20260406-01';
 
 const SECTION_ORDER = [
   'plex',
