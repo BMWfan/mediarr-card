@@ -2,6 +2,14 @@
 
 All notable changes to this fork are documented in this file.
 
+## 0.3.2 (2026-04-06)
+
+### Fixed
+
+- Switched HACS delivery to a true single-file `mediarr-card.js` build.
+- Removed runtime dependency on extra JS module files under `/hacsfiles/mediarr-card/`.
+- Prevented card load failures caused by section module 404 responses.
+
 ## 0.3.1 (2026-04-06)
 
 ### Fixed
