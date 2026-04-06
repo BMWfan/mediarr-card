@@ -2,6 +2,13 @@
 
 All notable changes to this fork are documented in this file.
 
+## 0.3.1 (2026-04-06)
+
+### Fixed
+
+- Made `getConfigElement()` synchronous so Home Assistant visual editor detection works reliably.
+- Reduced card-not-found issues caused by stale frontend resource cache behavior.
+
 ## 0.3.0 (2026-04-06)
 
 ### Changed
