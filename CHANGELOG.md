@@ -2,6 +2,13 @@
 
 All notable changes to this fork are documented in this file.
 
+## 0.3.3 (2026-04-06)
+
+### Fixed
+
+- Added robust poster fallbacks to avoid broken thumbnail icons in card sections.
+- Improved image error handling so missing poster URLs no longer break section visuals.
+
 ## 0.3.2 (2026-04-06)
 
 ### Fixed
