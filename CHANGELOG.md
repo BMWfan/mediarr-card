@@ -2,6 +2,18 @@
 
 All notable changes to this fork are documented in this file.
 
+## 0.3.0 (2026-04-06)
+
+### Changed
+
+- Stabilized HACS loading behavior for `mediarr-card` with updated module cache-busting.
+- Improved visual editor behavior and section visibility handling based on active sensors.
+
+### Fixed
+
+- Resolved frontend loading regressions where the card could appear as not found.
+- Prevented stale module/cache scenarios by aligning shipped resource files.
+
 ## Unreleased (feature/hacs-i18n-readability-seer-ux-improvements)
 
 ### Added
@@ -29,4 +41,3 @@ All notable changes to this fork are documented in this file.
 - Several section labels and request/status texts now localize reliably in German/English.
 - Inconsistent section title rendering across different content sections.
 - Cache-related stale submodule behavior by bumping module import query versions consistently.
-
