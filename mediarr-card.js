@@ -480,7 +480,7 @@ class MediarrCard extends HTMLElement {
     }
   }
     
-  static async getConfigElement() {
+  static getConfigElement() {
     return document.createElement('mediarr-card-editor');
   }
 
