@@ -50,12 +50,11 @@ export class ImmaculaterrSection extends BaseSection {
   }
 
   generateMediaItem(item, index, selectedType, selectedIndex, sectionKey) {
-    const poster = item.poster || '/api/placeholder/400/600';
     return `
       <div class="media-item ${selectedType === sectionKey && index === selectedIndex ? 'selected' : ''}"
            data-type="${sectionKey}"
            data-index="${index}">
-        <img src="${poster}" alt="${this._escape(item.title || '')}">
+        ${this.buildPosterImage(item, item.title || '')}
         <div class="media-item-title">${this._escape(item.title || '')}</div>
       </div>
     `;

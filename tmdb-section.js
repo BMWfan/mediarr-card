@@ -38,7 +38,7 @@ export class TMDBSection extends BaseSection {
       <div class="media-item ${selectedType === sectionKey && index === selectedIndex ? 'selected' : ''}"
           data-type="${sectionKey}"
           data-index="${index}">
-        <img src="${item.poster || '/api/placeholder/400/600'}" alt="${item.title || ''}">
+        ${this.buildPosterImage(item, item.title || '')}
         <div class="media-item-title">${item.title || ''}</div>
       </div>
     `;

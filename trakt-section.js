@@ -17,7 +17,7 @@ export class TraktSection extends BaseSection {
       <div class="media-item ${selectedType === this.key && index === selectedIndex ? 'selected' : ''}"
            data-type="${this.key}"
            data-index="${index}">
-        <img src="${item.poster || '/api/placeholder/400/600'}" alt="${item.title}">
+        ${this.buildPosterImage(item, item.title || '')}
         <div class="media-item-title">${item.title}</div>
       </div>
     `;

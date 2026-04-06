@@ -4,6 +4,9 @@
 // ---- base-section.js ----
 // base-section.js
 class BaseSection {
+  static POSTER_PLACEHOLDER =
+    'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 300 450%22%3E%3Cdefs%3E%3ClinearGradient id=%22g%22 x1=%220%25%22 y1=%220%25%22 x2=%220%25%22 y2=%22100%25%22%3E%3Cstop offset=%220%25%22 stop-color=%22%23313a46%22/%3E%3Cstop offset=%22100%25%22 stop-color=%22%23141a23%22/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width=%22300%22 height=%22450%22 fill=%22url(%23g)%22/%3E%3Ctext x=%22150%22 y=%22230%22 fill=%22%23d5dbe3%22 font-family=%22Arial,sans-serif%22 font-size=%2222%22 text-anchor=%22middle%22%3ENo%20Poster%3C/text%3E%3C/svg%3E';
+
   constructor(key, title) {
     this.key = key;
     this.title = title;
@@ -118,6 +121,32 @@ class BaseSection {
     return labels[key] || fallback || key;
   }
 
+  _escapeHtml(value = '') {
+    return String(value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  getPosterSource(item = {}) {
+    const candidates = [item.poster, item.backdrop, item.fanart, item.banner];
+    for (const candidate of candidates) {
+      if (typeof candidate !== 'string') continue;
+      const trimmed = candidate.trim();
+      if (!trimmed || trimmed === 'null' || trimmed === 'undefined') continue;
+      return trimmed;
+    }
+    return BaseSection.POSTER_PLACEHOLDER;
+  }
+
+  buildPosterImage(item, alt = '') {
+    const source = this._escapeHtml(this.getPosterSource(item));
+    const escapedAlt = this._escapeHtml(alt);
+    return `<img src="${source}" alt="${escapedAlt}" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.onerror=null;this.src='${BaseSection.POSTER_PLACEHOLDER}'">`;
+  }
+
   generateTemplate(config = {}, cardInstance = this._currentCard) {
     const labelOverride = config?.[`${this.key}_label`];
     const translatedTitle = this.t(cardInstance, this.titleKey || this.key, this.title);
@@ -142,7 +171,7 @@ class BaseSection {
       <div class="media-item ${selectedType === this.key && index === selectedIndex ? 'selected' : ''}"
            data-type="${this.key}"
            data-index="${index}">
-        <img src="${item.poster}" alt="${item.title}">
+        ${this.buildPosterImage(item, item.title || '')}
         <div class="media-item-title">${item.title}</div>
       </div>
     `;
@@ -416,7 +445,7 @@ class PlexSection extends BaseSection {
       <div class="media-item ${selectedType === this.key && index === selectedIndex ? 'selected' : ''}"
            data-type="${this.key}"
            data-index="${index}">
-        <img src="${item.poster}" alt="${item.title}">
+        ${this.buildPosterImage(item, item.title || '')}
         <div class="media-item-title">${item.title}</div>
       </div>
     `;
@@ -477,7 +506,7 @@ class JellyfinSection extends BaseSection {
       <div class="media-item ${selectedType === this.key && index === selectedIndex ? 'selected' : ''}"
            data-type="${this.key}"
            data-index="${index}">
-        <img src="${item.poster}" alt="${item.title}">
+        ${this.buildPosterImage(item, item.title || '')}
         <div class="media-item-title">${item.title}</div>
       </div>
     `;
@@ -557,7 +586,7 @@ class SonarrSection extends BaseSection {
       <div class="media-item ${selectedType === this.key && index === selectedIndex ? 'selected' : ''}"
            data-type="${this.key}"
            data-index="${index}">
-        <img src="${item.poster}" alt="${item.title}">
+        ${this.buildPosterImage(item, item.title || '')}
         <div class="media-item-title">${item.number} - ${item.title}</div>
       </div>
     `;
@@ -638,7 +667,7 @@ class Sonarr2Section extends BaseSection {
       <div class="media-item ${selectedType === this.key && index === selectedIndex ? 'selected' : ''}"
            data-type="${this.key}"
            data-index="${index}">
-        <img src="${item.poster}" alt="${item.title}">
+        ${this.buildPosterImage(item, item.title || '')}
         <div class="media-item-title">${item.number} - ${item.title}</div>
       </div>
     `;
@@ -738,7 +767,7 @@ class RadarrSection extends BaseSection {
       <div class="media-item ${selectedType === this.key && index === selectedIndex ? 'selected' : ''}"
            data-type="${this.key}"
            data-index="${index}">
-        <img src="${item.poster}" alt="${item.title}">
+        ${this.buildPosterImage(item, item.title || '')}
         <div class="media-item-title">${item.title}</div>
       </div>
     `;
@@ -838,7 +867,7 @@ class Radarr2Section extends BaseSection {
       <div class="media-item ${selectedType === this.key && index === selectedIndex ? 'selected' : ''}"
            data-type="${this.key}"
            data-index="${index}">
-        <img src="${item.poster}" alt="${item.title}">
+        ${this.buildPosterImage(item, item.title || '')}
         <div class="media-item-title">${item.title}</div>
       </div>
     `;
@@ -912,14 +941,11 @@ class SeerSection extends BaseSection {
   }
 
   generateMediaItem(item, index, selectedType, selectedIndex, sectionKey) {
-    // Use any available image source
-    const imageUrl = item.poster || item.fanart || item.banner || '/api/placeholder/400/600';
-    
     return `
       <div class="media-item ${selectedType === sectionKey && index === selectedIndex ? 'selected' : ''}"
            data-type="${sectionKey}"
            data-index="${index}">
-        <img src="${imageUrl}" alt="${item.title || item.name || ''}">
+        ${this.buildPosterImage(item, item.title || item.name || '')}
         <div class="media-item-title">${item.title || item.name || ''}</div>
       </div>
     `;
@@ -1342,7 +1368,7 @@ class TMDBSection extends BaseSection {
       <div class="media-item ${selectedType === sectionKey && index === selectedIndex ? 'selected' : ''}"
           data-type="${sectionKey}"
           data-index="${index}">
-        <img src="${item.poster || '/api/placeholder/400/600'}" alt="${item.title || ''}">
+        ${this.buildPosterImage(item, item.title || '')}
         <div class="media-item-title">${item.title || ''}</div>
       </div>
     `;
@@ -1452,7 +1478,7 @@ class TraktSection extends BaseSection {
       <div class="media-item ${selectedType === this.key && index === selectedIndex ? 'selected' : ''}"
            data-type="${this.key}"
            data-index="${index}">
-        <img src="${item.poster || '/api/placeholder/400/600'}" alt="${item.title}">
+        ${this.buildPosterImage(item, item.title || '')}
         <div class="media-item-title">${item.title}</div>
       </div>
     `;
@@ -1560,12 +1586,11 @@ class ImmaculaterrSection extends BaseSection {
   }
 
   generateMediaItem(item, index, selectedType, selectedIndex, sectionKey) {
-    const poster = item.poster || '/api/placeholder/400/600';
     return `
       <div class="media-item ${selectedType === sectionKey && index === selectedIndex ? 'selected' : ''}"
            data-type="${sectionKey}"
            data-index="${index}">
-        <img src="${poster}" alt="${this._escape(item.title || '')}">
+        ${this.buildPosterImage(item, item.title || '')}
         <div class="media-item-title">${this._escape(item.title || '')}</div>
       </div>
     `;
