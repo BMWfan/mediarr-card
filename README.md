@@ -13,7 +13,15 @@ Highlights in this fork:
 - Centralized EN/DE label system with dynamic section-title localization
 - Better Seer request/status UX (modal-based actions, toast feedback)
 - HACS-ready metadata updates (`content_in_root`) and migration notes
-- Cache-friendly module versioning improvements for submodule imports
+- Single-file HACS bundle output to avoid missing submodule files at runtime
+
+## Development Build
+
+Edit `mediarr-card.main.js` and the section/style modules, then generate the distributable file:
+
+```bash
+./scripts/build-single-file.sh
+```
 
 ## Features
 
