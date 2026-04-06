@@ -72,7 +72,7 @@ export class Sonarr2Section extends BaseSection {
       <div class="media-item ${selectedType === this.key && index === selectedIndex ? 'selected' : ''}"
            data-type="${this.key}"
            data-index="${index}">
-        <img src="${item.poster}" alt="${item.title}">
+        ${this.buildPosterImage(item, item.title || '')}
         <div class="media-item-title">${item.number} - ${item.title}</div>
       </div>
     `;
