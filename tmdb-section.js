@@ -32,54 +32,60 @@ export class TMDBSection extends BaseSection {
         </div>
       `).join('');
   }
-  // Add this method to TMDBSection class
+
   generateMediaItem(item, index, selectedType, selectedIndex, sectionKey) {
+    if (item.title_default) {
+      return `
+        <div class="empty-section-content">
+          <div class="empty-message">${this.t(this._currentCard, 'no_media_available', 'No media available')}</div>
+        </div>
+      `;
+    }
     return `
       <div class="media-item ${selectedType === sectionKey && index === selectedIndex ? 'selected' : ''}"
-          data-type="${sectionKey}"
-          data-index="${index}">
+           data-type="${sectionKey}"
+           data-index="${index}">
         ${this.buildPosterImage(item, item.title || '')}
-        <div class="media-item-title">${item.title || ''}</div>
+        <div class="media-item-title">${this._escapeHtml(item.title || '')}</div>
       </div>
     `;
   }
-  // In TMDBSection class update method
+
   update(cardInstance, entity) {
     this._currentCard = cardInstance;
     const entityId = entity.entity_id;
-    const sectionConfig = this.sections.find(section => 
+    const sectionConfig = this.sections.find(section =>
       cardInstance.config[section.entityKey] === entityId
     );
-    
+
     if (!sectionConfig) return;
 
-    const maxItems = cardInstance.config[`tmdb_max_items`] || cardInstance.config.max_items || 10;
-    
-    let items = entity.attributes.data || [];
-    // Apply the limit from the card config
-    items = items.slice(0, maxItems);
-    
+    const maxItems = cardInstance.config.tmdb_max_items || cardInstance.config.max_items || 10;
+    const items = (entity.attributes.data || []).slice(0, maxItems);
+
     const listElement = cardInstance.querySelector(`[data-list="${sectionConfig.key}"]`);
     if (!listElement) return;
 
-    listElement.innerHTML = items.map((item, index) => 
+    listElement.innerHTML = items.map((item, index) =>
       this.generateMediaItem(item, index, cardInstance.selectedType, cardInstance.selectedIndex, sectionConfig.key)
     ).join('');
 
     this.addClickHandlers(cardInstance, listElement, items, sectionConfig.key);
+    this._preloadImages(items);
   }
 
   addClickHandlers(cardInstance, listElement, items, sectionKey) {
     listElement.querySelectorAll('.media-item').forEach(item => {
       item.onclick = () => {
-        const index = parseInt(item.dataset.index);
+        const index = parseInt(item.dataset.index, 10);
         cardInstance.selectedType = sectionKey;
         cardInstance.selectedIndex = index;
-        this.updateInfo(cardInstance, items[index]);
+
+        this._withInfoFade(cardInstance, () => this.updateInfo(cardInstance, items[index]));
 
         cardInstance.querySelectorAll('.media-item').forEach(i => {
-          i.classList.toggle('selected', 
-            i.dataset.type === sectionKey && parseInt(i.dataset.index) === index);
+          i.classList.toggle('selected',
+            i.dataset.type === sectionKey && parseInt(i.dataset.index, 10) === index);
         });
       };
     });
@@ -87,44 +93,34 @@ export class TMDBSection extends BaseSection {
 
   updateInfo(cardInstance, item) {
     this._currentCard = cardInstance;
-    if (!item) return;
+    if (!item || item.title_default) return;
 
-    const mediaBackground = item.backdrop || item.poster;
-    const cardBackground = item.backdrop || item.poster;
-    
-    if (mediaBackground) {
-        cardInstance.background.style.backgroundImage = `url('${mediaBackground}')`;
-        cardInstance.background.style.opacity = cardInstance.config.opacity || 0.7;
-    }
-
-    if (cardBackground && cardInstance.cardBackground) {
-        cardInstance.cardBackground.style.backgroundImage = `url('${cardBackground}')`;
-    }
-    this.applyAdaptiveContrast(cardInstance, mediaBackground || cardBackground);
+    const bg = item.backdrop || item.poster || '';
+    this._applyBackground(cardInstance, bg, bg);
 
     cardInstance.info.innerHTML = `
-        <div class="type">${item.type.toUpperCase()}</div>
-        <div class="title">${item.title}${item.year ? ` (${item.year})` : ''}</div>
-        <div class="overview">${item.overview || ''}</div>
-        <div class="details">
-          <div class="request-button-container">
-            <button class="request-button" onclick="this.dispatchEvent(new CustomEvent('seer-request', {
-              bubbles: true,
-              detail: {
-                title: '${item.title.replace(/'/g, "\\'")}',
-                year: '${item.year || ''}',
-                type: '${item.type}',
-                tmdb_id: ${item.tmdb_id},
-                poster: '${(item.poster || '').replace(/'/g, "\\'")}',
-                overview: '${(item.overview || '').replace(/'/g, "\\'")}'
-              }
-            }))">
-              <ha-icon icon="mdi:plus-circle-outline"></ha-icon>
-              ${this.t(cardInstance, 'request', 'Request')}
-            </button>
-          </div>
-          ${item.vote_average ? `<div class="rating">Rating: ${item.vote_average}/10</div>` : ''}
+      <div class="type">${this._escapeHtml((item.type || '').toUpperCase())}</div>
+      <div class="title">${this._escapeHtml(item.title)}${item.year ? ` (${this._escapeHtml(String(item.year))})` : ''}</div>
+      <div class="overview">${this._escapeHtml(item.overview || '')}</div>
+      <div class="details">
+        <div class="request-button-container">
+          <button class="request-button" onclick="this.dispatchEvent(new CustomEvent('seer-request', {
+            bubbles: true,
+            detail: {
+              title: '${(item.title || '').replace(/'/g, "\\'")}',
+              year: '${item.year || ''}',
+              type: '${item.type || ''}',
+              tmdb_id: ${item.tmdb_id || 0},
+              poster: '${(item.poster || '').replace(/'/g, "\\'")}',
+              overview: '${(item.overview || '').replace(/'/g, "\\'")}'
+            }
+          }))">
+            <ha-icon icon="mdi:plus-circle-outline"></ha-icon>
+            ${this.t(cardInstance, 'request', 'Request')}
+          </button>
         </div>
+        ${item.vote_average ? `<div class="rating">Rating: ${this._escapeHtml(String(item.vote_average))}/10</div>` : ''}
+      </div>
     `;
   }
 }
