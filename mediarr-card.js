@@ -57,6 +57,7 @@ class BaseSection {
           no_recent_media: 'Keine kürzlich hinzugefügten Medien',
           no_media_available: 'Keine Medien verfügbar',
           no_suggestions: 'Keine Vorschläge verfügbar',
+          data_unavailable: 'Keine Daten verfügbar',
           pending: 'Ausstehend',
           approved: 'Freigegeben',
           declined: 'Abgelehnt',
@@ -106,6 +107,7 @@ class BaseSection {
           no_recent_media: 'No recently added media',
           no_media_available: 'No media available',
           no_suggestions: 'No suggestions available',
+          data_unavailable: 'Data unavailable',
           pending: 'Pending',
           approved: 'Approved',
           declined: 'Declined',
@@ -173,7 +175,7 @@ class BaseSection {
           </div>
         </div>
         <div class="section-content">
-          <div class="${this.key}-list"></div>
+          <div class="${this.key}-list">${this.generateMediaItem({ title_default: true }, 0, null, -1)}</div>
         </div>
       </div>
     `;
@@ -358,6 +360,15 @@ class BaseSection {
     };
 
     img.src = imageUrl;
+  }
+
+  renderUnavailable(cardInstance, listEl) {
+    if (!listEl) return;
+    listEl.innerHTML = `
+      <div class="empty-section-content">
+        <div class="empty-message">${this.t(cardInstance, 'data_unavailable', 'Keine Daten verfügbar')}</div>
+      </div>
+    `;
   }
 
   // Accepts an optional itemsOverride to avoid callers having to mutate entity.attributes.data
@@ -727,6 +738,11 @@ class SeerSection extends BaseSection {
     const listElement = cardInstance.querySelector(`[data-list="${sectionConfig.key}"]`);
     if (!listElement) return;
 
+    if (items.length === 0) {
+      listElement.innerHTML = this.generateMediaItem({ title_default: true }, 0, null, -1, sectionConfig.key);
+      return;
+    }
+
     listElement.innerHTML = items.map((item, index) =>
       this.generateMediaItem(item, index, cardInstance.selectedType, cardInstance.selectedIndex, sectionConfig.key)
     ).join('');
@@ -751,7 +767,7 @@ class SeerSection extends BaseSection {
             </div>
           </div>
           <div class="section-content">
-            <div class="${section.listClass}" data-list="${section.key}"></div>
+            <div class="${section.listClass}" data-list="${section.key}">${this.generateMediaItem({ title_default: true }, 0, null, -1, section.key)}</div>
           </div>
         </div>
       `).join('');
@@ -1147,7 +1163,7 @@ class TMDBSection extends BaseSection {
             </div>
           </div>
           <div class="section-content">
-            <div class="${section.listClass}" data-list="${section.key}"></div>
+            <div class="${section.listClass}" data-list="${section.key}">${this.generateMediaItem({ title_default: true }, 0, null, -1, section.key)}</div>
           </div>
         </div>
       `).join('');
@@ -1185,6 +1201,11 @@ class TMDBSection extends BaseSection {
 
     const listElement = cardInstance.querySelector(`[data-list="${sectionConfig.key}"]`);
     if (!listElement) return;
+
+    if (items.length === 0) {
+      listElement.innerHTML = this.generateMediaItem({ title_default: true }, 0, null, -1, sectionConfig.key);
+      return;
+    }
 
     listElement.innerHTML = items.map((item, index) =>
       this.generateMediaItem(item, index, cardInstance.selectedType, cardInstance.selectedIndex, sectionConfig.key)
@@ -1345,7 +1366,7 @@ class ImmaculaterrSection extends BaseSection {
             </div>
           </div>
           <div class="section-content">
-            <div class="${section.listClass}" data-list="${section.key}"></div>
+            <div class="${section.listClass}" data-list="${section.key}">${this.generateMediaItem({ title_default: true }, 0, null, -1, section.key)}</div>
           </div>
         </div>
       `)
@@ -1395,6 +1416,11 @@ class ImmaculaterrSection extends BaseSection {
   _renderList(cardInstance, sectionKey) {
     const listState = cardInstance._immaculaterrLists?.[sectionKey];
     if (!listState) return;
+
+    if (listState.items.length === 0) {
+      listState.listElement.innerHTML = this.generateMediaItem({ title_default: true }, 0, null, -1, sectionKey);
+      return;
+    }
 
     listState.listElement.innerHTML = listState.items.map((item, index) =>
       this.generateMediaItem(item, index, cardInstance.selectedType, cardInstance.selectedIndex, sectionKey)
@@ -2020,14 +2046,19 @@ const styles = `
 
   /* Empty State */
   .empty-section-content {
+    flex: 0 0 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 60px;
     padding: 16px;
     text-align: center;
-    color: rgba(255, 255, 255, 0.78);
+    color: var(--secondary-text-color, rgba(255, 255, 255, 0.78));
   }
 
   .empty-message {
     font-size: var(--subtitle-size);
-    opacity: 1;
+    opacity: 0.85;
     text-shadow: var(--shadow-medium);
   }
 
@@ -2460,7 +2491,7 @@ function deriveVisibleSections(config) {
 }
 
 
-const MEDIARR_BUILD = '20260509-crossfade';
+const MEDIARR_BUILD = '20260510-empty-state';
 console.log(`[mediarr-card] build ${MEDIARR_BUILD} loaded`);
 
 class MediarrCard extends HTMLElement {
@@ -2795,45 +2826,23 @@ class MediarrCard extends HTMLElement {
     }
 
     Object.entries(this.sections).forEach(([key, section]) => {
-      if (key === 'tmdb') {
-        const entities = [
-          'tmdb_entity', 
-          'tmdb_airing_today_entity', 
-          'tmdb_now_playing_entity', 
-          'tmdb_on_air_entity', 
-          'tmdb_upcoming_entity',
-          'tmdb_popular_movies_entity',
-          'tmdb_popular_tv_entity'
-        ];
-        entities.forEach(entityKey => {
-          const entityId = this.config[entityKey];
-          if (entityId && hass.states[entityId]) {
-            section.update(this, hass.states[entityId]);
-          }
-        });
-      } else if (key === 'seer') {
-        // Keep Seer handling as is since it's working
-        const entities = ['seer_entity', 'seer_trending_entity', 'seer_discover_entity', 'seer_popular_movies_entity', 'seer_popular_tv_entity'];
-        entities.forEach(entityKey => {
-          const entityId = this.config[entityKey];
-          if (entityId && hass.states[entityId]) {
-            section.update(this, hass.states[entityId]);
-          }
-        });
-      } else if (key === 'immaculaterr') {
-        const entities = ['immaculaterr_movies_entity', 'immaculaterr_tv_entity'];
-        entities.forEach(entityKey => {
-          const entityId = this.config[entityKey];
-          if (entityId && hass.states[entityId]) {
-            section.update(this, hass.states[entityId]);
-          }
-        });
-      } else {
-        const entityId = this.config[`${key}_entity`];
-        if (entityId && hass.states[entityId]) {
-          section.update(this, hass.states[entityId]);
+      const entityKeys = SECTION_ENTITY_KEYS[key] || [`${key}_entity`];
+      entityKeys.forEach(entityKey => {
+        const entityId = this.config[entityKey];
+        if (!entityId) return;
+        const entity = hass.states[entityId];
+        if (entity && entity.state !== 'unavailable') {
+          section.update(this, entity);
+        } else {
+          // Entity missing or unavailable — find the list element and show unavailable state.
+          // Multi-entity sections (tmdb, seer, immaculaterr) use data-list; single-entity use class.
+          const subSection = section.sections?.find(s => s.entityKey === entityKey);
+          const listEl = subSection
+            ? this.querySelector(`[data-list="${subSection.key}"]`)
+            : this.querySelector(`.${key}-list`);
+          section.renderUnavailable(this, listEl);
         }
-      }
+      });
     });
   }
 

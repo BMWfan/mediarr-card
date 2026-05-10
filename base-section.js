@@ -53,6 +53,7 @@ export class BaseSection {
           no_recent_media: 'Keine kürzlich hinzugefügten Medien',
           no_media_available: 'Keine Medien verfügbar',
           no_suggestions: 'Keine Vorschläge verfügbar',
+          data_unavailable: 'Keine Daten verfügbar',
           pending: 'Ausstehend',
           approved: 'Freigegeben',
           declined: 'Abgelehnt',
@@ -102,6 +103,7 @@ export class BaseSection {
           no_recent_media: 'No recently added media',
           no_media_available: 'No media available',
           no_suggestions: 'No suggestions available',
+          data_unavailable: 'Data unavailable',
           pending: 'Pending',
           approved: 'Approved',
           declined: 'Declined',
@@ -169,7 +171,7 @@ export class BaseSection {
           </div>
         </div>
         <div class="section-content">
-          <div class="${this.key}-list"></div>
+          <div class="${this.key}-list">${this.generateMediaItem({ title_default: true }, 0, null, -1)}</div>
         </div>
       </div>
     `;
@@ -354,6 +356,15 @@ export class BaseSection {
     };
 
     img.src = imageUrl;
+  }
+
+  renderUnavailable(cardInstance, listEl) {
+    if (!listEl) return;
+    listEl.innerHTML = `
+      <div class="empty-section-content">
+        <div class="empty-message">${this.t(cardInstance, 'data_unavailable', 'Keine Daten verfügbar')}</div>
+      </div>
+    `;
   }
 
   // Accepts an optional itemsOverride to avoid callers having to mutate entity.attributes.data
