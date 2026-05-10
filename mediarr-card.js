@@ -372,6 +372,11 @@ class BaseSection {
     const listElement = cardInstance.querySelector(`.${this.key}-list`);
     if (!listElement) return;
 
+    if (items.length === 0) {
+      listElement.innerHTML = this.generateMediaItem({ title_default: true }, 0, null, -1);
+      return;
+    }
+
     listElement.innerHTML = items.map((item, index) =>
       this.generateMediaItem(item, index, cardInstance.selectedType, cardInstance.selectedIndex)
     ).join('');
