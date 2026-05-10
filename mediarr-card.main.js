@@ -72,6 +72,9 @@ function deriveVisibleSections(config) {
 }
 
 
+const MEDIARR_BUILD = '20260509-crossfade';
+console.log(`[mediarr-card] build ${MEDIARR_BUILD} loaded`);
+
 class MediarrCard extends HTMLElement {
   constructor() {
     super();

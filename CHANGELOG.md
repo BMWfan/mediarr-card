@@ -2,6 +2,20 @@
 
 All notable changes to this fork are documented in this file.
 
+## 0.3.4 (2026-05-10)
+
+### Fixed
+
+- Eliminated white/bright flash when clicking between media items by using a double-buffer crossfade: two overlapping background layers swap opacity after the new image loads so the previous image stays visible throughout the transition.
+- Tightened CSS transitions to only the required properties — `transition: all` was causing unintended side effects during item switches.
+
+### Changed
+
+- Consolidated HTML escaping into `BaseSection._escapeHtml()` — per-section duplicate escape helpers removed.
+- Sections now use a shared `formatDate()` helper from the base class.
+- Added empty-state rendering (title_default guard) to ImmaculaterrSection and TMDBSection.
+- Added `scripts/deploy.sh` for building and deploying `mediarr-card.js` + `.gz` to the HA www directories (configured via `HA_CONFIG_DIR` env var).
+
 ## 0.3.3 (2026-04-06)
 
 ### Fixed

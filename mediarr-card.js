@@ -15,6 +15,12 @@ class BaseSection {
 
   _labels(cardInstance) {
     const language = (cardInstance?._hass?.language || 'en').toLowerCase();
+    const overrides = cardInstance?.config?.labels;
+
+    if (this._labelsCacheLang === language && this._labelsCacheOverrides === overrides) {
+      return this._labelsCacheValue;
+    }
+
     const isDe = language.startsWith('de');
     const defaults = isDe
       ? {
@@ -25,8 +31,8 @@ class BaseSection {
           sonarr2_upcoming_shows: 'Sonarr 2',
           radarr_upcoming_movies: 'Radarr',
           radarr2_upcoming_movies: 'Radarr 2',
-          plex_recently_added: 'K\u00fcrzlich hinzugef\u00fcgt auf Plex',
-          jellyfin_recently_added: 'Jellyfin K\u00fcrzlich hinzugef\u00fcgt',
+          plex_recently_added: 'Kürzlich hinzugefügt auf Plex',
+          jellyfin_recently_added: 'Jellyfin Kürzlich hinzugefügt',
           trakt_popular: 'Trakt Beliebt',
           media_requests: 'Medienanfragen',
           trending: 'Trends',
@@ -37,25 +43,27 @@ class BaseSection {
           airing_today: 'Heute ausgestrahlt',
           now_playing: 'Jetzt im Kino',
           on_air: 'On Air',
-          upcoming: 'Demn\u00e4chst',
+          upcoming: 'Demnächst',
           popular_tv_shows: 'Beliebte TV-Serien',
           cancel: 'Abbrechen',
-          confirm: 'Best\u00e4tigen',
+          confirm: 'Bestätigen',
           remove: 'Entfernen',
           approve: 'Freigeben',
           decline: 'Ablehnen',
-          update_status_for: 'Status \u00e4ndern f\u00fcr',
-          select_season_for: 'Staffel ausw\u00e4hlen f\u00fcr',
+          update_status_for: 'Status ändern für',
+          select_season_for: 'Staffel auswählen für',
           no_upcoming_shows: 'Keine kommenden Serien',
           no_upcoming_movies: 'Keine kommenden Filme',
-          no_recent_media: 'Keine k\u00fcrzlich hinzugef\u00fcgten Medien',
+          no_recent_media: 'Keine kürzlich hinzugefügten Medien',
+          no_media_available: 'Keine Medien verfügbar',
+          no_suggestions: 'Keine Vorschläge verfügbar',
           pending: 'Ausstehend',
           approved: 'Freigegeben',
           declined: 'Abgelehnt',
-          available: 'Verf\u00fcgbar',
+          available: 'Verfügbar',
           unknown: 'Unbekannt',
-          released: 'Ver\u00f6ffentlicht',
-          airs: 'L\u00e4uft',
+          released: 'Veröffentlicht',
+          airs: 'Läuft',
           on: 'auf',
           movie: 'Film',
           first: 'Erste',
@@ -96,6 +104,8 @@ class BaseSection {
           no_upcoming_shows: 'No upcoming shows',
           no_upcoming_movies: 'No upcoming movies',
           no_recent_media: 'No recently added media',
+          no_media_available: 'No media available',
+          no_suggestions: 'No suggestions available',
           pending: 'Pending',
           approved: 'Approved',
           declined: 'Declined',
@@ -112,8 +122,11 @@ class BaseSection {
           already_requested: 'has already been requested.'
         };
 
-    const overrides = cardInstance?.config?.labels || {};
-    return { ...defaults, ...overrides };
+    const result = { ...defaults, ...(overrides || {}) };
+    this._labelsCacheLang = language;
+    this._labelsCacheOverrides = overrides;
+    this._labelsCacheValue = result;
+    return result;
   }
 
   t(cardInstance, key, fallback = '') {
@@ -172,9 +185,61 @@ class BaseSection {
            data-type="${this.key}"
            data-index="${index}">
         ${this.buildPosterImage(item, item.title || '')}
-        <div class="media-item-title">${item.title}</div>
+        <div class="media-item-title">${this._escapeHtml(item.title)}</div>
       </div>
     `;
+  }
+
+  // Double-buffer crossfade: two overlapping layers swap opacity so the old
+  // image is always visible while the new one loads — eliminates any flash.
+  _crossFade(primaryEl, newUrl, visibleOpacity, version, cardInstance) {
+    if (!newUrl || !primaryEl) return;
+
+    if (!primaryEl._layerB) {
+      const layerB = document.createElement('div');
+      layerB.className = primaryEl.className;
+      layerB.style.cssText = primaryEl.style.cssText;
+      layerB.style.opacity = '0';
+      primaryEl.parentNode.insertBefore(layerB, primaryEl.nextSibling);
+      primaryEl._layerA = primaryEl;
+      primaryEl._layerB = layerB;
+      primaryEl._activeLayer = 'a';
+    }
+
+    const isA   = primaryEl._activeLayer === 'a';
+    const active   = isA ? primaryEl._layerA : primaryEl._layerB;
+    const inactive = isA ? primaryEl._layerB : primaryEl._layerA;
+
+    const img = new Image();
+    img.referrerPolicy = 'no-referrer';
+    img.onload = img.onerror = () => {
+      if (cardInstance._bgVersion !== version) return;
+      inactive.style.backgroundImage = `url('${newUrl}')`;
+      requestAnimationFrame(() => {
+        inactive.style.opacity = String(visibleOpacity);
+        active.style.opacity = '0';
+        primaryEl._activeLayer = isA ? 'b' : 'a';
+      });
+    };
+    img.src = newUrl;
+  }
+
+  _applyBackground(cardInstance, mediaUrl, cardUrl) {
+    const targetOpacity = cardInstance.config?.opacity ?? 0.7;
+    cardInstance._bgVersion = (cardInstance._bgVersion || 0) + 1;
+    const version = cardInstance._bgVersion;
+
+    this._crossFade(cardInstance.background,     mediaUrl, targetOpacity, version, cardInstance);
+    this._crossFade(cardInstance.cardBackground, cardUrl,  1,             version, cardInstance);
+
+    this.applyAdaptiveContrast(cardInstance, mediaUrl || cardUrl);
+  }
+
+  // No longer fades .media-info — fading to opacity:0 revealed the bright backdrop.
+  // Background crossfades handle visual smoothness; text updates instantly.
+  _withInfoFade(cardInstance, updateFn) {
+    clearTimeout(cardInstance._transitionTimer);
+    updateFn();
   }
 
   updateInfo(cardInstance, item) {
@@ -182,27 +247,17 @@ class BaseSection {
 
     const mediaBackground = item.banner || item.fanart;
     const cardBackground = item.fanart || item.banner;
-    
-    if (mediaBackground) {
-      cardInstance.background.style.backgroundImage = `url('${mediaBackground}')`;
-      cardInstance.background.style.opacity = cardInstance.config.opacity || 0.7;
-    }
-
-    if (cardBackground && cardInstance.cardBackground) {
-      cardInstance.cardBackground.style.backgroundImage = `url('${cardBackground}')`;
-    }
-
-    this.applyAdaptiveContrast(cardInstance, mediaBackground || cardBackground);
+    this._applyBackground(cardInstance, mediaBackground, cardBackground);
 
     const details = item.genres || item.episode || '';
     const metadata = item.release || item.number || '';
     const overview = item.overview || '';
 
     cardInstance.info.innerHTML = `
-      <div class="title">${item.title}${item.year ? ` (${item.year})` : ''}</div>
-      ${details ? `<div class="details">${details}</div>` : ''}
-      ${metadata ? `<div class="metadata">${metadata}</div>` : ''}
-      ${overview ? `<div class="overview">${overview}</div>` : ''}
+      <div class="title">${this._escapeHtml(item.title)}${item.year ? ` (${this._escapeHtml(String(item.year))})` : ''}</div>
+      ${details ? `<div class="details">${this._escapeHtml(details)}</div>` : ''}
+      ${metadata ? `<div class="metadata">${this._escapeHtml(metadata)}</div>` : ''}
+      ${overview ? `<div class="overview">${this._escapeHtml(overview)}</div>` : ''}
     `;
   }
 
@@ -305,21 +360,25 @@ class BaseSection {
     img.src = imageUrl;
   }
 
-  update(cardInstance, entity) {
+  // Accepts an optional itemsOverride to avoid callers having to mutate entity.attributes.data
+  update(cardInstance, entity, itemsOverride = null) {
+    this._currentCard = cardInstance;
     const maxItems = cardInstance.config[`${this.key}_max_items`] || cardInstance.config.max_items || 10;
-    
-    let items = entity.attributes.data || [];
-    items = items.slice(0, maxItems);
-    
+
+    const items = itemsOverride !== null
+      ? itemsOverride
+      : (entity.attributes.data || []).slice(0, maxItems);
+
     const listElement = cardInstance.querySelector(`.${this.key}-list`);
     if (!listElement) return;
 
-    listElement.innerHTML = items.map((item, index) => 
+    listElement.innerHTML = items.map((item, index) =>
       this.generateMediaItem(item, index, cardInstance.selectedType, cardInstance.selectedIndex)
     ).join('');
 
     this.addClickHandlers(cardInstance, listElement, items);
-    
+    this._preloadImages(items);
+
     if (cardInstance.cardBackground && (!this._lastBackgroundUpdate || Date.now() - this._lastBackgroundUpdate > 30000)) {
       const bgImage = this.getRandomArtwork(items);
       if (bgImage) {
@@ -339,17 +398,7 @@ class BaseSection {
         cardInstance.selectedType = this.key;
         cardInstance.selectedIndex = index;
 
-        const mediaBackground = selectedItem.banner || selectedItem.fanart;
-        const cardBackground = selectedItem.fanart || selectedItem.banner;
-
-        if (mediaBackground) {
-          cardInstance.background.style.backgroundImage = `url('${mediaBackground}')`;
-        }
-        if (cardBackground) {
-          cardInstance.cardBackground.style.backgroundImage = `url('${cardBackground}')`;
-        }
-
-        this.updateInfo(cardInstance, selectedItem);
+        this._withInfoFade(cardInstance, () => this.updateInfo(cardInstance, selectedItem));
 
         cardInstance.querySelectorAll('.media-item').forEach(i => {
           i.classList.toggle(
@@ -361,26 +410,34 @@ class BaseSection {
     });
   }
 
-  getRandomArtwork(items) {
-    if (!items || items.length === 0) return null;
-    
-    const validItems = items.filter(item => item.fanart || item.backdrop || item.banner);
-    if (validItems.length === 0) return null;
-    
-    const randomItem = validItems[Math.floor(Math.random() * validItems.length)];
-    
-    return randomItem.fanart || randomItem.backdrop || randomItem.banner;
+  _preloadImages(items) {
+    if (!items) return;
+    // Module-level cache keeps Image references alive until browser caches the response.
+    if (!BaseSection._imgCache) BaseSection._imgCache = new Map();
+    const cache = BaseSection._imgCache;
+
+    items.forEach(item => {
+      [item.fanart, item.backdrop, item.banner, item.poster]
+        .filter(u => u && typeof u === 'string' && u.startsWith('http') && !cache.has(u))
+        .forEach(u => {
+          const img = new Image();
+          img.referrerPolicy = 'no-referrer';
+          img.onload = img.onerror = () => cache.delete(u);
+          cache.set(u, img);
+          img.src = u;
+        });
+    });
   }
 
-  getAllArtwork(items) {
-    if (!items || items.length === 0) return [];
-    
-    return items.reduce((artworks, item) => {
-      if (item.fanart) artworks.push(item.fanart);
-      if (item.backdrop) artworks.push(item.backdrop);
-      if (item.banner) artworks.push(item.banner);
-      return artworks;
-    }, []);
+  getRandomArtwork(items) {
+    if (!items || items.length === 0) return null;
+
+    const validItems = items.filter(item => item.fanart || item.backdrop || item.banner);
+    if (validItems.length === 0) return null;
+
+    const randomItem = validItems[Math.floor(Math.random() * validItems.length)];
+
+    return randomItem.fanart || randomItem.backdrop || randomItem.banner;
   }
 
   formatDate(dateString) {
@@ -404,34 +461,25 @@ class PlexSection extends BaseSection {
     this.titleKey = 'plex_recently_added';
   }
 
-  update(cardInstance, entity) {
-    this._currentCard = cardInstance;
-    super.update(cardInstance, entity);
-  }
-
   updateInfo(cardInstance, item) {
-    this._currentCard = cardInstance;
-    super.updateInfo(cardInstance, item);  // Handle backgrounds
-    
+    super.updateInfo(cardInstance, item);
+
     if (!item) return;
     if (item.title_default) {
-        cardInstance.info.innerHTML = '';
-        return;
+      cardInstance.info.innerHTML = '';
+      return;
     }
 
-    const releaseDate = item.release === 'TBA' ? 
-        'TBA' : 
-        (item.release ? new Date(item.release).toLocaleDateString() : 'TBA');
+    const releaseDate = item.release === 'TBA' ? 'TBA' : (this.formatDate(item.release) || 'TBA');
 
     cardInstance.info.innerHTML = `
-        <div class="title">${item.title}${item.year ? ` (${item.year})` : ''}</div>
-        ${item.number ? `<div class="details">${item.number}${item.episode ? ` - ${item.episode}` : ''}</div>` : ''}
-        <div class="metadata">${this.t(cardInstance, 'released', 'Released')}: ${releaseDate}</div>
+      <div class="title">${this._escapeHtml(item.title)}${item.year ? ` (${this._escapeHtml(String(item.year))})` : ''}</div>
+      ${item.number ? `<div class="details">${this._escapeHtml(item.number)}${item.episode ? ` - ${this._escapeHtml(item.episode)}` : ''}</div>` : ''}
+      <div class="metadata">${this.t(cardInstance, 'released', 'Released')}: ${releaseDate}</div>
     `;
   }
 
   generateMediaItem(item, index, selectedType, selectedIndex) {
-    // Handle empty state
     if (item.title_default) {
       return `
         <div class="empty-section-content">
@@ -440,13 +488,12 @@ class PlexSection extends BaseSection {
       `;
     }
 
-    // Use original media item layout
     return `
       <div class="media-item ${selectedType === this.key && index === selectedIndex ? 'selected' : ''}"
            data-type="${this.key}"
            data-index="${index}">
         ${this.buildPosterImage(item, item.title || '')}
-        <div class="media-item-title">${item.title}</div>
+        <div class="media-item-title">${this._escapeHtml(item.title)}</div>
       </div>
     `;
   }
@@ -461,38 +508,27 @@ class JellyfinSection extends BaseSection {
     this.titleKey = 'jellyfin_recently_added';
   }
 
-  update(cardInstance, entity) {
-    this._currentCard = cardInstance;
-    super.update(cardInstance, entity);
-  }
-
   updateInfo(cardInstance, item) {
-    this._currentCard = cardInstance;
-    // First handle backgrounds using base class logic
     super.updateInfo(cardInstance, item);
-    
-    if (!item) return;
 
-    // Check for empty state and clear the info if the item has a default title
+    if (!item) return;
     if (item.title_default) {
       cardInstance.info.innerHTML = '';
       return;
     }
 
-    // Then add Jellyfin-specific info display
-    const addedDate = item.release ? new Date(item.release).toLocaleDateString() : 'Unknown';
+    const addedDate = this.formatDate(item.release) || 'Unknown';
     const runtime = item.runtime ? `${item.runtime} min` : '';
-    const subtitle = item.episode ? `${item.number || ''} - ${item.episode || ''}` : '';
+    const subtitle = item.episode ? `${this._escapeHtml(item.number || '')} - ${this._escapeHtml(item.episode || '')}` : '';
 
     cardInstance.info.innerHTML = `
-      <div class="title">${item.title}${item.year ? ` (${item.year})` : ''}</div>
+      <div class="title">${this._escapeHtml(item.title)}${item.year ? ` (${this._escapeHtml(String(item.year))})` : ''}</div>
       <div class="details">${subtitle}</div>
       <div class="metadata">${this.t(cardInstance, 'released', 'Released')}: ${addedDate}${runtime ? ` | ${runtime}` : ''}</div>
     `;
   }
 
   generateMediaItem(item, index, selectedType, selectedIndex) {
-    // Handle empty state
     if (item.title_default) {
       return `
         <div class="empty-section-content">
@@ -501,13 +537,12 @@ class JellyfinSection extends BaseSection {
       `;
     }
 
-    // Use original media item layout
     return `
       <div class="media-item ${selectedType === this.key && index === selectedIndex ? 'selected' : ''}"
            data-type="${this.key}"
            data-index="${index}">
         ${this.buildPosterImage(item, item.title || '')}
-        <div class="media-item-title">${item.title}</div>
+        <div class="media-item-title">${this._escapeHtml(item.title)}</div>
       </div>
     `;
   }
@@ -516,63 +551,28 @@ class JellyfinSection extends BaseSection {
 // ---- sonarr-section.js ----
 // sections/sonarr-section.js
 
-class SonarrSection extends BaseSection {
-  constructor() {
-    super('sonarr', 'Sonarr Shows');  // Default name if no label provided
-  }
+class SonarrBaseSection extends BaseSection {
+  updateInfo(cardInstance, item) {
+    super.updateInfo(cardInstance, item);
 
-  generateTemplate(config, cardInstance = this._currentCard) {
-    // Get label from config or use default
-    const label = config?.sonarr_label ?? this.t(cardInstance, 'sonarr_upcoming_shows', 'Upcoming Shows');
-    return `
-      <div class="section" data-section="${this.key}">
-        <div class="section-header">
-          <div class="section-header-content">
-            <ha-icon class="section-toggle-icon" icon="mdi:chevron-down"></ha-icon>
-            <div class="section-label">${label}</div>
-          </div>
-        </div>
-        <div class="section-content">
-          <div class="${this.key}-list"></div>
-        </div>
+    if (!item) return;
+    if (item.title_default) {
+      cardInstance.info.innerHTML = '';
+      return;
+    }
+
+    const airDate = this.formatDate(item.release !== 'Unknown' ? item.release : '');
+
+    cardInstance.info.innerHTML = `
+      <div class="title">${this._escapeHtml(item.title)}</div>
+      <div class="details">${this._escapeHtml(item.number || '')} - ${this._escapeHtml(item.episode || '')}</div>
+      <div class="metadata">
+        ${this.t(cardInstance, 'airs', 'Airs')}: ${airDate}${item.network ? ` ${this.t(cardInstance, 'on', 'on')} ${this._escapeHtml(item.network)}` : ''}
       </div>
     `;
   }
 
-  update(cardInstance, entity) {
-    this._currentCard = cardInstance;
-    super.update(cardInstance, entity);
-  }
-
-  updateInfo(cardInstance, item) {
-    this._currentCard = cardInstance;
-    super.updateInfo(cardInstance, item);  // Handle backgrounds
-    
-    if (!item) return;
-    if (item.title_default) {
-        cardInstance.info.innerHTML = '';
-        return;
-    }
-
-    let airDate = '';
-    if (item.release && item.release !== 'Unknown') {
-        const date = new Date(item.release);
-        if (!isNaN(date.getTime())) {
-            airDate = date.toLocaleDateString();
-        }
-    }
-
-    cardInstance.info.innerHTML = `
-        <div class="title">${item.title}</div>
-        <div class="details">${item.number || ''} - ${item.episode || ''}</div>
-        <div class="metadata">
-            ${this.t(cardInstance, 'airs', 'Airs')}: ${airDate}${item.network ? ` ${this.t(cardInstance, 'on', 'on')} ${item.network}` : ''}
-        </div>
-    `;
-  }
-
   generateMediaItem(item, index, selectedType, selectedIndex) {
-    // Handle empty state
     if (item.title_default) {
       return `
         <div class="empty-section-content">
@@ -581,180 +581,75 @@ class SonarrSection extends BaseSection {
       `;
     }
 
-    // Use original media item layout
     return `
       <div class="media-item ${selectedType === this.key && index === selectedIndex ? 'selected' : ''}"
            data-type="${this.key}"
            data-index="${index}">
         ${this.buildPosterImage(item, item.title || '')}
-        <div class="media-item-title">${item.number} - ${item.title}</div>
+        <div class="media-item-title">${this._escapeHtml(item.number)} - ${this._escapeHtml(item.title)}</div>
       </div>
     `;
+  }
+}
+
+class SonarrSection extends SonarrBaseSection {
+  constructor() {
+    super('sonarr', 'Sonarr Shows');
+    this.titleKey = 'sonarr_upcoming_shows';
   }
 }
 
 // ---- sonarr2-section.js ----
 // sections/sonarr2-section.js
 
-class Sonarr2Section extends BaseSection {
+class Sonarr2Section extends SonarrBaseSection {
   constructor() {
-    super('sonarr2', 'Sonarr2 Shows');  // Default name if no label provided
-  }
-
-  generateTemplate(config, cardInstance = this._currentCard) {
-    // Get label from config or use default
-    const label = config?.sonarr2_label ?? this.t(cardInstance, 'sonarr2_upcoming_shows', 'Sonarr2 Shows');
-    return `
-      <div class="section" data-section="${this.key}">
-        <div class="section-header">
-          <div class="section-header-content">
-            <ha-icon class="section-toggle-icon" icon="mdi:chevron-down"></ha-icon>
-            <div class="section-label">${label}</div>
-          </div>
-        </div>
-        <div class="section-content">
-          <div class="${this.key}-list"></div>
-        </div>
-      </div>
-    `;
-  }
-
-  update(cardInstance, entity) {
-    this._currentCard = cardInstance;
-    super.update(cardInstance, entity);
-  }
-
-
-  updateInfo(cardInstance, item) {
-    this._currentCard = cardInstance;
-    super.updateInfo(cardInstance, item);  // Handle backgrounds
-    
-    if (!item) return;
-    if (item.title_default) {
-        cardInstance.info.innerHTML = '';
-        return;
-    }
-
-    let airDate = '';
-    if (item.release && item.release !== 'Unknown') {
-        const date = new Date(item.release);
-        if (!isNaN(date.getTime())) {
-            airDate = date.toLocaleDateString();
-        }
-    }
-
-    cardInstance.info.innerHTML = `
-        <div class="title">${item.title}</div>
-        <div class="details">${item.number || ''} - ${item.episode || ''}</div>
-        <div class="metadata">
-            ${this.t(cardInstance, 'airs', 'Airs')}: ${airDate}${item.network ? ` ${this.t(cardInstance, 'on', 'on')} ${item.network}` : ''}
-        </div>
-    `;
-  }
-
-  generateMediaItem(item, index, selectedType, selectedIndex) {
-    // Handle empty state
-    if (item.title_default) {
-      return `
-        <div class="empty-section-content">
-          <div class="empty-message">${this.t(this._currentCard, 'no_upcoming_shows', 'No upcoming shows')}</div>
-        </div>
-      `;
-    }
-
-    // Use original media item layout
-    return `
-      <div class="media-item ${selectedType === this.key && index === selectedIndex ? 'selected' : ''}"
-           data-type="${this.key}"
-           data-index="${index}">
-        ${this.buildPosterImage(item, item.title || '')}
-        <div class="media-item-title">${item.number} - ${item.title}</div>
-      </div>
-    `;
+    super('sonarr2', 'Sonarr2 Shows');
+    this.titleKey = 'sonarr2_upcoming_shows';
   }
 }
 
 // ---- radarr-section.js ----
 // sections/radarr-section.js
-class RadarrSection extends BaseSection {
-  constructor() {
-    super('radarr', 'Radarr Movies');  // Default name if no label provided
-  }
-  
-  generateTemplate(config, cardInstance = this._currentCard) {
-    // Get label from config or use default
-    const label = config?.radarr_label ?? this.t(cardInstance, 'radarr_upcoming_movies', 'Upcoming Movies');
-    return `
-      <div class="section" data-section="${this.key}">
-        <div class="section-header">
-          <div class="section-header-content">
-            <ha-icon class="section-toggle-icon" icon="mdi:chevron-down"></ha-icon>
-            <div class="section-label">${label}</div>
-          </div>
-        </div>
-        <div class="section-content">
-          <div class="${this.key}-list"></div>
-        </div>
-      </div>
-    `;
-  }
-  
+
+class RadarrBaseSection extends BaseSection {
   update(cardInstance, entity) {
-    this._currentCard = cardInstance;
     const maxItems = cardInstance.config[`${this.key}_max_items`] || cardInstance.config.max_items || 10;
     const releaseTypes = cardInstance.config[`${this.key}_release_types`] || ['Digital', 'Theaters', 'Physical'];
-   
+
     let items = entity.attributes.data || [];
-   
-    // Filter by release type if this isn't a default "empty" item
+
     if (items.length > 0 && !items[0].title_default) {
-      items = items.filter(item => {
-        // Check if the release string contains any of the allowed release types
-        return releaseTypes.some(type =>
-          item.release && item.release.includes(type)
-        );
-      });
+      items = items.filter(item =>
+        releaseTypes.some(type => item.release && item.release.includes(type))
+      );
     }
-   
-    // Now call the parent method with our filtered items
-    // We need to temporarily replace the data in the entity
-    const originalData = entity.attributes.data;
-    entity.attributes.data = items.slice(0, maxItems);
-   
-    // Call parent update method to handle the rest
-    super.update(cardInstance, entity);
-   
-    // Restore original data
-    entity.attributes.data = originalData;
+
+    super.update(cardInstance, entity, items.slice(0, maxItems));
   }
-  
+
   updateInfo(cardInstance, item) {
-    super.updateInfo(cardInstance, item);  // Handle backgrounds
-   
+    super.updateInfo(cardInstance, item);
+
     if (!item) return;
     if (item.title_default) {
-        cardInstance.info.innerHTML = '';
-        return;
+      cardInstance.info.innerHTML = '';
+      return;
     }
-    let releaseDate = '';
-    if (item.release && !item.release.includes('Unknown')) {
-        const dateStr = item.release.split(' - ')[1] || item.release;
-        const date = new Date(dateStr);
-        if (!isNaN(date.getTime())) {
-            releaseDate = date.toLocaleDateString();
-        }
-    }
+
+    const dateStr = item.release ? (item.release.split(' - ')[1] || item.release) : '';
+    const releaseDate = this.formatDate(dateStr.includes('Unknown') ? '' : dateStr);
     const runtime = item.runtime ? `${item.runtime} min` : '';
+
     cardInstance.info.innerHTML = `
-        <div class="title">${item.title}${item.year ? ` (${item.year})` : ''}</div>
-        <div class="details">${item.genres || ''}</div>
-        <div class="metadata">${releaseDate}${runtime ? ` | ${runtime}` : ''}</div>
-        ${item.overview ? `<div class="overview">${item.overview}</div>` : ''}
+      <div class="title">${this._escapeHtml(item.title)}${item.year ? ` (${this._escapeHtml(String(item.year))})` : ''}</div>
+      <div class="details">${this._escapeHtml(item.genres || '')}</div>
+      <div class="metadata">${releaseDate}${runtime ? ` | ${runtime}` : ''}</div>
+      ${item.overview ? `<div class="overview">${this._escapeHtml(item.overview)}</div>` : ''}
     `;
   }
-  
+
   generateMediaItem(item, index, selectedType, selectedIndex) {
-    // Handle empty state
     if (item.title_default) {
       return `
         <div class="empty-section-content">
@@ -762,115 +657,32 @@ class RadarrSection extends BaseSection {
         </div>
       `;
     }
-    // Use original media item layout
+
     return `
       <div class="media-item ${selectedType === this.key && index === selectedIndex ? 'selected' : ''}"
            data-type="${this.key}"
            data-index="${index}">
         ${this.buildPosterImage(item, item.title || '')}
-        <div class="media-item-title">${item.title}</div>
+        <div class="media-item-title">${this._escapeHtml(item.title)}</div>
       </div>
     `;
   }
 }
 
+class RadarrSection extends RadarrBaseSection {
+  constructor() {
+    super('radarr', 'Radarr Movies');
+    this.titleKey = 'radarr_upcoming_movies';
+  }
+}
+
 // ---- radarr2-section.js ----
 // sections/radarr2-section.js
-class Radarr2Section extends BaseSection {
+
+class Radarr2Section extends RadarrBaseSection {
   constructor() {
-    super('radarr2', 'Radarr2 Movies');  // Default name if no label provided
-  }
-  
-  generateTemplate(config, cardInstance = this._currentCard) {
-    // Get label from config or use default
-    const label = config?.radarr2_label ?? this.t(cardInstance, 'radarr2_upcoming_movies', 'Upcoming Movies');
-    return `
-      <div class="section" data-section="${this.key}">
-        <div class="section-header">
-          <div class="section-header-content">
-            <ha-icon class="section-toggle-icon" icon="mdi:chevron-down"></ha-icon>
-            <div class="section-label">${label}</div>
-          </div>
-        </div>
-        <div class="section-content">
-          <div class="${this.key}-list"></div>
-        </div>
-      </div>
-    `;
-  }
-  
-  update(cardInstance, entity) {
-    this._currentCard = cardInstance;
-    const maxItems = cardInstance.config[`${this.key}_max_items`] || cardInstance.config.max_items || 10;
-    const releaseTypes = cardInstance.config[`${this.key}_release_types`] || ['Digital', 'Theaters', 'Physical'];
-   
-    let items = entity.attributes.data || [];
-   
-    // Filter by release type if this isn't a default "empty" item
-    if (items.length > 0 && !items[0].title_default) {
-      items = items.filter(item => {
-        // Check if the release string contains any of the allowed release types
-        return releaseTypes.some(type =>
-          item.release && item.release.includes(type)
-        );
-      });
-    }
-   
-    // Now call the parent method with our filtered items
-    // We need to temporarily replace the data in the entity
-    const originalData = entity.attributes.data;
-    entity.attributes.data = items.slice(0, maxItems);
-   
-    // Call parent update method to handle the rest
-    super.update(cardInstance, entity);
-   
-    // Restore original data
-    entity.attributes.data = originalData;
-  }
-  
-  updateInfo(cardInstance, item) {
-    super.updateInfo(cardInstance, item);  // Handle backgrounds
-   
-    if (!item) return;
-    if (item.title_default) {
-        cardInstance.info.innerHTML = '';
-        return;
-    }
-    let releaseDate = '';
-    if (item.release && !item.release.includes('Unknown')) {
-        const dateStr = item.release.split(' - ')[1] || item.release;
-        const date = new Date(dateStr);
-        if (!isNaN(date.getTime())) {
-            releaseDate = date.toLocaleDateString();
-        }
-    }
-    const runtime = item.runtime ? `${item.runtime} min` : '';
-    cardInstance.info.innerHTML = `
-        <div class="title">${item.title}${item.year ? ` (${item.year})` : ''}</div>
-        <div class="details">${item.genres || ''}</div>
-        <div class="metadata">${releaseDate}${runtime ? ` | ${runtime}` : ''}</div>
-        ${item.overview ? `<div class="overview">${item.overview}</div>` : ''}
-    `;
-  }
-  
-  generateMediaItem(item, index, selectedType, selectedIndex) {
-    // Handle empty state
-    if (item.title_default) {
-      return `
-        <div class="empty-section-content">
-          <div class="empty-message">${this.t(this._currentCard, 'no_upcoming_movies', 'No upcoming movies')}</div>
-        </div>
-      `;
-    }
-    // Use original media item layout
-    return `
-      <div class="media-item ${selectedType === this.key && index === selectedIndex ? 'selected' : ''}"
-           data-type="${this.key}"
-           data-index="${index}">
-        ${this.buildPosterImage(item, item.title || '')}
-        <div class="media-item-title">${item.title}</div>
-      </div>
-    `;
+    super('radarr2', 'Radarr2 Movies');
+    this.titleKey = 'radarr2_upcoming_movies';
   }
 }
 
@@ -905,8 +717,7 @@ class SeerSection extends BaseSection {
     if (!sectionConfig) return;
 
     const maxItems = cardInstance.config.seer_max_items || cardInstance.config.max_items || 10;
-    let items = entity.attributes.data || [];
-    items = items.slice(0, maxItems);
+    const items = (entity.attributes.data || []).slice(0, maxItems);
 
     const listElement = cardInstance.querySelector(`[data-list="${sectionConfig.key}"]`);
     if (!listElement) return;
@@ -916,6 +727,7 @@ class SeerSection extends BaseSection {
     ).join('');
 
     this.addClickHandlers(cardInstance, listElement, items, sectionConfig.key);
+    this._preloadImages(items);
 
     if (entity.entity_id === cardInstance.config.seer_entity) {
       this.existingRequests = items;
@@ -941,19 +753,25 @@ class SeerSection extends BaseSection {
   }
 
   generateMediaItem(item, index, selectedType, selectedIndex, sectionKey) {
+    if (item.title_default) {
+      return `
+        <div class="empty-section-content">
+          <div class="empty-message">${this.t(this._currentCard, 'no_media_available', 'No media available')}</div>
+        </div>
+      `;
+    }
     return `
       <div class="media-item ${selectedType === sectionKey && index === selectedIndex ? 'selected' : ''}"
            data-type="${sectionKey}"
            data-index="${index}">
         ${this.buildPosterImage(item, item.title || item.name || '')}
-        <div class="media-item-title">${item.title || item.name || ''}</div>
+        <div class="media-item-title">${this._escapeHtml(item.title || item.name || '')}</div>
       </div>
     `;
   }
 
   async checkIfRequested(cardInstance, item) {
     if (!this.existingRequests) {
-      // Get requests from the seer entity
       const seerEntity = cardInstance.config.seer_entity;
       if (seerEntity && cardInstance._hass.states[seerEntity]) {
         this.existingRequests = cardInstance._hass.states[seerEntity].attributes.data || [];
@@ -962,7 +780,6 @@ class SeerSection extends BaseSection {
       }
     }
 
-    // First try to match by TMDb ID
     const tmdbId = item.tmdbId || item.id;
     if (tmdbId) {
       return this.existingRequests.find(request => {
@@ -971,43 +788,30 @@ class SeerSection extends BaseSection {
       });
     }
 
-    // If no TMDb ID, try to match by title and year (less reliable)
     if (item.title && item.year) {
-      return this.existingRequests.find(request => 
-        request.title === item.title && 
+      return this.existingRequests.find(request =>
+        request.title === item.title &&
         request.year === item.year
       );
     }
 
-    return null;  // No match found
+    return null;
   }
 
   async updateInfo(cardInstance, item, sectionKey) {
-    if (!item) return;
+    if (!item || item.title_default) return;
 
     const title = item.title || item.name || '';
     const overview = item.overview || '';
     const year = item.year || '';
     const type = this._determineMediaType(item, sectionKey);
-    
     const tmdbId = item.id;
 
-    const mediaBackground = item.fanart || item.poster || '';
-    const cardBackground = item.fanart || item.poster || '';
-    
-    if (mediaBackground) {
-      cardInstance.background.style.backgroundImage = `url('${mediaBackground}')`;
-      cardInstance.background.style.opacity = cardInstance.config.opacity || 0.7;
-    }
+    const bg = item.fanart || item.poster || '';
+    this._applyBackground(cardInstance, bg, bg);
 
-    if (cardBackground && cardInstance.cardBackground) {
-      cardInstance.cardBackground.style.backgroundImage = `url('${cardBackground}')`;
-    }
-    this.applyAdaptiveContrast(cardInstance, mediaBackground || cardBackground);
-
-    // Check if item is already requested
     const existingRequest = await this.checkIfRequested(cardInstance, item);
-    
+
     let actionButton = '';
     if (sectionKey !== 'seer') {
       if (existingRequest) {
@@ -1045,7 +849,7 @@ class SeerSection extends BaseSection {
     if (item.status) {
       const statusInfo = this._getStatusInfo(item.status);
       cardInstance.info.innerHTML = `
-        <div class="title">${title}</div>
+        <div class="title">${this._escapeHtml(title)}</div>
         <div class="details">
           <span class="status ${statusInfo.class}" onclick="this.dispatchEvent(new CustomEvent('change-status', {
             bubbles: true,
@@ -1058,19 +862,19 @@ class SeerSection extends BaseSection {
             <ha-icon icon="${statusInfo.icon}"></ha-icon>
             ${statusInfo.text}
           </span>
-          ${item.requested_by ? `${item.requested_by} - ${this.formatDate(item.requested_date)}` : ''}
+          ${item.requested_by ? `${this._escapeHtml(item.requested_by)} - ${this.formatDate(item.requested_date)}` : ''}
         </div>
       `;
     } else {
-  cardInstance.info.innerHTML = `
-    <div class="title">${title}${year ? ` (${year})` : ''}</div>
-    ${overview ? `<div class="overview">${overview}</div>` : ''}
-    <div class="details">
-      ${actionButton}
-      ${type ? `<span class="type">${type}</span>` : ''}
-    </div>
-  `;
-  }
+      cardInstance.info.innerHTML = `
+        <div class="title">${this._escapeHtml(title)}${year ? ` (${this._escapeHtml(String(year))})` : ''}</div>
+        ${overview ? `<div class="overview">${this._escapeHtml(overview)}</div>` : ''}
+        <div class="details">
+          ${actionButton}
+          ${type ? `<span class="type">${this._escapeHtml(type)}</span>` : ''}
+        </div>
+      `;
+    }
   }
 
   _determineMediaType(item, sectionKey) {
@@ -1104,7 +908,7 @@ class SeerSection extends BaseSection {
           <button class="mediarr-modal-close" type="button">
             <ha-icon icon="mdi:close"></ha-icon>
           </button>
-          <p class="mediarr-modal-title">${this.t(this._currentCard, 'update_status_for', 'Update status for')} "<strong>${title}</strong>"</p>
+          <p class="mediarr-modal-title">${this.t(this._currentCard, 'update_status_for', 'Update status for')} "<strong>${this._escapeHtml(title)}</strong>"</p>
           <select class="mediarr-modal-select" id="status-select">
             <option value="approve">${this.t(this._currentCard, 'approve', 'Approve')}</option>
             <option value="decline">${this.t(this._currentCard, 'decline', 'Decline')}</option>
@@ -1125,14 +929,8 @@ class SeerSection extends BaseSection {
         }
       };
 
-      modal.querySelector('.mediarr-modal-close').onclick = () => {
-        close();
-        resolve(null);
-      };
-      modal.querySelector('.mediarr-btn-cancel').onclick = () => {
-        close();
-        resolve(null);
-      };
+      modal.querySelector('.mediarr-modal-close').onclick = () => { close(); resolve(null); };
+      modal.querySelector('.mediarr-btn-cancel').onclick = () => { close(); resolve(null); };
       modal.querySelector('.mediarr-btn-confirm').onclick = () => {
         const value = modal.querySelector('#status-select').value;
         close();
@@ -1150,7 +948,7 @@ class SeerSection extends BaseSection {
           <button class="mediarr-modal-close" type="button">
             <ha-icon icon="mdi:close"></ha-icon>
           </button>
-          <p class="mediarr-modal-title">${this.t(this._currentCard, 'select_season_for', 'Select season for')} "<strong>${title}</strong>"</p>
+          <p class="mediarr-modal-title">${this.t(this._currentCard, 'select_season_for', 'Select season for')} "<strong>${this._escapeHtml(title)}</strong>"</p>
           <select class="mediarr-modal-select" id="season-select">
             <option value="first">${this.t(this._currentCard, 'first', 'First')}</option>
             <option value="latest">${this.t(this._currentCard, 'latest', 'Latest')}</option>
@@ -1170,14 +968,8 @@ class SeerSection extends BaseSection {
         }
       };
 
-      modal.querySelector('.mediarr-modal-close').onclick = () => {
-        close();
-        resolve(null);
-      };
-      modal.querySelector('.mediarr-btn-cancel').onclick = () => {
-        close();
-        resolve(null);
-      };
+      modal.querySelector('.mediarr-modal-close').onclick = () => { close(); resolve(null); };
+      modal.querySelector('.mediarr-btn-cancel').onclick = () => { close(); resolve(null); };
       modal.querySelector('.mediarr-btn-confirm').onclick = () => {
         const value = modal.querySelector('#season-select').value;
         close();
@@ -1189,18 +981,19 @@ class SeerSection extends BaseSection {
   addClickHandlers(cardInstance, listElement, items, sectionKey) {
     listElement.querySelectorAll('.media-item').forEach(item => {
       item.onclick = () => {
-        const index = parseInt(item.dataset.index);
+        const index = parseInt(item.dataset.index, 10);
         cardInstance.selectedType = sectionKey;
         cardInstance.selectedIndex = index;
+
         this.updateInfo(cardInstance, items[index], sectionKey);
 
         cardInstance.querySelectorAll('.media-item').forEach(i => {
-          i.classList.toggle('selected', 
-            i.dataset.type === sectionKey && parseInt(i.dataset.index) === index);
+          i.classList.toggle('selected',
+            i.dataset.type === sectionKey && parseInt(i.dataset.index, 10) === index);
         });
       };
     });
-    
+
     if (!cardInstance._statusChangeHandlerAdded) {
       cardInstance.addEventListener('change-status', async (e) => {
         const { title, type, request_id } = e.detail;
@@ -1225,20 +1018,20 @@ class SeerSection extends BaseSection {
           this._showToast(cardInstance, error?.message || this.t(cardInstance, 'failed', 'Failed'), 'error');
         }
       });
-    
+
       cardInstance._statusChangeHandlerAdded = true;
     }
 
     if (!cardInstance._seerRequestHandlerAdded) {
       cardInstance.addEventListener('seer-request', async (e) => {
         const { title, year, type, tmdb_id } = e.detail;
-    
+
         try {
           const parsedTmdbId = parseInt(tmdb_id, 10);
           if (isNaN(parsedTmdbId)) {
             throw new Error('Invalid TMDB ID');
           }
-    
+
           if (!this.existingRequests) {
             const seerEntity = cardInstance.config.seer_entity;
             if (seerEntity && cardInstance._hass.states[seerEntity]) {
@@ -1247,42 +1040,34 @@ class SeerSection extends BaseSection {
               this.existingRequests = [];
             }
           }
-    
-          const existingRequest = this.existingRequests.find(request => {
-            return request.title.toLowerCase() === title.toLowerCase() &&
-                   (!year || request.year == year);
-          });
-    
+
+          const existingRequest = this.existingRequests.find(request =>
+            request.title.toLowerCase() === title.toLowerCase() &&
+            (!year || request.year == year)
+          );
+
           if (existingRequest && type.toUpperCase() === 'MOVIE') {
             this._showToast(cardInstance, `"${title}" ${this.t(cardInstance, 'already_requested', 'has already been requested.')}`, 'info');
             return;
           }
-    
+
           let action, data;
-    
+
           if (type.toUpperCase() === 'TV SHOW') {
             const season = await this._openSeasonModal(title);
-          
-            // Check if user cancelled
-            if (season === null) {
-              return; // Exit without making a request
-            }
-          
+            if (season === null) return;
             data = { name: title, season };
             action = 'mediarr.submit_tv_request';
-          }
-    
-            
-            else if (type.toUpperCase() === 'MOVIE') {
+          } else if (type.toUpperCase() === 'MOVIE') {
             data = { name: title };
             action = 'mediarr.submit_movie_request';
           } else {
             throw new Error(this.t(cardInstance, 'unknown_media_type', 'Unknown media type'));
           }
-    
+
           await window.document.querySelector('home-assistant')
             ?.hass.callService('mediarr', action.split('.')[1], data);
-    
+
           const button = cardInstance.querySelector('.request-button');
           if (button) {
             button.innerHTML = `
@@ -1292,10 +1077,10 @@ class SeerSection extends BaseSection {
             button.classList.add('status-approved');
             button.disabled = true;
           }
-    
+
           this.existingRequests = null;
           this._showToast(cardInstance, this.t(cardInstance, 'requested', 'Requested'), 'success');
-    
+
         } catch (error) {
           console.error('Error sending media request:', error);
           const button = cardInstance.querySelector('.request-button');
@@ -1309,7 +1094,7 @@ class SeerSection extends BaseSection {
           this._showToast(cardInstance, error?.message || this.t(cardInstance, 'failed', 'Failed'), 'error');
         }
       });
-    
+
       cardInstance._seerRequestHandlerAdded = true;
     }
   }
@@ -1362,54 +1147,60 @@ class TMDBSection extends BaseSection {
         </div>
       `).join('');
   }
-  // Add this method to TMDBSection class
+
   generateMediaItem(item, index, selectedType, selectedIndex, sectionKey) {
+    if (item.title_default) {
+      return `
+        <div class="empty-section-content">
+          <div class="empty-message">${this.t(this._currentCard, 'no_media_available', 'No media available')}</div>
+        </div>
+      `;
+    }
     return `
       <div class="media-item ${selectedType === sectionKey && index === selectedIndex ? 'selected' : ''}"
-          data-type="${sectionKey}"
-          data-index="${index}">
+           data-type="${sectionKey}"
+           data-index="${index}">
         ${this.buildPosterImage(item, item.title || '')}
-        <div class="media-item-title">${item.title || ''}</div>
+        <div class="media-item-title">${this._escapeHtml(item.title || '')}</div>
       </div>
     `;
   }
-  // In TMDBSection class update method
+
   update(cardInstance, entity) {
     this._currentCard = cardInstance;
     const entityId = entity.entity_id;
-    const sectionConfig = this.sections.find(section => 
+    const sectionConfig = this.sections.find(section =>
       cardInstance.config[section.entityKey] === entityId
     );
-    
+
     if (!sectionConfig) return;
 
-    const maxItems = cardInstance.config[`tmdb_max_items`] || cardInstance.config.max_items || 10;
-    
-    let items = entity.attributes.data || [];
-    // Apply the limit from the card config
-    items = items.slice(0, maxItems);
-    
+    const maxItems = cardInstance.config.tmdb_max_items || cardInstance.config.max_items || 10;
+    const items = (entity.attributes.data || []).slice(0, maxItems);
+
     const listElement = cardInstance.querySelector(`[data-list="${sectionConfig.key}"]`);
     if (!listElement) return;
 
-    listElement.innerHTML = items.map((item, index) => 
+    listElement.innerHTML = items.map((item, index) =>
       this.generateMediaItem(item, index, cardInstance.selectedType, cardInstance.selectedIndex, sectionConfig.key)
     ).join('');
 
     this.addClickHandlers(cardInstance, listElement, items, sectionConfig.key);
+    this._preloadImages(items);
   }
 
   addClickHandlers(cardInstance, listElement, items, sectionKey) {
     listElement.querySelectorAll('.media-item').forEach(item => {
       item.onclick = () => {
-        const index = parseInt(item.dataset.index);
+        const index = parseInt(item.dataset.index, 10);
         cardInstance.selectedType = sectionKey;
         cardInstance.selectedIndex = index;
-        this.updateInfo(cardInstance, items[index]);
+
+        this._withInfoFade(cardInstance, () => this.updateInfo(cardInstance, items[index]));
 
         cardInstance.querySelectorAll('.media-item').forEach(i => {
-          i.classList.toggle('selected', 
-            i.dataset.type === sectionKey && parseInt(i.dataset.index) === index);
+          i.classList.toggle('selected',
+            i.dataset.type === sectionKey && parseInt(i.dataset.index, 10) === index);
         });
       };
     });
@@ -1417,44 +1208,34 @@ class TMDBSection extends BaseSection {
 
   updateInfo(cardInstance, item) {
     this._currentCard = cardInstance;
-    if (!item) return;
+    if (!item || item.title_default) return;
 
-    const mediaBackground = item.backdrop || item.poster;
-    const cardBackground = item.backdrop || item.poster;
-    
-    if (mediaBackground) {
-        cardInstance.background.style.backgroundImage = `url('${mediaBackground}')`;
-        cardInstance.background.style.opacity = cardInstance.config.opacity || 0.7;
-    }
-
-    if (cardBackground && cardInstance.cardBackground) {
-        cardInstance.cardBackground.style.backgroundImage = `url('${cardBackground}')`;
-    }
-    this.applyAdaptiveContrast(cardInstance, mediaBackground || cardBackground);
+    const bg = item.backdrop || item.poster || '';
+    this._applyBackground(cardInstance, bg, bg);
 
     cardInstance.info.innerHTML = `
-        <div class="type">${item.type.toUpperCase()}</div>
-        <div class="title">${item.title}${item.year ? ` (${item.year})` : ''}</div>
-        <div class="overview">${item.overview || ''}</div>
-        <div class="details">
-          <div class="request-button-container">
-            <button class="request-button" onclick="this.dispatchEvent(new CustomEvent('seer-request', {
-              bubbles: true,
-              detail: {
-                title: '${item.title.replace(/'/g, "\\'")}',
-                year: '${item.year || ''}',
-                type: '${item.type}',
-                tmdb_id: ${item.tmdb_id},
-                poster: '${(item.poster || '').replace(/'/g, "\\'")}',
-                overview: '${(item.overview || '').replace(/'/g, "\\'")}'
-              }
-            }))">
-              <ha-icon icon="mdi:plus-circle-outline"></ha-icon>
-              ${this.t(cardInstance, 'request', 'Request')}
-            </button>
-          </div>
-          ${item.vote_average ? `<div class="rating">Rating: ${item.vote_average}/10</div>` : ''}
+      <div class="type">${this._escapeHtml((item.type || '').toUpperCase())}</div>
+      <div class="title">${this._escapeHtml(item.title)}${item.year ? ` (${this._escapeHtml(String(item.year))})` : ''}</div>
+      <div class="overview">${this._escapeHtml(item.overview || '')}</div>
+      <div class="details">
+        <div class="request-button-container">
+          <button class="request-button" onclick="this.dispatchEvent(new CustomEvent('seer-request', {
+            bubbles: true,
+            detail: {
+              title: '${(item.title || '').replace(/'/g, "\\'")}',
+              year: '${item.year || ''}',
+              type: '${item.type || ''}',
+              tmdb_id: ${item.tmdb_id || 0},
+              poster: '${(item.poster || '').replace(/'/g, "\\'")}',
+              overview: '${(item.overview || '').replace(/'/g, "\\'")}'
+            }
+          }))">
+            <ha-icon icon="mdi:plus-circle-outline"></ha-icon>
+            ${this.t(cardInstance, 'request', 'Request')}
+          </button>
         </div>
+        ${item.vote_average ? `<div class="rating">Rating: ${this._escapeHtml(String(item.vote_average))}/10</div>` : ''}
+      </div>
     `;
   }
 }
@@ -1468,68 +1249,58 @@ class TraktSection extends BaseSection {
     this.titleKey = 'trakt_popular';
   }
 
-  update(cardInstance, entity) {
-    this._currentCard = cardInstance;
-    super.update(cardInstance, entity);
-  }
-
   generateMediaItem(item, index, selectedType, selectedIndex) {
+    if (item.title_default) {
+      return `
+        <div class="empty-section-content">
+          <div class="empty-message">${this.t(this._currentCard, 'no_media_available', 'No media available')}</div>
+        </div>
+      `;
+    }
     return `
       <div class="media-item ${selectedType === this.key && index === selectedIndex ? 'selected' : ''}"
            data-type="${this.key}"
            data-index="${index}">
         ${this.buildPosterImage(item, item.title || '')}
-        <div class="media-item-title">${item.title}</div>
+        <div class="media-item-title">${this._escapeHtml(item.title)}</div>
       </div>
     `;
   }
 
   updateInfo(cardInstance, item) {
-    this._currentCard = cardInstance;
-    if (!item) return;
+    if (!item || item.title_default) return;
 
-    const mediaBackground = item.backdrop || item.poster;
-    const cardBackground = item.backdrop || item.poster;
-    
-    if (mediaBackground) {
-        cardInstance.background.style.backgroundImage = `url('${mediaBackground}')`;
-        cardInstance.background.style.opacity = cardInstance.config.opacity || 0.7;
-    }
+    const bg = item.backdrop || item.poster || '';
+    this._applyBackground(cardInstance, bg, bg);
 
-    if (cardBackground && cardInstance.cardBackground) {
-        cardInstance.cardBackground.style.backgroundImage = `url('${cardBackground}')`;
-    }
-    this.applyAdaptiveContrast(cardInstance, mediaBackground || cardBackground);
-
-    // Enhanced info display for Trakt items
     cardInstance.info.innerHTML = `
-        <div class="title">${item.title}${item.year ? ` (${item.year})` : ''}</div>
-        <div class="type">${(item.type || '').toUpperCase()}</div>
-        ${item.overview ? `<div class="overview">${item.overview}</div>` : ''}
-        <div class="details">
-          <div class="request-button-container">
-            <button class="request-button" onclick="this.dispatchEvent(new CustomEvent('seer-request', {
-              bubbles: true,
-              detail: {
-                title: '${item.title.replace(/'/g, "\\'")}',
-                year: '${item.year || ''}',
-                type: '${item.type || 'movie'}',
-                tmdb_id: ${item.tmdb_id || item.ids?.tmdb || 0},
-                poster: '${(item.poster || '').replace(/'/g, "\\'")}',
-                overview: '${(item.overview || '').replace(/'/g, "\\'")}'
-              }
-            }))">
-              <ha-icon icon="mdi:plus-circle-outline"></ha-icon>
-              ${this.t(cardInstance, 'request', 'Request')}
-            </button>
-          </div>
-          ${item.ids ? `
-            <div class="metadata">
-              ${item.ids.imdb ? `IMDB: ${item.ids.imdb}` : ''}
-              ${item.ids.tmdb ? `TMDB: ${item.ids.tmdb}` : ''}
-            </div>
-          ` : ''}
+      <div class="title">${this._escapeHtml(item.title)}${item.year ? ` (${this._escapeHtml(String(item.year))})` : ''}</div>
+      <div class="type">${this._escapeHtml((item.type || '').toUpperCase())}</div>
+      ${item.overview ? `<div class="overview">${this._escapeHtml(item.overview)}</div>` : ''}
+      <div class="details">
+        <div class="request-button-container">
+          <button class="request-button" onclick="this.dispatchEvent(new CustomEvent('seer-request', {
+            bubbles: true,
+            detail: {
+              title: '${(item.title || '').replace(/'/g, "\\'")}',
+              year: '${item.year || ''}',
+              type: '${item.type || 'movie'}',
+              tmdb_id: ${item.tmdb_id || item.ids?.tmdb || 0},
+              poster: '${(item.poster || '').replace(/'/g, "\\'")}',
+              overview: '${(item.overview || '').replace(/'/g, "\\'")}'
+            }
+          }))">
+            <ha-icon icon="mdi:plus-circle-outline"></ha-icon>
+            ${this.t(cardInstance, 'request', 'Request')}
+          </button>
         </div>
+        ${item.ids ? `
+          <div class="metadata">
+            ${item.ids.imdb ? `IMDB: ${this._escapeHtml(item.ids.imdb)}` : ''}
+            ${item.ids.tmdb ? `TMDB: ${this._escapeHtml(String(item.ids.tmdb))}` : ''}
+          </div>
+        ` : ''}
+      </div>
     `;
   }
 }
@@ -1557,15 +1328,6 @@ class ImmaculaterrSection extends BaseSection {
     ];
   }
 
-  _escape(value) {
-    return String(value ?? '')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-  }
-
   generateTemplate(config, cardInstance = this._currentCard) {
     return this.sections
       .filter(section => config[section.entityKey])
@@ -1586,12 +1348,19 @@ class ImmaculaterrSection extends BaseSection {
   }
 
   generateMediaItem(item, index, selectedType, selectedIndex, sectionKey) {
+    if (item.title_default) {
+      return `
+        <div class="empty-section-content">
+          <div class="empty-message">${this.t(this._currentCard, 'no_suggestions', 'No suggestions available')}</div>
+        </div>
+      `;
+    }
     return `
       <div class="media-item ${selectedType === sectionKey && index === selectedIndex ? 'selected' : ''}"
            data-type="${sectionKey}"
            data-index="${index}">
         ${this.buildPosterImage(item, item.title || '')}
-        <div class="media-item-title">${this._escape(item.title || '')}</div>
+        <div class="media-item-title">${this._escapeHtml(item.title || '')}</div>
       </div>
     `;
   }
@@ -1615,6 +1384,7 @@ class ImmaculaterrSection extends BaseSection {
     cardInstance._immaculaterrLists[sectionConfig.key] = { items, listElement };
 
     this._renderList(cardInstance, sectionConfig.key);
+    this._preloadImages(items);
   }
 
   _renderList(cardInstance, sectionKey) {
@@ -1634,7 +1404,8 @@ class ImmaculaterrSection extends BaseSection {
         const index = parseInt(item.dataset.index, 10);
         cardInstance.selectedType = sectionKey;
         cardInstance.selectedIndex = index;
-        this.updateInfo(cardInstance, items[index], sectionKey);
+
+        this._withInfoFade(cardInstance, () => this.updateInfo(cardInstance, items[index], sectionKey));
 
         cardInstance.querySelectorAll('.media-item').forEach(listItem => {
           listItem.classList.toggle(
@@ -1738,20 +1509,10 @@ class ImmaculaterrSection extends BaseSection {
 
   updateInfo(cardInstance, item, sectionKey = null) {
     this._currentCard = cardInstance;
-    if (!item) return;
+    if (!item || item.title_default) return;
 
-    const mediaBackground = item.fanart || item.banner || item.poster || '';
-    const cardBackground = item.fanart || item.banner || item.poster || '';
-
-    if (mediaBackground) {
-      cardInstance.background.style.backgroundImage = `url('${mediaBackground}')`;
-      cardInstance.background.style.opacity = cardInstance.config.opacity || 0.7;
-    }
-
-    if (cardBackground && cardInstance.cardBackground) {
-      cardInstance.cardBackground.style.backgroundImage = `url('${cardBackground}')`;
-    }
-    this.applyAdaptiveContrast(cardInstance, mediaBackground || cardBackground);
+    const bg = item.fanart || item.banner || item.poster || '';
+    this._applyBackground(cardInstance, bg, bg);
 
     const activeSectionKey = sectionKey || (item.media_type === 'tv' ? 'immaculaterr_tv' : 'immaculaterr_movies');
     const isRequested = Boolean(item.sent_at);
@@ -1779,9 +1540,9 @@ class ImmaculaterrSection extends BaseSection {
         onclick="this.dispatchEvent(new CustomEvent('immaculaterr-action', {
           bubbles: true,
           detail: {
-            title: '${this._escape(item.title || '')}',
+            title: '${this._escapeHtml(item.title || '')}',
             media_type: '${item.media_type}',
-            library_section_key: '${this._escape(item.library_section_key || '')}',
+            library_section_key: '${this._escapeHtml(item.library_section_key || '')}',
             suggestion_id: ${item.id},
             action: 'approve',
             apply: true,
@@ -1800,9 +1561,9 @@ class ImmaculaterrSection extends BaseSection {
         onclick="this.dispatchEvent(new CustomEvent('immaculaterr-action', {
           bubbles: true,
           detail: {
-            title: '${this._escape(item.title || '')}',
+            title: '${this._escapeHtml(item.title || '')}',
             media_type: '${item.media_type}',
-            library_section_key: '${this._escape(item.library_section_key || '')}',
+            library_section_key: '${this._escapeHtml(item.library_section_key || '')}',
             suggestion_id: ${item.id},
             action: 'reject',
             apply: true,
@@ -1824,9 +1585,7 @@ class ImmaculaterrSection extends BaseSection {
         )}</div>`;
 
     cardInstance.info.innerHTML = `
-      <div class="type">${this._escape(item.type || '').toUpperCase()}</div>
-      <div class="title">${this._escape(item.title || '')}${item.year ? ` (${this._escape(item.year)})` : ''}</div>
-      ${item.overview ? `<div class="overview">${this._escape(item.overview)}</div>` : ''}
+      <div class="title">${this._escapeHtml(item.title || '')}${item.year ? ` (${this._escapeHtml(String(item.year))})` : ''}</div>
       <div class="details">
         ${statusMarkup}
         ${scoreMarkup}
@@ -1971,13 +1730,20 @@ const styles = `
     bottom: 0;
     background-size: cover;
     background-position: center;
-    transition: all var(--transition-duration) ease-in-out;
+    transition: opacity 0.5s ease;
+    will-change: opacity;
+    isolation: isolate;
   }
 
   .card-background {
     filter: blur(20px) brightness(0.7);
     transform: scale(1.2);
     z-index: 0;
+    background-color: #080c14;
+  }
+
+  ha-card {
+    background: #080c14;
   }
 
   ha-card::after {
@@ -1992,16 +1758,18 @@ const styles = `
   .media-background {
     filter: blur(var(--blur-radius, 0px));
     transform: scale(1.1);
+    background-color: #080c14;
   }
 
   /* Media Content Area */
   .media-content {
     position: relative;
     width: 100%;
-    height: 120px;
+    height: 180px;
     overflow: hidden;
     margin-bottom: var(--section-spacing);
     cursor: pointer;
+    background: #080c14;
   }
 
   .media-content::before {
@@ -2092,7 +1860,9 @@ const styles = `
   /* Section Content */
   .section-content {
     max-height: 200px;
-    transition: all var(--transition-duration) cubic-bezier(0.4, 0, 0.2, 1);
+    transition: max-height var(--transition-duration) cubic-bezier(0.4, 0, 0.2, 1),
+                opacity var(--transition-duration) cubic-bezier(0.4, 0, 0.2, 1),
+                transform var(--transition-duration) cubic-bezier(0.4, 0, 0.2, 1);
     overflow: hidden;
     transform-origin: top;
     opacity: 1;
@@ -2241,11 +2011,6 @@ const styles = `
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
-  }
-
-  .section-header:hover {
-    background-color: var(--section-hover-bg) !important;
-    border-color: var(--section-border-color) !important;
   }
 
   /* Empty State */
@@ -2689,6 +2454,9 @@ function deriveVisibleSections(config) {
   return SECTION_ORDER.filter((sectionKey) => hasSectionEntities(config, sectionKey));
 }
 
+
+const MEDIARR_BUILD = '20260509-crossfade';
+console.log(`[mediarr-card] build ${MEDIARR_BUILD} loaded`);
 
 class MediarrCard extends HTMLElement {
   constructor() {
