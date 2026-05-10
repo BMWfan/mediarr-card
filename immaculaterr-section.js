@@ -21,15 +21,6 @@ export class ImmaculaterrSection extends BaseSection {
     ];
   }
 
-  _escape(value) {
-    return String(value ?? '')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-  }
-
   generateTemplate(config, cardInstance = this._currentCard) {
     return this.sections
       .filter(section => config[section.entityKey])
@@ -50,12 +41,19 @@ export class ImmaculaterrSection extends BaseSection {
   }
 
   generateMediaItem(item, index, selectedType, selectedIndex, sectionKey) {
+    if (item.title_default) {
+      return `
+        <div class="empty-section-content">
+          <div class="empty-message">${this.t(this._currentCard, 'no_suggestions', 'No suggestions available')}</div>
+        </div>
+      `;
+    }
     return `
       <div class="media-item ${selectedType === sectionKey && index === selectedIndex ? 'selected' : ''}"
            data-type="${sectionKey}"
            data-index="${index}">
         ${this.buildPosterImage(item, item.title || '')}
-        <div class="media-item-title">${this._escape(item.title || '')}</div>
+        <div class="media-item-title">${this._escapeHtml(item.title || '')}</div>
       </div>
     `;
   }
@@ -79,6 +77,7 @@ export class ImmaculaterrSection extends BaseSection {
     cardInstance._immaculaterrLists[sectionConfig.key] = { items, listElement };
 
     this._renderList(cardInstance, sectionConfig.key);
+    this._preloadImages(items);
   }
 
   _renderList(cardInstance, sectionKey) {
@@ -98,7 +97,8 @@ export class ImmaculaterrSection extends BaseSection {
         const index = parseInt(item.dataset.index, 10);
         cardInstance.selectedType = sectionKey;
         cardInstance.selectedIndex = index;
-        this.updateInfo(cardInstance, items[index], sectionKey);
+
+        this._withInfoFade(cardInstance, () => this.updateInfo(cardInstance, items[index], sectionKey));
 
         cardInstance.querySelectorAll('.media-item').forEach(listItem => {
           listItem.classList.toggle(
@@ -202,20 +202,10 @@ export class ImmaculaterrSection extends BaseSection {
 
   updateInfo(cardInstance, item, sectionKey = null) {
     this._currentCard = cardInstance;
-    if (!item) return;
+    if (!item || item.title_default) return;
 
-    const mediaBackground = item.fanart || item.banner || item.poster || '';
-    const cardBackground = item.fanart || item.banner || item.poster || '';
-
-    if (mediaBackground) {
-      cardInstance.background.style.backgroundImage = `url('${mediaBackground}')`;
-      cardInstance.background.style.opacity = cardInstance.config.opacity || 0.7;
-    }
-
-    if (cardBackground && cardInstance.cardBackground) {
-      cardInstance.cardBackground.style.backgroundImage = `url('${cardBackground}')`;
-    }
-    this.applyAdaptiveContrast(cardInstance, mediaBackground || cardBackground);
+    const bg = item.fanart || item.banner || item.poster || '';
+    this._applyBackground(cardInstance, bg, bg);
 
     const activeSectionKey = sectionKey || (item.media_type === 'tv' ? 'immaculaterr_tv' : 'immaculaterr_movies');
     const isRequested = Boolean(item.sent_at);
@@ -243,9 +233,9 @@ export class ImmaculaterrSection extends BaseSection {
         onclick="this.dispatchEvent(new CustomEvent('immaculaterr-action', {
           bubbles: true,
           detail: {
-            title: '${this._escape(item.title || '')}',
+            title: '${this._escapeHtml(item.title || '')}',
             media_type: '${item.media_type}',
-            library_section_key: '${this._escape(item.library_section_key || '')}',
+            library_section_key: '${this._escapeHtml(item.library_section_key || '')}',
             suggestion_id: ${item.id},
             action: 'approve',
             apply: true,
@@ -264,9 +254,9 @@ export class ImmaculaterrSection extends BaseSection {
         onclick="this.dispatchEvent(new CustomEvent('immaculaterr-action', {
           bubbles: true,
           detail: {
-            title: '${this._escape(item.title || '')}',
+            title: '${this._escapeHtml(item.title || '')}',
             media_type: '${item.media_type}',
-            library_section_key: '${this._escape(item.library_section_key || '')}',
+            library_section_key: '${this._escapeHtml(item.library_section_key || '')}',
             suggestion_id: ${item.id},
             action: 'reject',
             apply: true,
@@ -288,9 +278,7 @@ export class ImmaculaterrSection extends BaseSection {
         )}</div>`;
 
     cardInstance.info.innerHTML = `
-      <div class="type">${this._escape(item.type || '').toUpperCase()}</div>
-      <div class="title">${this._escape(item.title || '')}${item.year ? ` (${this._escape(item.year)})` : ''}</div>
-      ${item.overview ? `<div class="overview">${this._escape(item.overview)}</div>` : ''}
+      <div class="title">${this._escapeHtml(item.title || '')}${item.year ? ` (${this._escapeHtml(String(item.year))})` : ''}</div>
       <div class="details">
         ${statusMarkup}
         ${scoreMarkup}

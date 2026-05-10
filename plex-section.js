@@ -7,34 +7,25 @@ export class PlexSection extends BaseSection {
     this.titleKey = 'plex_recently_added';
   }
 
-  update(cardInstance, entity) {
-    this._currentCard = cardInstance;
-    super.update(cardInstance, entity);
-  }
-
   updateInfo(cardInstance, item) {
-    this._currentCard = cardInstance;
-    super.updateInfo(cardInstance, item);  // Handle backgrounds
-    
+    super.updateInfo(cardInstance, item);
+
     if (!item) return;
     if (item.title_default) {
-        cardInstance.info.innerHTML = '';
-        return;
+      cardInstance.info.innerHTML = '';
+      return;
     }
 
-    const releaseDate = item.release === 'TBA' ? 
-        'TBA' : 
-        (item.release ? new Date(item.release).toLocaleDateString() : 'TBA');
+    const releaseDate = item.release === 'TBA' ? 'TBA' : (this.formatDate(item.release) || 'TBA');
 
     cardInstance.info.innerHTML = `
-        <div class="title">${item.title}${item.year ? ` (${item.year})` : ''}</div>
-        ${item.number ? `<div class="details">${item.number}${item.episode ? ` - ${item.episode}` : ''}</div>` : ''}
-        <div class="metadata">${this.t(cardInstance, 'released', 'Released')}: ${releaseDate}</div>
+      <div class="title">${this._escapeHtml(item.title)}${item.year ? ` (${this._escapeHtml(String(item.year))})` : ''}</div>
+      ${item.number ? `<div class="details">${this._escapeHtml(item.number)}${item.episode ? ` - ${this._escapeHtml(item.episode)}` : ''}</div>` : ''}
+      <div class="metadata">${this.t(cardInstance, 'released', 'Released')}: ${releaseDate}</div>
     `;
   }
 
   generateMediaItem(item, index, selectedType, selectedIndex) {
-    // Handle empty state
     if (item.title_default) {
       return `
         <div class="empty-section-content">
@@ -43,13 +34,12 @@ export class PlexSection extends BaseSection {
       `;
     }
 
-    // Use original media item layout
     return `
       <div class="media-item ${selectedType === this.key && index === selectedIndex ? 'selected' : ''}"
            data-type="${this.key}"
            data-index="${index}">
         ${this.buildPosterImage(item, item.title || '')}
-        <div class="media-item-title">${item.title}</div>
+        <div class="media-item-title">${this._escapeHtml(item.title)}</div>
       </div>
     `;
   }
