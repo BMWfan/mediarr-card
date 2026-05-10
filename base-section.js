@@ -11,6 +11,12 @@ export class BaseSection {
 
   _labels(cardInstance) {
     const language = (cardInstance?._hass?.language || 'en').toLowerCase();
+    const overrides = cardInstance?.config?.labels;
+
+    if (this._labelsCacheLang === language && this._labelsCacheOverrides === overrides) {
+      return this._labelsCacheValue;
+    }
+
     const isDe = language.startsWith('de');
     const defaults = isDe
       ? {
@@ -21,8 +27,8 @@ export class BaseSection {
           sonarr2_upcoming_shows: 'Sonarr 2',
           radarr_upcoming_movies: 'Radarr',
           radarr2_upcoming_movies: 'Radarr 2',
-          plex_recently_added: 'K\u00fcrzlich hinzugef\u00fcgt auf Plex',
-          jellyfin_recently_added: 'Jellyfin K\u00fcrzlich hinzugef\u00fcgt',
+          plex_recently_added: 'Kürzlich hinzugefügt auf Plex',
+          jellyfin_recently_added: 'Jellyfin Kürzlich hinzugefügt',
           trakt_popular: 'Trakt Beliebt',
           media_requests: 'Medienanfragen',
           trending: 'Trends',
@@ -33,25 +39,27 @@ export class BaseSection {
           airing_today: 'Heute ausgestrahlt',
           now_playing: 'Jetzt im Kino',
           on_air: 'On Air',
-          upcoming: 'Demn\u00e4chst',
+          upcoming: 'Demnächst',
           popular_tv_shows: 'Beliebte TV-Serien',
           cancel: 'Abbrechen',
-          confirm: 'Best\u00e4tigen',
+          confirm: 'Bestätigen',
           remove: 'Entfernen',
           approve: 'Freigeben',
           decline: 'Ablehnen',
-          update_status_for: 'Status \u00e4ndern f\u00fcr',
-          select_season_for: 'Staffel ausw\u00e4hlen f\u00fcr',
+          update_status_for: 'Status ändern für',
+          select_season_for: 'Staffel auswählen für',
           no_upcoming_shows: 'Keine kommenden Serien',
           no_upcoming_movies: 'Keine kommenden Filme',
-          no_recent_media: 'Keine k\u00fcrzlich hinzugef\u00fcgten Medien',
+          no_recent_media: 'Keine kürzlich hinzugefügten Medien',
+          no_media_available: 'Keine Medien verfügbar',
+          no_suggestions: 'Keine Vorschläge verfügbar',
           pending: 'Ausstehend',
           approved: 'Freigegeben',
           declined: 'Abgelehnt',
-          available: 'Verf\u00fcgbar',
+          available: 'Verfügbar',
           unknown: 'Unbekannt',
-          released: 'Ver\u00f6ffentlicht',
-          airs: 'L\u00e4uft',
+          released: 'Veröffentlicht',
+          airs: 'Läuft',
           on: 'auf',
           movie: 'Film',
           first: 'Erste',
@@ -92,6 +100,8 @@ export class BaseSection {
           no_upcoming_shows: 'No upcoming shows',
           no_upcoming_movies: 'No upcoming movies',
           no_recent_media: 'No recently added media',
+          no_media_available: 'No media available',
+          no_suggestions: 'No suggestions available',
           pending: 'Pending',
           approved: 'Approved',
           declined: 'Declined',
@@ -108,8 +118,11 @@ export class BaseSection {
           already_requested: 'has already been requested.'
         };
 
-    const overrides = cardInstance?.config?.labels || {};
-    return { ...defaults, ...overrides };
+    const result = { ...defaults, ...(overrides || {}) };
+    this._labelsCacheLang = language;
+    this._labelsCacheOverrides = overrides;
+    this._labelsCacheValue = result;
+    return result;
   }
 
   t(cardInstance, key, fallback = '') {
@@ -168,9 +181,61 @@ export class BaseSection {
            data-type="${this.key}"
            data-index="${index}">
         ${this.buildPosterImage(item, item.title || '')}
-        <div class="media-item-title">${item.title}</div>
+        <div class="media-item-title">${this._escapeHtml(item.title)}</div>
       </div>
     `;
+  }
+
+  // Double-buffer crossfade: two overlapping layers swap opacity so the old
+  // image is always visible while the new one loads — eliminates any flash.
+  _crossFade(primaryEl, newUrl, visibleOpacity, version, cardInstance) {
+    if (!newUrl || !primaryEl) return;
+
+    if (!primaryEl._layerB) {
+      const layerB = document.createElement('div');
+      layerB.className = primaryEl.className;
+      layerB.style.cssText = primaryEl.style.cssText;
+      layerB.style.opacity = '0';
+      primaryEl.parentNode.insertBefore(layerB, primaryEl.nextSibling);
+      primaryEl._layerA = primaryEl;
+      primaryEl._layerB = layerB;
+      primaryEl._activeLayer = 'a';
+    }
+
+    const isA   = primaryEl._activeLayer === 'a';
+    const active   = isA ? primaryEl._layerA : primaryEl._layerB;
+    const inactive = isA ? primaryEl._layerB : primaryEl._layerA;
+
+    const img = new Image();
+    img.referrerPolicy = 'no-referrer';
+    img.onload = img.onerror = () => {
+      if (cardInstance._bgVersion !== version) return;
+      inactive.style.backgroundImage = `url('${newUrl}')`;
+      requestAnimationFrame(() => {
+        inactive.style.opacity = String(visibleOpacity);
+        active.style.opacity = '0';
+        primaryEl._activeLayer = isA ? 'b' : 'a';
+      });
+    };
+    img.src = newUrl;
+  }
+
+  _applyBackground(cardInstance, mediaUrl, cardUrl) {
+    const targetOpacity = cardInstance.config?.opacity ?? 0.7;
+    cardInstance._bgVersion = (cardInstance._bgVersion || 0) + 1;
+    const version = cardInstance._bgVersion;
+
+    this._crossFade(cardInstance.background,     mediaUrl, targetOpacity, version, cardInstance);
+    this._crossFade(cardInstance.cardBackground, cardUrl,  1,             version, cardInstance);
+
+    this.applyAdaptiveContrast(cardInstance, mediaUrl || cardUrl);
+  }
+
+  // No longer fades .media-info — fading to opacity:0 revealed the bright backdrop.
+  // Background crossfades handle visual smoothness; text updates instantly.
+  _withInfoFade(cardInstance, updateFn) {
+    clearTimeout(cardInstance._transitionTimer);
+    updateFn();
   }
 
   updateInfo(cardInstance, item) {
@@ -178,27 +243,17 @@ export class BaseSection {
 
     const mediaBackground = item.banner || item.fanart;
     const cardBackground = item.fanart || item.banner;
-    
-    if (mediaBackground) {
-      cardInstance.background.style.backgroundImage = `url('${mediaBackground}')`;
-      cardInstance.background.style.opacity = cardInstance.config.opacity || 0.7;
-    }
-
-    if (cardBackground && cardInstance.cardBackground) {
-      cardInstance.cardBackground.style.backgroundImage = `url('${cardBackground}')`;
-    }
-
-    this.applyAdaptiveContrast(cardInstance, mediaBackground || cardBackground);
+    this._applyBackground(cardInstance, mediaBackground, cardBackground);
 
     const details = item.genres || item.episode || '';
     const metadata = item.release || item.number || '';
     const overview = item.overview || '';
 
     cardInstance.info.innerHTML = `
-      <div class="title">${item.title}${item.year ? ` (${item.year})` : ''}</div>
-      ${details ? `<div class="details">${details}</div>` : ''}
-      ${metadata ? `<div class="metadata">${metadata}</div>` : ''}
-      ${overview ? `<div class="overview">${overview}</div>` : ''}
+      <div class="title">${this._escapeHtml(item.title)}${item.year ? ` (${this._escapeHtml(String(item.year))})` : ''}</div>
+      ${details ? `<div class="details">${this._escapeHtml(details)}</div>` : ''}
+      ${metadata ? `<div class="metadata">${this._escapeHtml(metadata)}</div>` : ''}
+      ${overview ? `<div class="overview">${this._escapeHtml(overview)}</div>` : ''}
     `;
   }
 
@@ -301,21 +356,25 @@ export class BaseSection {
     img.src = imageUrl;
   }
 
-  update(cardInstance, entity) {
+  // Accepts an optional itemsOverride to avoid callers having to mutate entity.attributes.data
+  update(cardInstance, entity, itemsOverride = null) {
+    this._currentCard = cardInstance;
     const maxItems = cardInstance.config[`${this.key}_max_items`] || cardInstance.config.max_items || 10;
-    
-    let items = entity.attributes.data || [];
-    items = items.slice(0, maxItems);
-    
+
+    const items = itemsOverride !== null
+      ? itemsOverride
+      : (entity.attributes.data || []).slice(0, maxItems);
+
     const listElement = cardInstance.querySelector(`.${this.key}-list`);
     if (!listElement) return;
 
-    listElement.innerHTML = items.map((item, index) => 
+    listElement.innerHTML = items.map((item, index) =>
       this.generateMediaItem(item, index, cardInstance.selectedType, cardInstance.selectedIndex)
     ).join('');
 
     this.addClickHandlers(cardInstance, listElement, items);
-    
+    this._preloadImages(items);
+
     if (cardInstance.cardBackground && (!this._lastBackgroundUpdate || Date.now() - this._lastBackgroundUpdate > 30000)) {
       const bgImage = this.getRandomArtwork(items);
       if (bgImage) {
@@ -335,17 +394,7 @@ export class BaseSection {
         cardInstance.selectedType = this.key;
         cardInstance.selectedIndex = index;
 
-        const mediaBackground = selectedItem.banner || selectedItem.fanart;
-        const cardBackground = selectedItem.fanart || selectedItem.banner;
-
-        if (mediaBackground) {
-          cardInstance.background.style.backgroundImage = `url('${mediaBackground}')`;
-        }
-        if (cardBackground) {
-          cardInstance.cardBackground.style.backgroundImage = `url('${cardBackground}')`;
-        }
-
-        this.updateInfo(cardInstance, selectedItem);
+        this._withInfoFade(cardInstance, () => this.updateInfo(cardInstance, selectedItem));
 
         cardInstance.querySelectorAll('.media-item').forEach(i => {
           i.classList.toggle(
@@ -357,26 +406,34 @@ export class BaseSection {
     });
   }
 
-  getRandomArtwork(items) {
-    if (!items || items.length === 0) return null;
-    
-    const validItems = items.filter(item => item.fanart || item.backdrop || item.banner);
-    if (validItems.length === 0) return null;
-    
-    const randomItem = validItems[Math.floor(Math.random() * validItems.length)];
-    
-    return randomItem.fanart || randomItem.backdrop || randomItem.banner;
+  _preloadImages(items) {
+    if (!items) return;
+    // Module-level cache keeps Image references alive until browser caches the response.
+    if (!BaseSection._imgCache) BaseSection._imgCache = new Map();
+    const cache = BaseSection._imgCache;
+
+    items.forEach(item => {
+      [item.fanart, item.backdrop, item.banner, item.poster]
+        .filter(u => u && typeof u === 'string' && u.startsWith('http') && !cache.has(u))
+        .forEach(u => {
+          const img = new Image();
+          img.referrerPolicy = 'no-referrer';
+          img.onload = img.onerror = () => cache.delete(u);
+          cache.set(u, img);
+          img.src = u;
+        });
+    });
   }
 
-  getAllArtwork(items) {
-    if (!items || items.length === 0) return [];
-    
-    return items.reduce((artworks, item) => {
-      if (item.fanart) artworks.push(item.fanart);
-      if (item.backdrop) artworks.push(item.backdrop);
-      if (item.banner) artworks.push(item.banner);
-      return artworks;
-    }, []);
+  getRandomArtwork(items) {
+    if (!items || items.length === 0) return null;
+
+    const validItems = items.filter(item => item.fanart || item.backdrop || item.banner);
+    if (validItems.length === 0) return null;
+
+    const randomItem = validItems[Math.floor(Math.random() * validItems.length)];
+
+    return randomItem.fanart || randomItem.backdrop || randomItem.banner;
   }
 
   formatDate(dateString) {

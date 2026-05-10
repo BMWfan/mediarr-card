@@ -127,13 +127,20 @@ export const styles = `
     bottom: 0;
     background-size: cover;
     background-position: center;
-    transition: all var(--transition-duration) ease-in-out;
+    transition: opacity 0.5s ease;
+    will-change: opacity;
+    isolation: isolate;
   }
 
   .card-background {
     filter: blur(20px) brightness(0.7);
     transform: scale(1.2);
     z-index: 0;
+    background-color: #080c14;
+  }
+
+  ha-card {
+    background: #080c14;
   }
 
   ha-card::after {
@@ -148,16 +155,18 @@ export const styles = `
   .media-background {
     filter: blur(var(--blur-radius, 0px));
     transform: scale(1.1);
+    background-color: #080c14;
   }
 
   /* Media Content Area */
   .media-content {
     position: relative;
     width: 100%;
-    height: 120px;
+    height: 180px;
     overflow: hidden;
     margin-bottom: var(--section-spacing);
     cursor: pointer;
+    background: #080c14;
   }
 
   .media-content::before {
@@ -248,7 +257,9 @@ export const styles = `
   /* Section Content */
   .section-content {
     max-height: 200px;
-    transition: all var(--transition-duration) cubic-bezier(0.4, 0, 0.2, 1);
+    transition: max-height var(--transition-duration) cubic-bezier(0.4, 0, 0.2, 1),
+                opacity var(--transition-duration) cubic-bezier(0.4, 0, 0.2, 1),
+                transform var(--transition-duration) cubic-bezier(0.4, 0, 0.2, 1);
     overflow: hidden;
     transform-origin: top;
     opacity: 1;
@@ -397,11 +408,6 @@ export const styles = `
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
-  }
-
-  .section-header:hover {
-    background-color: var(--section-hover-bg) !important;
-    border-color: var(--section-border-color) !important;
   }
 
   /* Empty State */
