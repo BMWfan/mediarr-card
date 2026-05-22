@@ -2,6 +2,15 @@
 
 All notable changes to this fork are documented in this file.
 
+## 0.3.5 (2026-05-22)
+
+### Fixed
+
+- Sections with no data or unavailable sensors now show localized empty-state messages ("Keine kommenden Serien", "Keine Medien verfügbar", "Keine Daten verfügbar", etc.) instead of a blank area.
+- `.empty-section-content` CSS: added `flex: 0 0 100%`, `min-height: 60px`, and `var(--secondary-text-color)` so the message is always visible and adapts to any HA theme.
+- `set hass()` entity loop refactored: reuses `SECTION_ENTITY_KEYS` to avoid duplicated lists and locates sub-sections by `entityKey` name for reliable unavailable-state rendering.
+- Added `data_unavailable` translation key (DE: "Keine Daten verfügbar", EN: "Data unavailable").
+
 ## 0.3.4 (2026-05-10)
 
 ### Fixed

@@ -412,14 +412,19 @@ export const styles = `
 
   /* Empty State */
   .empty-section-content {
+    flex: 0 0 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 60px;
     padding: 16px;
     text-align: center;
-    color: rgba(255, 255, 255, 0.78);
+    color: var(--secondary-text-color, rgba(255, 255, 255, 0.78));
   }
 
   .empty-message {
     font-size: var(--subtitle-size);
-    opacity: 1;
+    opacity: 0.85;
     text-shadow: var(--shadow-medium);
   }
 

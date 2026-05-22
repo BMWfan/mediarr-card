@@ -27,7 +27,7 @@ export class TMDBSection extends BaseSection {
             </div>
           </div>
           <div class="section-content">
-            <div class="${section.listClass}" data-list="${section.key}"></div>
+            <div class="${section.listClass}" data-list="${section.key}">${this.generateMediaItem({ title_default: true }, 0, null, -1, section.key)}</div>
           </div>
         </div>
       `).join('');
@@ -65,6 +65,11 @@ export class TMDBSection extends BaseSection {
 
     const listElement = cardInstance.querySelector(`[data-list="${sectionConfig.key}"]`);
     if (!listElement) return;
+
+    if (items.length === 0) {
+      listElement.innerHTML = this.generateMediaItem({ title_default: true }, 0, null, -1, sectionConfig.key);
+      return;
+    }
 
     listElement.innerHTML = items.map((item, index) =>
       this.generateMediaItem(item, index, cardInstance.selectedType, cardInstance.selectedIndex, sectionConfig.key)
