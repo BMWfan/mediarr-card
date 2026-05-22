@@ -33,7 +33,7 @@ export class ImmaculaterrSection extends BaseSection {
             </div>
           </div>
           <div class="section-content">
-            <div class="${section.listClass}" data-list="${section.key}"></div>
+            <div class="${section.listClass}" data-list="${section.key}">${this.generateMediaItem({ title_default: true }, 0, null, -1, section.key)}</div>
           </div>
         </div>
       `)
@@ -83,6 +83,11 @@ export class ImmaculaterrSection extends BaseSection {
   _renderList(cardInstance, sectionKey) {
     const listState = cardInstance._immaculaterrLists?.[sectionKey];
     if (!listState) return;
+
+    if (listState.items.length === 0) {
+      listState.listElement.innerHTML = this.generateMediaItem({ title_default: true }, 0, null, -1, sectionKey);
+      return;
+    }
 
     listState.listElement.innerHTML = listState.items.map((item, index) =>
       this.generateMediaItem(item, index, cardInstance.selectedType, cardInstance.selectedIndex, sectionKey)

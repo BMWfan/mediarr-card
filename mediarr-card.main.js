@@ -72,7 +72,7 @@ function deriveVisibleSections(config) {
 }
 
 
-const MEDIARR_BUILD = '20260509-crossfade';
+const MEDIARR_BUILD = '20260510-empty-state';
 console.log(`[mediarr-card] build ${MEDIARR_BUILD} loaded`);
 
 class MediarrCard extends HTMLElement {
@@ -407,45 +407,23 @@ class MediarrCard extends HTMLElement {
     }
 
     Object.entries(this.sections).forEach(([key, section]) => {
-      if (key === 'tmdb') {
-        const entities = [
-          'tmdb_entity', 
-          'tmdb_airing_today_entity', 
-          'tmdb_now_playing_entity', 
-          'tmdb_on_air_entity', 
-          'tmdb_upcoming_entity',
-          'tmdb_popular_movies_entity',
-          'tmdb_popular_tv_entity'
-        ];
-        entities.forEach(entityKey => {
-          const entityId = this.config[entityKey];
-          if (entityId && hass.states[entityId]) {
-            section.update(this, hass.states[entityId]);
-          }
-        });
-      } else if (key === 'seer') {
-        // Keep Seer handling as is since it's working
-        const entities = ['seer_entity', 'seer_trending_entity', 'seer_discover_entity', 'seer_popular_movies_entity', 'seer_popular_tv_entity'];
-        entities.forEach(entityKey => {
-          const entityId = this.config[entityKey];
-          if (entityId && hass.states[entityId]) {
-            section.update(this, hass.states[entityId]);
-          }
-        });
-      } else if (key === 'immaculaterr') {
-        const entities = ['immaculaterr_movies_entity', 'immaculaterr_tv_entity'];
-        entities.forEach(entityKey => {
-          const entityId = this.config[entityKey];
-          if (entityId && hass.states[entityId]) {
-            section.update(this, hass.states[entityId]);
-          }
-        });
-      } else {
-        const entityId = this.config[`${key}_entity`];
-        if (entityId && hass.states[entityId]) {
-          section.update(this, hass.states[entityId]);
+      const entityKeys = SECTION_ENTITY_KEYS[key] || [`${key}_entity`];
+      entityKeys.forEach(entityKey => {
+        const entityId = this.config[entityKey];
+        if (!entityId) return;
+        const entity = hass.states[entityId];
+        if (entity && entity.state !== 'unavailable') {
+          section.update(this, entity);
+        } else {
+          // Entity missing or unavailable — find the list element and show unavailable state.
+          // Multi-entity sections (tmdb, seer, immaculaterr) use data-list; single-entity use class.
+          const subSection = section.sections?.find(s => s.entityKey === entityKey);
+          const listEl = subSection
+            ? this.querySelector(`[data-list="${subSection.key}"]`)
+            : this.querySelector(`.${key}-list`);
+          section.renderUnavailable(this, listEl);
         }
-      }
+      });
     });
   }
 
