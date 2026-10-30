@@ -167,7 +167,7 @@ export class BaseSection {
         <div class="section-header">
           <div class="section-header-content">
             <ha-icon class="section-toggle-icon" icon="mdi:chevron-down"></ha-icon>
-            <div class="section-label">${label}</div>
+            <div class="section-label">${this._escapeHtml(label)}</div>
           </div>
         </div>
         <div class="section-content">
@@ -210,7 +210,7 @@ export class BaseSection {
 
     const img = new Image();
     img.referrerPolicy = 'no-referrer';
-    img.onload = img.onerror = () => {
+    img.onload = () => {
       if (cardInstance._bgVersion !== version) return;
       inactive.style.backgroundImage = `url('${newUrl}')`;
       requestAnimationFrame(() => {
@@ -219,6 +219,7 @@ export class BaseSection {
         primaryEl._activeLayer = isA ? 'b' : 'a';
       });
     };
+    img.onerror = () => { /* Keep the currently visible background on load failure. */ };
     img.src = newUrl;
   }
 
@@ -337,6 +338,7 @@ export class BaseSection {
         const blackClearlyBetter =
           contrastWithBlack >= 7 && (contrastWithBlack - contrastWithWhite) >= 1.2;
         const mode = blackClearlyBetter ? 'light' : 'dark';
+        if (cardInstance._contrastCache.size >= 100) cardInstance._contrastCache.delete(cardInstance._contrastCache.keys().next().value);
         cardInstance._contrastCache.set(cacheKey, mode);
 
         if (requestId === cardInstance._contrastRequestId) {
@@ -374,25 +376,26 @@ export class BaseSection {
 
     const items = itemsOverride !== null
       ? itemsOverride
-      : (entity.attributes.data || []).slice(0, maxItems);
+      : (Array.isArray(entity?.attributes?.data) ? entity.attributes.data : []);
+    const safeItems = (Array.isArray(items) ? items : []).filter(item => item && typeof item === 'object').slice(0, Math.max(0, Number(maxItems) || 10));
 
     const listElement = cardInstance.querySelector(`.${this.key}-list`);
     if (!listElement) return;
 
-    if (items.length === 0) {
+    if (safeItems.length === 0) {
       listElement.innerHTML = this.generateMediaItem({ title_default: true }, 0, null, -1);
       return;
     }
 
-    listElement.innerHTML = items.map((item, index) =>
+    listElement.innerHTML = safeItems.map((item, index) =>
       this.generateMediaItem(item, index, cardInstance.selectedType, cardInstance.selectedIndex)
     ).join('');
 
-    this.addClickHandlers(cardInstance, listElement, items);
-    this._preloadImages(items);
+    this.addClickHandlers(cardInstance, listElement, safeItems);
+    this._preloadImages(safeItems);
 
     if (cardInstance.cardBackground && (!this._lastBackgroundUpdate || Date.now() - this._lastBackgroundUpdate > 30000)) {
-      const bgImage = this.getRandomArtwork(items);
+      const bgImage = this.getRandomArtwork(safeItems);
       if (bgImage) {
         cardInstance.cardBackground.style.backgroundImage = `url('${bgImage}')`;
         this._lastBackgroundUpdate = Date.now();

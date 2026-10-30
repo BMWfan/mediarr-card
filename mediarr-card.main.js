@@ -99,7 +99,7 @@ class MediarrCard extends HTMLElement {
 
   async _getPlexClients(plexUrl, plexToken) {
     try {
-      const response = await fetch(`${plexUrl}/clients?X-Plex-Token=${plexToken}`);
+      const response = await fetch(`${plexUrl}/clients?X-Plex-Token=${encodeURIComponent(plexToken)}`);
       if (!response.ok) throw new Error('Failed to fetch clients');
       
       const text = await response.text();
@@ -142,11 +142,11 @@ class MediarrCard extends HTMLElement {
       `;
     } else {
       clientList.innerHTML = clients.map(client => `
-        <div class="client-item" data-client-id="${client.clientId}">
+        <div class="client-item" data-client-id="${this._escapeClientHtml(client.clientId)}">
           <ha-icon class="client-item-icon" icon="${this._getClientIcon(client.product)}"></ha-icon>
           <div class="client-item-info">
-            <div class="client-item-name">${client.name}</div>
-            <div class="client-item-details">${client.product} ${client.version}</div>
+            <div class="client-item-name">${this._escapeClientHtml(client.name)}</div>
+            <div class="client-item-details">${this._escapeClientHtml(client.product)} ${this._escapeClientHtml(client.version)}</div>
           </div>
         </div>
       `).join('');
@@ -163,6 +163,10 @@ class MediarrCard extends HTMLElement {
     }
     
     modal.classList.remove('hidden');
+  }
+
+  _escapeClientHtml(value) {
+    return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
   _getClientIcon(product) {
@@ -209,11 +213,13 @@ class MediarrCard extends HTMLElement {
     this.nowPlayingTitle.textContent = entity.attributes.media_title || '';
     this.nowPlayingSubtitle.textContent = entity.attributes.media_series_title || '';
     
-    if (entity.attributes.media_position && entity.attributes.media_duration) {
+    if (Number.isFinite(Number(entity.attributes.media_position)) && Number(entity.attributes.media_duration) > 0) {
       const progress = (entity.attributes.media_position / entity.attributes.media_duration) * 100;
-      this.progressBar.style.width = `${progress}%`;
+      this.progressBar.style.width = `${Math.max(0, Math.min(100, progress))}%`;
     }
     
+    else { this.progressBar.style.width = '0%'; }
+
     if (entity.attributes.entity_picture) {
       this.querySelector('.now-playing-background').style.backgroundImage = 
         `url('${entity.attributes.entity_picture}')`;
@@ -331,7 +337,7 @@ class MediarrCard extends HTMLElement {
 
     if (initialEntityId && hass.states[initialEntityId]) {
       const state = hass.states[initialEntityId];
-      if (state.attributes.data?.[0]) {
+      if (Array.isArray(state.attributes?.data) && state.attributes.data[0]) {
         const data = state.attributes.data[0];
         
         // Set initial selection
@@ -406,12 +412,15 @@ class MediarrCard extends HTMLElement {
       this._updateNowPlaying(hass.states[this.config.media_player_entity]);
     }
 
+    if (!this._renderedEntityStates) this._renderedEntityStates = new Map();
     Object.entries(this.sections).forEach(([key, section]) => {
       const entityKeys = SECTION_ENTITY_KEYS[key] || [`${key}_entity`];
       entityKeys.forEach(entityKey => {
         const entityId = this.config[entityKey];
         if (!entityId) return;
         const entity = hass.states[entityId];
+        if (this._renderedEntityStates.get(entityKey) === entity) return;
+        this._renderedEntityStates.set(entityKey, entity);
         if (entity && entity.state !== 'unavailable') {
           section.update(this, entity);
         } else {
@@ -436,6 +445,7 @@ class MediarrCard extends HTMLElement {
     }
     
     // Set defaults for the new options
+    this._renderedEntityStates?.clear();
     this.config = {
       max_items: 10,            // Default max items if not specified
       days_to_check: 60,        // Default days to check if not specified

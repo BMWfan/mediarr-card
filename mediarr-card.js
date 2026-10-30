@@ -171,7 +171,7 @@ class BaseSection {
         <div class="section-header">
           <div class="section-header-content">
             <ha-icon class="section-toggle-icon" icon="mdi:chevron-down"></ha-icon>
-            <div class="section-label">${label}</div>
+            <div class="section-label">${this._escapeHtml(label)}</div>
           </div>
         </div>
         <div class="section-content">
@@ -214,7 +214,7 @@ class BaseSection {
 
     const img = new Image();
     img.referrerPolicy = 'no-referrer';
-    img.onload = img.onerror = () => {
+    img.onload = () => {
       if (cardInstance._bgVersion !== version) return;
       inactive.style.backgroundImage = `url('${newUrl}')`;
       requestAnimationFrame(() => {
@@ -223,6 +223,7 @@ class BaseSection {
         primaryEl._activeLayer = isA ? 'b' : 'a';
       });
     };
+    img.onerror = () => { /* Keep the currently visible background on load failure. */ };
     img.src = newUrl;
   }
 
@@ -341,6 +342,7 @@ class BaseSection {
         const blackClearlyBetter =
           contrastWithBlack >= 7 && (contrastWithBlack - contrastWithWhite) >= 1.2;
         const mode = blackClearlyBetter ? 'light' : 'dark';
+        if (cardInstance._contrastCache.size >= 100) cardInstance._contrastCache.delete(cardInstance._contrastCache.keys().next().value);
         cardInstance._contrastCache.set(cacheKey, mode);
 
         if (requestId === cardInstance._contrastRequestId) {
@@ -378,25 +380,26 @@ class BaseSection {
 
     const items = itemsOverride !== null
       ? itemsOverride
-      : (entity.attributes.data || []).slice(0, maxItems);
+      : (Array.isArray(entity?.attributes?.data) ? entity.attributes.data : []);
+    const safeItems = (Array.isArray(items) ? items : []).filter(item => item && typeof item === 'object').slice(0, Math.max(0, Number(maxItems) || 10));
 
     const listElement = cardInstance.querySelector(`.${this.key}-list`);
     if (!listElement) return;
 
-    if (items.length === 0) {
+    if (safeItems.length === 0) {
       listElement.innerHTML = this.generateMediaItem({ title_default: true }, 0, null, -1);
       return;
     }
 
-    listElement.innerHTML = items.map((item, index) =>
+    listElement.innerHTML = safeItems.map((item, index) =>
       this.generateMediaItem(item, index, cardInstance.selectedType, cardInstance.selectedIndex)
     ).join('');
 
-    this.addClickHandlers(cardInstance, listElement, items);
-    this._preloadImages(items);
+    this.addClickHandlers(cardInstance, listElement, safeItems);
+    this._preloadImages(safeItems);
 
     if (cardInstance.cardBackground && (!this._lastBackgroundUpdate || Date.now() - this._lastBackgroundUpdate > 30000)) {
-      const bgImage = this.getRandomArtwork(items);
+      const bgImage = this.getRandomArtwork(safeItems);
       if (bgImage) {
         cardInstance.cardBackground.style.backgroundImage = `url('${bgImage}')`;
         this._lastBackgroundUpdate = Date.now();
@@ -631,13 +634,13 @@ class Sonarr2Section extends SonarrBaseSection {
 class RadarrBaseSection extends BaseSection {
   update(cardInstance, entity) {
     const maxItems = cardInstance.config[`${this.key}_max_items`] || cardInstance.config.max_items || 10;
-    const releaseTypes = cardInstance.config[`${this.key}_release_types`] || ['Digital', 'Theaters', 'Physical'];
+    const releaseTypes = cardInstance.config[`${this.key}_release_types`] || ['Digital', 'Theaters', 'Theatres', 'Physical'];
 
-    let items = entity.attributes.data || [];
+    let items = Array.isArray(entity?.attributes?.data) ? entity.attributes.data : [];
 
     if (items.length > 0 && !items[0].title_default) {
       items = items.filter(item =>
-        releaseTypes.some(type => item.release && item.release.includes(type))
+        releaseTypes.some(type => typeof item?.release === 'string' && item.release.toLowerCase().includes(type.toLowerCase().replace('theatres', 'theaters'))) || (releaseTypes.some(type => ['theaters', 'theatres'].includes(String(type).toLowerCase())) && typeof item?.release === 'string' && /theat(?:er|re)s/i.test(item.release))
       );
     }
 
@@ -733,7 +736,7 @@ class SeerSection extends BaseSection {
     if (!sectionConfig) return;
 
     const maxItems = cardInstance.config.seer_max_items || cardInstance.config.max_items || 10;
-    const items = (entity.attributes.data || []).slice(0, maxItems);
+    const items = (Array.isArray(entity?.attributes?.data) ? entity.attributes.data : []).filter(Boolean).slice(0, maxItems);
 
     const listElement = cardInstance.querySelector(`[data-list="${sectionConfig.key}"]`);
     if (!listElement) return;
@@ -795,7 +798,7 @@ class SeerSection extends BaseSection {
     if (!this.existingRequests) {
       const seerEntity = cardInstance.config.seer_entity;
       if (seerEntity && cardInstance._hass.states[seerEntity]) {
-        this.existingRequests = cardInstance._hass.states[seerEntity].attributes.data || [];
+        this.existingRequests = cardInstance._hass.states[seerEntity]?.attributes?.data || [];
       } else {
         this.existingRequests = [];
       }
@@ -848,17 +851,7 @@ class SeerSection extends BaseSection {
       } else {
         actionButton = `
           <div class="request-button-container">
-            <button class="request-button" onclick="this.dispatchEvent(new CustomEvent('seer-request', {
-              bubbles: true,
-              detail: {
-                title: '${title.replace(/'/g, "\\'")}',
-                year: '${year}',
-                type: '${type}',
-                tmdb_id: ${tmdbId},
-                poster: '${(item.poster || '').replace(/'/g, "\\'")}',
-                overview: '${overview.replace(/'/g, "\\'")}'
-              }
-            }))">
+            <button class="request-button" data-mediarr-request="true">
               <ha-icon icon="mdi:plus-circle-outline"></ha-icon>
               ${this.t(cardInstance, 'request', 'Request')}
             </button>
@@ -872,14 +865,7 @@ class SeerSection extends BaseSection {
       cardInstance.info.innerHTML = `
         <div class="title">${this._escapeHtml(title)}</div>
         <div class="details">
-          <span class="status ${statusInfo.class}" onclick="this.dispatchEvent(new CustomEvent('change-status', {
-            bubbles: true,
-            detail: {
-              title: '${title.replace(/'/g, "\\'")}',
-              type: '${item.media_type || 'movie'}',
-              request_id: ${item.request_id || 0}
-            }
-          }))">
+          <span class="status ${statusInfo.class}" data-mediarr-status="true">
             <ha-icon icon="${statusInfo.icon}"></ha-icon>
             ${statusInfo.text}
           </span>
@@ -896,6 +882,17 @@ class SeerSection extends BaseSection {
         </div>
       `;
     }
+    cardInstance.info.querySelectorAll('[data-mediarr-request]').forEach(button => {
+      button.addEventListener('click', () => button.dispatchEvent(new CustomEvent('seer-request', {
+        bubbles: true, detail: { title: item.title || item.name || '', year: item.year || '', type: this._determineMediaType(item, sectionKey),
+          tmdb_id: item.tmdb_id || item.tmdbId || item.ids?.tmdb || item.id || 0, poster: item.poster || '', overview: item.overview || '' }
+      })));
+    });
+    cardInstance.info.querySelectorAll('[data-mediarr-status]').forEach(button => {
+      button.addEventListener('click', () => button.dispatchEvent(new CustomEvent('change-status', {
+        bubbles: true, detail: { title, type: item.media_type || 'movie', request_id: item.request_id || 0 }
+      })));
+    });
   }
 
   _determineMediaType(item, sectionKey) {
@@ -1031,7 +1028,7 @@ class SeerSection extends BaseSection {
             });
 
           if (typeof cardInstance.selectedIndex !== 'undefined' && cardInstance.selectedType) {
-            const selectedItems = cardInstance._hass.states[cardInstance.config.seer_entity].attributes.data || [];
+            const selectedItems = cardInstance._hass.states[cardInstance.config.seer_entity]?.attributes?.data || [];
             this.updateInfo(cardInstance, selectedItems[cardInstance.selectedIndex], cardInstance.selectedType);
           }
           this._showToast(cardInstance, this.t(cardInstance, 'confirm', 'Confirm'), 'success');
@@ -1046,6 +1043,7 @@ class SeerSection extends BaseSection {
     if (!cardInstance._seerRequestHandlerAdded) {
       cardInstance.addEventListener('seer-request', async (e) => {
         const { title, year, type, tmdb_id } = e.detail;
+        const requestButton = e.target?.closest?.('[data-mediarr-request]');
 
         try {
           const parsedTmdbId = parseInt(tmdb_id, 10);
@@ -1063,18 +1061,18 @@ class SeerSection extends BaseSection {
           }
 
           const existingRequest = this.existingRequests.find(request =>
-            request.title.toLowerCase() === title.toLowerCase() &&
+            String(request?.title || '').toLowerCase() === String(title || '').toLowerCase() &&
             (!year || request.year == year)
           );
 
-          if (existingRequest && type.toUpperCase() === 'MOVIE') {
+          if (existingRequest && String(type).toUpperCase() === 'MOVIE') {
             this._showToast(cardInstance, `"${title}" ${this.t(cardInstance, 'already_requested', 'has already been requested.')}`, 'info');
             return;
           }
 
           let action, data;
 
-          if (type.toUpperCase() === 'TV SHOW') {
+          if (['TV', 'TV SHOW', 'SERIES'].includes(String(type).toUpperCase())) {
             const season = await this._openSeasonModal(title);
             if (season === null) return;
             data = { name: title, season };
@@ -1089,7 +1087,7 @@ class SeerSection extends BaseSection {
           await window.document.querySelector('home-assistant')
             ?.hass.callService('mediarr', action.split('.')[1], data);
 
-          const button = cardInstance.querySelector('.request-button');
+          const button = requestButton;
           if (button) {
             button.innerHTML = `
               <ha-icon icon="mdi:check-circle-outline"></ha-icon>
@@ -1104,7 +1102,7 @@ class SeerSection extends BaseSection {
 
         } catch (error) {
           console.error('Error sending media request:', error);
-          const button = cardInstance.querySelector('.request-button');
+          const button = requestButton;
           if (button) {
             button.innerHTML = `
               <ha-icon icon="mdi:alert-circle"></ha-icon>
@@ -1245,17 +1243,7 @@ class TMDBSection extends BaseSection {
       <div class="overview">${this._escapeHtml(item.overview || '')}</div>
       <div class="details">
         <div class="request-button-container">
-          <button class="request-button" onclick="this.dispatchEvent(new CustomEvent('seer-request', {
-            bubbles: true,
-            detail: {
-              title: '${(item.title || '').replace(/'/g, "\\'")}',
-              year: '${item.year || ''}',
-              type: '${item.type || ''}',
-              tmdb_id: ${item.tmdb_id || 0},
-              poster: '${(item.poster || '').replace(/'/g, "\\'")}',
-              overview: '${(item.overview || '').replace(/'/g, "\\'")}'
-            }
-          }))">
+          <button class="request-button" data-mediarr-request="true">
             <ha-icon icon="mdi:plus-circle-outline"></ha-icon>
             ${this.t(cardInstance, 'request', 'Request')}
           </button>
@@ -1263,6 +1251,12 @@ class TMDBSection extends BaseSection {
         ${item.vote_average ? `<div class="rating">Rating: ${this._escapeHtml(String(item.vote_average))}/10</div>` : ''}
       </div>
     `;
+    cardInstance.info.querySelectorAll('[data-mediarr-request]').forEach(button => {
+      button.addEventListener('click', () => button.dispatchEvent(new CustomEvent('seer-request', {
+        bubbles: true, detail: { title: item.title || item.name || '', year: item.year || '', type: item.type || item.media_type || 'movie',
+          tmdb_id: item.tmdb_id || item.tmdbId || item.ids?.tmdb || item.id || 0, poster: item.poster || '', overview: item.overview || '' }
+      })));
+    });
   }
 }
 
@@ -1305,17 +1299,7 @@ class TraktSection extends BaseSection {
       ${item.overview ? `<div class="overview">${this._escapeHtml(item.overview)}</div>` : ''}
       <div class="details">
         <div class="request-button-container">
-          <button class="request-button" onclick="this.dispatchEvent(new CustomEvent('seer-request', {
-            bubbles: true,
-            detail: {
-              title: '${(item.title || '').replace(/'/g, "\\'")}',
-              year: '${item.year || ''}',
-              type: '${item.type || 'movie'}',
-              tmdb_id: ${item.tmdb_id || item.ids?.tmdb || 0},
-              poster: '${(item.poster || '').replace(/'/g, "\\'")}',
-              overview: '${(item.overview || '').replace(/'/g, "\\'")}'
-            }
-          }))">
+          <button class="request-button" data-mediarr-request="true">
             <ha-icon icon="mdi:plus-circle-outline"></ha-icon>
             ${this.t(cardInstance, 'request', 'Request')}
           </button>
@@ -1328,6 +1312,12 @@ class TraktSection extends BaseSection {
         ` : ''}
       </div>
     `;
+    cardInstance.info.querySelectorAll('[data-mediarr-request]').forEach(button => {
+      button.addEventListener('click', () => button.dispatchEvent(new CustomEvent('seer-request', {
+        bubbles: true, detail: { title: item.title || item.name || '', year: item.year || '', type: item.type || item.media_type || 'movie',
+          tmdb_id: item.tmdb_id || item.tmdbId || item.ids?.tmdb || item.id || 0, poster: item.poster || '', overview: item.overview || '' }
+      })));
+    });
   }
 }
 
@@ -1568,19 +1558,7 @@ class ImmaculaterrSection extends BaseSection {
       <button
         class="request-button ${isRequested ? 'status-approved' : ''}"
         ${canRequest ? '' : 'disabled'}
-        onclick="this.dispatchEvent(new CustomEvent('immaculaterr-action', {
-          bubbles: true,
-          detail: {
-            title: '${this._escapeHtml(item.title || '')}',
-            media_type: '${item.media_type}',
-            library_section_key: '${this._escapeHtml(item.library_section_key || '')}',
-            suggestion_id: ${item.id},
-            action: 'approve',
-            apply: true,
-            sectionKey: '${activeSectionKey}',
-            index: ${cardInstance.selectedIndex}
-          }
-        }))">
+        data-mediarr-action="approve">
         <ha-icon icon="${isRequested ? 'mdi:check-circle-outline' : 'mdi:download-outline'}"></ha-icon>
         ${requestLabel}
       </button>
@@ -1589,19 +1567,7 @@ class ImmaculaterrSection extends BaseSection {
     const rejectButton = `
       <button
         class="request-button request-button-secondary"
-        onclick="this.dispatchEvent(new CustomEvent('immaculaterr-action', {
-          bubbles: true,
-          detail: {
-            title: '${this._escapeHtml(item.title || '')}',
-            media_type: '${item.media_type}',
-            library_section_key: '${this._escapeHtml(item.library_section_key || '')}',
-            suggestion_id: ${item.id},
-            action: 'reject',
-            apply: true,
-            sectionKey: '${activeSectionKey}',
-            index: ${cardInstance.selectedIndex}
-          }
-        }))">
+        data-mediarr-action="reject">
         <ha-icon icon="mdi:thumb-down-outline"></ha-icon>
         ${this.t(cardInstance, 'not_interested', 'Not interested')}
       </button>
@@ -1628,6 +1594,14 @@ class ImmaculaterrSection extends BaseSection {
       </div>
       ${noteMarkup}
     `;
+    cardInstance.info.querySelectorAll('[data-mediarr-action]').forEach(button => {
+      button.addEventListener('click', () => button.dispatchEvent(new CustomEvent('immaculaterr-action', {
+        bubbles: true,
+        detail: { title: item.title || '', media_type: item.media_type, library_section_key: item.library_section_key,
+          suggestion_id: item.id, action: button.dataset.mediarrAction, apply: true,
+          sectionKey: activeSectionKey, index: cardInstance.selectedIndex }
+      })));
+    });
   }
 }
 
@@ -2518,7 +2492,7 @@ class MediarrCard extends HTMLElement {
 
   async _getPlexClients(plexUrl, plexToken) {
     try {
-      const response = await fetch(`${plexUrl}/clients?X-Plex-Token=${plexToken}`);
+      const response = await fetch(`${plexUrl}/clients?X-Plex-Token=${encodeURIComponent(plexToken)}`);
       if (!response.ok) throw new Error('Failed to fetch clients');
       
       const text = await response.text();
@@ -2561,11 +2535,11 @@ class MediarrCard extends HTMLElement {
       `;
     } else {
       clientList.innerHTML = clients.map(client => `
-        <div class="client-item" data-client-id="${client.clientId}">
+        <div class="client-item" data-client-id="${this._escapeClientHtml(client.clientId)}">
           <ha-icon class="client-item-icon" icon="${this._getClientIcon(client.product)}"></ha-icon>
           <div class="client-item-info">
-            <div class="client-item-name">${client.name}</div>
-            <div class="client-item-details">${client.product} ${client.version}</div>
+            <div class="client-item-name">${this._escapeClientHtml(client.name)}</div>
+            <div class="client-item-details">${this._escapeClientHtml(client.product)} ${this._escapeClientHtml(client.version)}</div>
           </div>
         </div>
       `).join('');
@@ -2582,6 +2556,10 @@ class MediarrCard extends HTMLElement {
     }
     
     modal.classList.remove('hidden');
+  }
+
+  _escapeClientHtml(value) {
+    return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
   _getClientIcon(product) {
@@ -2628,11 +2606,13 @@ class MediarrCard extends HTMLElement {
     this.nowPlayingTitle.textContent = entity.attributes.media_title || '';
     this.nowPlayingSubtitle.textContent = entity.attributes.media_series_title || '';
     
-    if (entity.attributes.media_position && entity.attributes.media_duration) {
+    if (Number.isFinite(Number(entity.attributes.media_position)) && Number(entity.attributes.media_duration) > 0) {
       const progress = (entity.attributes.media_position / entity.attributes.media_duration) * 100;
-      this.progressBar.style.width = `${progress}%`;
+      this.progressBar.style.width = `${Math.max(0, Math.min(100, progress))}%`;
     }
     
+    else { this.progressBar.style.width = '0%'; }
+
     if (entity.attributes.entity_picture) {
       this.querySelector('.now-playing-background').style.backgroundImage = 
         `url('${entity.attributes.entity_picture}')`;
@@ -2750,7 +2730,7 @@ class MediarrCard extends HTMLElement {
 
     if (initialEntityId && hass.states[initialEntityId]) {
       const state = hass.states[initialEntityId];
-      if (state.attributes.data?.[0]) {
+      if (Array.isArray(state.attributes?.data) && state.attributes.data[0]) {
         const data = state.attributes.data[0];
         
         // Set initial selection
@@ -2825,12 +2805,15 @@ class MediarrCard extends HTMLElement {
       this._updateNowPlaying(hass.states[this.config.media_player_entity]);
     }
 
+    if (!this._renderedEntityStates) this._renderedEntityStates = new Map();
     Object.entries(this.sections).forEach(([key, section]) => {
       const entityKeys = SECTION_ENTITY_KEYS[key] || [`${key}_entity`];
       entityKeys.forEach(entityKey => {
         const entityId = this.config[entityKey];
         if (!entityId) return;
         const entity = hass.states[entityId];
+        if (this._renderedEntityStates.get(entityKey) === entity) return;
+        this._renderedEntityStates.set(entityKey, entity);
         if (entity && entity.state !== 'unavailable') {
           section.update(this, entity);
         } else {
@@ -2855,6 +2838,7 @@ class MediarrCard extends HTMLElement {
     }
     
     // Set defaults for the new options
+    this._renderedEntityStates?.clear();
     this.config = {
       max_items: 10,            // Default max items if not specified
       days_to_check: 60,        // Default days to check if not specified
