@@ -37,17 +37,7 @@ export class TraktSection extends BaseSection {
       ${item.overview ? `<div class="overview">${this._escapeHtml(item.overview)}</div>` : ''}
       <div class="details">
         <div class="request-button-container">
-          <button class="request-button" onclick="this.dispatchEvent(new CustomEvent('seer-request', {
-            bubbles: true,
-            detail: {
-              title: '${(item.title || '').replace(/'/g, "\\'")}',
-              year: '${item.year || ''}',
-              type: '${item.type || 'movie'}',
-              tmdb_id: ${item.tmdb_id || item.ids?.tmdb || 0},
-              poster: '${(item.poster || '').replace(/'/g, "\\'")}',
-              overview: '${(item.overview || '').replace(/'/g, "\\'")}'
-            }
-          }))">
+          <button class="request-button" data-mediarr-request="true">
             <ha-icon icon="mdi:plus-circle-outline"></ha-icon>
             ${this.t(cardInstance, 'request', 'Request')}
           </button>
@@ -60,5 +50,11 @@ export class TraktSection extends BaseSection {
         ` : ''}
       </div>
     `;
+    cardInstance.info.querySelectorAll('[data-mediarr-request]').forEach(button => {
+      button.addEventListener('click', () => button.dispatchEvent(new CustomEvent('seer-request', {
+        bubbles: true, detail: { title: item.title || item.name || '', year: item.year || '', type: item.type || item.media_type || 'movie',
+          tmdb_id: item.tmdb_id || item.tmdbId || item.ids?.tmdb || item.id || 0, poster: item.poster || '', overview: item.overview || '' }
+      })));
+    });
   }
 }
