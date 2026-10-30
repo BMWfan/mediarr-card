@@ -4,13 +4,13 @@ import { BaseSection } from './base-section.js?v=20260403-20';
 export class RadarrBaseSection extends BaseSection {
   update(cardInstance, entity) {
     const maxItems = cardInstance.config[`${this.key}_max_items`] || cardInstance.config.max_items || 10;
-    const releaseTypes = cardInstance.config[`${this.key}_release_types`] || ['Digital', 'Theaters', 'Physical'];
+    const releaseTypes = cardInstance.config[`${this.key}_release_types`] || ['Digital', 'Theaters', 'Theatres', 'Physical'];
 
-    let items = entity.attributes.data || [];
+    let items = Array.isArray(entity?.attributes?.data) ? entity.attributes.data : [];
 
     if (items.length > 0 && !items[0].title_default) {
       items = items.filter(item =>
-        releaseTypes.some(type => item.release && item.release.includes(type))
+        releaseTypes.some(type => typeof item?.release === 'string' && item.release.toLowerCase().includes(type.toLowerCase().replace('theatres', 'theaters'))) || (releaseTypes.some(type => ['theaters', 'theatres'].includes(String(type).toLowerCase())) && typeof item?.release === 'string' && /theat(?:er|re)s/i.test(item.release))
       );
     }
 
