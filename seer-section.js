@@ -29,7 +29,7 @@ export class SeerSection extends BaseSection {
     if (!sectionConfig) return;
 
     const maxItems = cardInstance.config.seer_max_items || cardInstance.config.max_items || 10;
-    const items = (entity.attributes.data || []).slice(0, maxItems);
+    const items = (Array.isArray(entity?.attributes?.data) ? entity.attributes.data : []).filter(Boolean).slice(0, maxItems);
 
     const listElement = cardInstance.querySelector(`[data-list="${sectionConfig.key}"]`);
     if (!listElement) return;
@@ -91,7 +91,7 @@ export class SeerSection extends BaseSection {
     if (!this.existingRequests) {
       const seerEntity = cardInstance.config.seer_entity;
       if (seerEntity && cardInstance._hass.states[seerEntity]) {
-        this.existingRequests = cardInstance._hass.states[seerEntity].attributes.data || [];
+        this.existingRequests = cardInstance._hass.states[seerEntity]?.attributes?.data || [];
       } else {
         this.existingRequests = [];
       }
@@ -321,7 +321,7 @@ export class SeerSection extends BaseSection {
             });
 
           if (typeof cardInstance.selectedIndex !== 'undefined' && cardInstance.selectedType) {
-            const selectedItems = cardInstance._hass.states[cardInstance.config.seer_entity].attributes.data || [];
+            const selectedItems = cardInstance._hass.states[cardInstance.config.seer_entity]?.attributes?.data || [];
             this.updateInfo(cardInstance, selectedItems[cardInstance.selectedIndex], cardInstance.selectedType);
           }
           this._showToast(cardInstance, this.t(cardInstance, 'confirm', 'Confirm'), 'success');
@@ -353,7 +353,7 @@ export class SeerSection extends BaseSection {
           }
 
           const existingRequest = this.existingRequests.find(request =>
-            request.title.toLowerCase() === title.toLowerCase() &&
+            String(request?.title || '').toLowerCase() === String(title || '').toLowerCase() &&
             (!year || request.year == year)
           );
 
@@ -379,7 +379,7 @@ export class SeerSection extends BaseSection {
           await window.document.querySelector('home-assistant')
             ?.hass.callService('mediarr', action.split('.')[1], data);
 
-          const button = cardInstance.querySelector('.request-button');
+          const button = cardInstance.info?.querySelector('[data-mediarr-request]');
           if (button) {
             button.innerHTML = `
               <ha-icon icon="mdi:check-circle-outline"></ha-icon>
@@ -394,7 +394,7 @@ export class SeerSection extends BaseSection {
 
         } catch (error) {
           console.error('Error sending media request:', error);
-          const button = cardInstance.querySelector('.request-button');
+          const button = cardInstance.info?.querySelector('[data-mediarr-request]');
           if (button) {
             button.innerHTML = `
               <ha-icon icon="mdi:alert-circle"></ha-icon>
