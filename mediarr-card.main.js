@@ -412,12 +412,15 @@ class MediarrCard extends HTMLElement {
       this._updateNowPlaying(hass.states[this.config.media_player_entity]);
     }
 
+    if (!this._renderedEntityStates) this._renderedEntityStates = new Map();
     Object.entries(this.sections).forEach(([key, section]) => {
       const entityKeys = SECTION_ENTITY_KEYS[key] || [`${key}_entity`];
       entityKeys.forEach(entityKey => {
         const entityId = this.config[entityKey];
         if (!entityId) return;
         const entity = hass.states[entityId];
+        if (this._renderedEntityStates.get(entityKey) === entity) return;
+        this._renderedEntityStates.set(entityKey, entity);
         if (entity && entity.state !== 'unavailable') {
           section.update(this, entity);
         } else {
@@ -442,6 +445,7 @@ class MediarrCard extends HTMLElement {
     }
     
     // Set defaults for the new options
+    this._renderedEntityStates?.clear();
     this.config = {
       max_items: 10,            // Default max items if not specified
       days_to_check: 60,        // Default days to check if not specified
