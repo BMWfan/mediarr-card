@@ -144,17 +144,7 @@ export class SeerSection extends BaseSection {
       } else {
         actionButton = `
           <div class="request-button-container">
-            <button class="request-button" onclick="this.dispatchEvent(new CustomEvent('seer-request', {
-              bubbles: true,
-              detail: {
-                title: '${title.replace(/'/g, "\\'")}',
-                year: '${year}',
-                type: '${type}',
-                tmdb_id: ${tmdbId},
-                poster: '${(item.poster || '').replace(/'/g, "\\'")}',
-                overview: '${overview.replace(/'/g, "\\'")}'
-              }
-            }))">
+            <button class="request-button" data-mediarr-request="true">
               <ha-icon icon="mdi:plus-circle-outline"></ha-icon>
               ${this.t(cardInstance, 'request', 'Request')}
             </button>
@@ -168,14 +158,7 @@ export class SeerSection extends BaseSection {
       cardInstance.info.innerHTML = `
         <div class="title">${this._escapeHtml(title)}</div>
         <div class="details">
-          <span class="status ${statusInfo.class}" onclick="this.dispatchEvent(new CustomEvent('change-status', {
-            bubbles: true,
-            detail: {
-              title: '${title.replace(/'/g, "\\'")}',
-              type: '${item.media_type || 'movie'}',
-              request_id: ${item.request_id || 0}
-            }
-          }))">
+          <span class="status ${statusInfo.class}" data-mediarr-status="true">
             <ha-icon icon="${statusInfo.icon}"></ha-icon>
             ${statusInfo.text}
           </span>
@@ -192,6 +175,17 @@ export class SeerSection extends BaseSection {
         </div>
       `;
     }
+    cardInstance.info.querySelectorAll('[data-mediarr-request]').forEach(button => {
+      button.addEventListener('click', () => button.dispatchEvent(new CustomEvent('seer-request', {
+        bubbles: true, detail: { title: item.title || item.name || '', year: item.year || '', type: item.type || item.media_type || 'movie',
+          tmdb_id: item.tmdb_id || item.tmdbId || item.ids?.tmdb || item.id || 0, poster: item.poster || '', overview: item.overview || '' }
+      })));
+    });
+    cardInstance.info.querySelectorAll('[data-mediarr-status]').forEach(button => {
+      button.addEventListener('click', () => button.dispatchEvent(new CustomEvent('change-status', {
+        bubbles: true, detail: { title, type: item.media_type || 'movie', request_id: item.request_id || 0 }
+      })));
+    });
   }
 
   _determineMediaType(item, sectionKey) {
