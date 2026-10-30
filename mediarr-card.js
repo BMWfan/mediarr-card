@@ -471,7 +471,6 @@ class BaseSection {
   }
 }
 
-
 // ---- plex-section.js ----
 // sections/plex-section.js
 
@@ -518,7 +517,6 @@ class PlexSection extends BaseSection {
     `;
   }
 }
-
 
 // ---- jellyfin-section.js ----
 // sections/jellyfin-section.js
@@ -568,7 +566,6 @@ class JellyfinSection extends BaseSection {
     `;
   }
 }
-
 
 // ---- sonarr-section.js ----
 // sections/sonarr-section.js
@@ -621,7 +618,6 @@ class SonarrSection extends SonarrBaseSection {
   }
 }
 
-
 // ---- sonarr2-section.js ----
 // sections/sonarr2-section.js
 
@@ -631,7 +627,6 @@ class Sonarr2Section extends SonarrBaseSection {
     this.titleKey = 'sonarr2_upcoming_shows';
   }
 }
-
 
 // ---- radarr-section.js ----
 // sections/radarr-section.js
@@ -700,7 +695,6 @@ class RadarrSection extends RadarrBaseSection {
   }
 }
 
-
 // ---- radarr2-section.js ----
 // sections/radarr2-section.js
 
@@ -710,7 +704,6 @@ class Radarr2Section extends RadarrBaseSection {
     this.titleKey = 'radarr2_upcoming_movies';
   }
 }
-
 
 // ---- seer-section.js ----
 
@@ -1139,7 +1132,6 @@ class SeerSection extends BaseSection {
   }
 }
 
-
 // ---- tmdb-section.js ----
 // sections/tmdb-section.js
 
@@ -1268,7 +1260,6 @@ class TMDBSection extends BaseSection {
   }
 }
 
-
 // ---- trakt-section.js ----
 // sections/trakt-section.js
 
@@ -1329,7 +1320,6 @@ class TraktSection extends BaseSection {
     });
   }
 }
-
 
 // ---- immaculaterr-section.js ----
 
@@ -1614,7 +1604,6 @@ class ImmaculaterrSection extends BaseSection {
     });
   }
 }
-
 
 // ---- styles.js ----
 // styles.js
@@ -2411,7 +2400,6 @@ const styles = `
     }
   }
 `;
-
 
 // ---- mediarr-card.main.js ----
 // main-card.js
@@ -3285,4 +3273,3 @@ window.customCards.push({
   description: "A modular card for displaying media from various sources",
   preview: true
 });
-
