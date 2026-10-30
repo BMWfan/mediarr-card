@@ -891,7 +891,7 @@ class SeerSection extends BaseSection {
     }
     cardInstance.info.querySelectorAll('[data-mediarr-request]').forEach(button => {
       button.addEventListener('click', () => button.dispatchEvent(new CustomEvent('seer-request', {
-        bubbles: true, detail: { title: item.title || item.name || '', year: item.year || '', type: item.type || item.media_type || 'movie',
+        bubbles: true, detail: { title: item.title || item.name || '', year: item.year || '', type: this._determineMediaType(item, sectionKey),
           tmdb_id: item.tmdb_id || item.tmdbId || item.ids?.tmdb || item.id || 0, poster: item.poster || '', overview: item.overview || '' }
       })));
     });
@@ -1050,6 +1050,7 @@ class SeerSection extends BaseSection {
     if (!cardInstance._seerRequestHandlerAdded) {
       cardInstance.addEventListener('seer-request', async (e) => {
         const { title, year, type, tmdb_id } = e.detail;
+        const requestButton = e.target?.closest?.('[data-mediarr-request]');
 
         try {
           const parsedTmdbId = parseInt(tmdb_id, 10);
@@ -1071,14 +1072,14 @@ class SeerSection extends BaseSection {
             (!year || request.year == year)
           );
 
-          if (existingRequest && type.toUpperCase() === 'MOVIE') {
+          if (existingRequest && String(type).toUpperCase() === 'MOVIE') {
             this._showToast(cardInstance, `"${title}" ${this.t(cardInstance, 'already_requested', 'has already been requested.')}`, 'info');
             return;
           }
 
           let action, data;
 
-          if (type.toUpperCase() === 'TV SHOW') {
+          if (['TV', 'TV SHOW', 'SERIES'].includes(String(type).toUpperCase())) {
             const season = await this._openSeasonModal(title);
             if (season === null) return;
             data = { name: title, season };
@@ -1093,7 +1094,7 @@ class SeerSection extends BaseSection {
           await window.document.querySelector('home-assistant')
             ?.hass.callService('mediarr', action.split('.')[1], data);
 
-          const button = cardInstance.info?.querySelector('[data-mediarr-request]');
+          const button = requestButton;
           if (button) {
             button.innerHTML = `
               <ha-icon icon="mdi:check-circle-outline"></ha-icon>
@@ -1108,7 +1109,7 @@ class SeerSection extends BaseSection {
 
         } catch (error) {
           console.error('Error sending media request:', error);
-          const button = cardInstance.info?.querySelector('[data-mediarr-request]');
+          const button = requestButton;
           if (button) {
             button.innerHTML = `
               <ha-icon icon="mdi:alert-circle"></ha-icon>
@@ -2816,12 +2817,15 @@ class MediarrCard extends HTMLElement {
       this._updateNowPlaying(hass.states[this.config.media_player_entity]);
     }
 
+    if (!this._renderedEntityStates) this._renderedEntityStates = new Map();
     Object.entries(this.sections).forEach(([key, section]) => {
       const entityKeys = SECTION_ENTITY_KEYS[key] || [`${key}_entity`];
       entityKeys.forEach(entityKey => {
         const entityId = this.config[entityKey];
         if (!entityId) return;
         const entity = hass.states[entityId];
+        if (this._renderedEntityStates.get(entityKey) === entity) return;
+        this._renderedEntityStates.set(entityKey, entity);
         if (entity && entity.state !== 'unavailable') {
           section.update(this, entity);
         } else {
@@ -2846,6 +2850,7 @@ class MediarrCard extends HTMLElement {
     }
     
     // Set defaults for the new options
+    this._renderedEntityStates?.clear();
     this.config = {
       max_items: 10,            // Default max items if not specified
       days_to_check: 60,        // Default days to check if not specified
