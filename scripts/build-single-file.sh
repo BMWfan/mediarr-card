@@ -6,6 +6,7 @@ SOURCE_MAIN="$ROOT_DIR/mediarr-card.main.js"
 OUTPUT_FILE="$ROOT_DIR/mediarr-card.js"
 
 MODULES=(
+  "media-library.js"
   "base-section.js"
   "plex-section.js"
   "jellyfin-section.js"

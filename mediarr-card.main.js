@@ -1,3 +1,4 @@
+import { MediaLibraryView, CompactMediaView } from './media-library.js';
 // main-card.js
 import { PlexSection } from './plex-section.js?v=20260406-01';
 import { JellyfinSection } from './jellyfin-section.js?v=20260406-01';
@@ -72,7 +73,7 @@ function deriveVisibleSections(config) {
 }
 
 
-const MEDIARR_BUILD = '20260510-empty-state';
+const MEDIARR_BUILD = '20261031-unified-library';
 console.log(`[mediarr-card] build ${MEDIARR_BUILD} loaded`);
 
 class MediarrCard extends HTMLElement {
@@ -95,6 +96,115 @@ class MediarrCard extends HTMLElement {
       trakt: new TraktSection(),
       immaculaterr: new ImmaculaterrSection()
     };
+  }
+
+  _mediaLabel(de, en) {
+    return (this._hass?.language || 'en').toLowerCase().startsWith('de') ? de : en;
+  }
+
+  _openMediaOverlay(selection = {}) {
+    if (this._overlay || document.querySelector('mediarr-overlay-host')) return;
+    const host = document.createElement('mediarr-overlay-host');
+    const root = host.attachShadow({ mode: 'open' });
+    const theme = getComputedStyle(this);
+    for (const name of ['--primary-color', '--primary-text-color', '--secondary-text-color', '--card-background-color', '--divider-color', '--primary-background-color']) {
+      host.style.setProperty(name, theme.getPropertyValue(name));
+    }
+    const style = document.createElement('style');
+    style.textContent = styles;
+    const dialog = document.createElement('dialog');
+    dialog.className = 'mediarr-overlay-dialog';
+    dialog.setAttribute('aria-label', 'Mediarr');
+    const header = document.createElement('header');
+    header.className = 'mediarr-overlay-header';
+    const close = document.createElement('button');
+    close.className = 'mediarr-overlay-close';
+    close.type = 'button';
+    close.textContent = this._mediaLabel('← Zurück', '← Back');
+    const title = document.createElement('strong');
+    title.textContent = 'Mediarr';
+    header.append(close, title);
+    const content = document.createElement('div');
+    content.className = 'mediarr-overlay-content';
+    const expanded = document.createElement('mediarr-card');
+    expanded._isExpandedView = true;
+    expanded._initialLibrarySelection = selection;
+    expanded._pendingLibraryRequests = this._pendingLibraryRequests ||= new Set();
+    expanded.setConfig({ ...this.config });
+    content.append(expanded);
+    dialog.append(header, content);
+    root.append(style, dialog);
+    document.body.append(host);
+    this._overlay = { host, dialog, expanded };
+    expanded.hass = this._hass;
+
+    // A same-URL history entry lets browser/Android Back close the overlay.
+    const id = globalThis.crypto?.randomUUID?.() || String(Date.now());
+    this._overlay.id = id;
+    this._overlay.previousState = history.state;
+    this._overlay.overflow = document.documentElement.style.overflow;
+    history.pushState({ ...history.state, mediarrOverlay: id }, '', location.href);
+    this._overlayPopHandler = () => {
+      if (history.state?.mediarrOverlay !== id) this._closeMediaOverlay();
+    };
+    window.addEventListener('popstate', this._overlayPopHandler);
+    const requestClose = () => {
+      if (history.state?.mediarrOverlay === id) history.back();
+      else this._closeMediaOverlay();
+    };
+    close.onclick = requestClose;
+    dialog.addEventListener('cancel', (event) => {
+      event.preventDefault();
+      const cancel = expanded.querySelector('.mediarr-modal-overlay .mediarr-btn-cancel');
+      const clients = expanded.querySelector('.client-modal:not(.hidden)');
+      if (cancel) cancel.click();
+      else if (clients) clients.classList.add('hidden');
+      else requestClose();
+    });
+    dialog.addEventListener('close', () => {
+      if (this._overlay) requestClose();
+    });
+    document.documentElement.style.overflow = 'hidden';
+    dialog.showModal();
+    close.focus({ preventScroll: true });
+  }
+
+  _closeMediaOverlay() {
+    const overlay = this._overlay;
+    if (!overlay) return;
+    this._overlay = null;
+    window.removeEventListener('popstate', this._overlayPopHandler);
+    if (history.state?.mediarrOverlay === overlay.id) {
+      history.replaceState(overlay.previousState, '', location.href);
+    }
+    document.documentElement.style.overflow = overlay.overflow;
+    overlay.dialog.close();
+    overlay.host.remove();
+    this._compactView?.refresh();
+    if (this.isConnected) {
+      const opener = this._overlayOpener?.isConnected ? this._overlayOpener : this.querySelector('.mediarr-open-button');
+      opener?.focus({preventScroll:true});
+    }
+    this._overlayOpener = null;
+  }
+
+  disconnectedCallback() {
+    // Lovelace can temporarily move a card while reflowing the dashboard.
+    queueMicrotask(() => {
+      if (this.isConnected) return;
+      this._closeMediaOverlay();
+      clearInterval(this.progressInterval);
+    });
+  }
+
+  _arrangeExpandedView() {
+    this.classList.add('mediarr-expanded');
+    this._libraryView = new MediaLibraryView(this);
+    this._libraryView.mount();
+  }
+
+  _filterMediaResults() {
+    this._libraryView?.refresh();
   }
 
   async _getPlexClients(plexUrl, plexToken) {
@@ -221,6 +331,12 @@ class MediarrCard extends HTMLElement {
   }
 
   initializeCard(hass) {
+    if (!this._isExpandedView && this.config.view !== 'legacy') {
+      this._mediaStyles = styles;
+      this._compactView = new CompactMediaView(this);
+      this._compactView.mount();
+      return;
+    }
     const preferredSections = deriveVisibleSections(this.config);
     const orderedSections = preferredSections.filter((sectionKey) =>
       hasSectionEntities(this.config, sectionKey)
@@ -354,6 +470,17 @@ class MediarrCard extends HTMLElement {
 
     // Initialize click handlers
     this._initializeEventListeners(hass);
+    if (this._isExpandedView) {
+      this._arrangeExpandedView();
+    } else {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'mediarr-open-button';
+      button.textContent = this._mediaLabel('Mediarr öffnen ↗', 'Open Mediarr ↗');
+      button.setAttribute('aria-haspopup', 'dialog');
+      button.onclick = () => this._openMediaOverlay();
+      this.querySelector('.card-content').append(button);
+    }
   }
 
   _initializeEventListeners(hass) {
@@ -402,6 +529,12 @@ class MediarrCard extends HTMLElement {
       this.initializeCard(hass);
     }
 
+    if (this._compactView) {
+      this._compactView.refresh();
+      if (this._overlay) this._overlay.expanded.hass = hass;
+      return;
+    }
+
     if (this.config.media_player_entity) {
       this._updateNowPlaying(hass.states[this.config.media_player_entity]);
     }
@@ -425,9 +558,12 @@ class MediarrCard extends HTMLElement {
         }
       });
     });
+    if (this._overlay) this._overlay.expanded.hass = hass;
+    if (this._isExpandedView) this._filterMediaResults();
   }
 
   setConfig(config) {
+    const previousView = this.config?.view;
     const normalizedVisibleSections = deriveVisibleSections(config);
     const hasEntity = SECTION_ORDER.some((sectionKey) => hasSectionEntities(config, sectionKey));
   
@@ -437,6 +573,8 @@ class MediarrCard extends HTMLElement {
     
     // Set defaults for the new options
     this.config = {
+      view: 'compact',
+      compact_items: 4,
       max_items: 10,            // Default max items if not specified
       days_to_check: 60,        // Default days to check if not specified
       radarr_release_types: ['Digital', 'Theaters'], // Default to digital and theatrical, exclude physical
@@ -458,6 +596,14 @@ class MediarrCard extends HTMLElement {
     }
     if (config.jellyfin_url && !config.jellyfin_url.endsWith('/')) {
       this._formattedJellyfinUrl = config.jellyfin_url + '/';
+    }
+    if (this.content && !this._isExpandedView && previousView !== this.config.view) {
+      this._closeMediaOverlay();
+      this._compactView = null;
+      this.content = null;
+      this.classList.remove('mediarr-compact');
+      this.innerHTML = '';
+      if (this._hass) this.hass = this._hass;
     }
   }
     
@@ -756,11 +902,11 @@ class MediarrCardEditor extends HTMLElement {
         .field-label { font-size: 12px; opacity: 0.75; margin-bottom: 4px; }
         .entity-picker { width: 100%; }
         .global-grid { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
-        .global-field input { width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid var(--divider-color); border-radius: 6px; background: var(--card-background-color); color: var(--primary-text-color); }
+        .global-field input, .global-field select { width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid var(--divider-color); border-radius: 6px; background: var(--card-background-color); color: var(--primary-text-color); }
       </style>
       <div class="editor-root">
         <div class="editor-card">
-          <div class="editor-title">Visible Sections</div>
+          <div class="editor-title">Data Sources</div>
           <div class="editor-subtitle">Only active Mediarr sensors are shown here.</div>
           <div class="module-list">
             ${availableSections.map((section) => `
@@ -794,6 +940,17 @@ class MediarrCardEditor extends HTMLElement {
         <div class="editor-card">
           <div class="editor-title">General Options</div>
           <div class="global-grid">
+            <div class="global-field">
+              <label class="field-label" for="mediarr-view-mode">Card View</label>
+              <select id="mediarr-view-mode" data-view-mode>
+                <option value="compact" ${(this._config.view || 'compact') === 'compact' ? 'selected' : ''}>Compact overview</option>
+                <option value="legacy" ${this._config.view === 'legacy' ? 'selected' : ''}>Legacy source sections</option>
+              </select>
+            </div>
+            <div class="global-field">
+              <label class="field-label" for="mediarr-compact-items">Compact Posters</label>
+              <input id="mediarr-compact-items" type="number" min="1" max="8" data-number-key="compact_items" value="${this._config.compact_items ?? 4}">
+            </div>
             <div class="global-field">
               <div class="field-label">Media Player Entity</div>
               <ha-entity-picker class="entity-picker" data-entity-key="media_player_entity" include-domains="media_player"></ha-entity-picker>
@@ -848,6 +1005,8 @@ class MediarrCardEditor extends HTMLElement {
         this._updateConfigValue(key, event.detail?.value || '');
       });
     });
+
+    this.querySelector('[data-view-mode]')?.addEventListener('change', event => this._updateConfigValue('view', event.target.value));
 
     this.querySelectorAll('[data-number-key]').forEach((input) => {
       input.addEventListener('change', (event) => {

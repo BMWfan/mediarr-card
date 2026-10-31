@@ -1,0 +1,36 @@
+homeassistant:
+  name: Mediarr Development
+  latitude: 52.52
+  longitude: 13.405
+  elevation: 34
+  unit_system: metric
+  time_zone: Europe/Berlin
+http:
+  server_port: 8123
+frontend:
+api:
+config:
+history:
+logbook:
+recorder:
+logger:
+  default: warning
+template:
+  - sensor:
+      - name: Plex Mediarr Dev
+        unique_id: plex_mediarr_dev
+        state: '1'
+        attributes:
+          data: >-
+            {{ [{'title': 'Mediarr Cloud Test', 'year': 2026, 'added': '2026-10-31T10:00:00Z', 'type': 'movie', 'summary': 'Local Home Assistant development fixture'}] }}
+lovelace:
+  resource_mode: yaml
+  resources:
+    - url: /local/mediarr-card.js
+      type: module
+  dashboards:
+    mediarr-test:
+      mode: yaml
+      title: Mediarr Test
+      show_in_sidebar: true
+      filename: mediarr-dashboard.yaml

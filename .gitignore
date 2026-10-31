@@ -25,3 +25,6 @@ yarn-error.log
 
 # Local cache-bust helper bundles (not for git/hacs releases)
 mediarr-card.[0-9]*.js
+
+# Disposable Home Assistant development instance
+dev/.runtime/

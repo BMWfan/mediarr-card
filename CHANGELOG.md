@@ -2,6 +2,19 @@
 
 All notable changes to this fork are documented in this file.
 
+## Unreleased
+
+- Default compact dashboard with recently added/discovery posters, a watchlist
+  row, direct detail navigation and a small fullscreen opening button.
+- Fullscreen overlay with source-independent discovery, waiting and available
+  categories, ID-based deduplication and cinematic title/cast details.
+- Backend-aware movie/series requests, truthful missing-data states and shared
+  pending requests across compact/large views. Global catalog search still
+  requires a separate backend capability.
+- Source selection, compact poster count and legacy-layout option in the editor.
+- Stable banner hover; responsive layout, history/Escape handling and keyboard
+  focus restoration. Added Docker HA/Playwright development workflow and tests.
+
 ## 0.3.5 (2026-05-22)
 
 ### Fixed
