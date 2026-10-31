@@ -2,7 +2,7 @@
 
 All notable changes to this fork are documented in this file.
 
-## Unreleased
+## 0.4.0 (2026-10-31)
 
 - Default compact dashboard with recently added/discovery posters, a watchlist
   row, direct detail navigation and a small fullscreen opening button.
