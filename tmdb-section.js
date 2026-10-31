@@ -97,6 +97,7 @@ export class TMDBSection extends BaseSection {
   }
 
   updateInfo(cardInstance, item) {
+    this.updateMediaDetails(cardInstance, item);
     this._currentCard = cardInstance;
     if (!item || item.title_default) return;
 

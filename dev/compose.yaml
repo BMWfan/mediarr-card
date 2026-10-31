@@ -1,0 +1,16 @@
+services:
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant@sha256:23f4dfbb69ce76315dbc4de7915504f1c2dcecd7ca2648113a493a385972e133
+    restart: unless-stopped
+    volumes:
+      - ${HA_DEV_RUNTIME_DIR:-./.runtime}/config:/config
+    ports:
+      - '127.0.0.1:${HA_DEV_PORT:-8124}:8123'
+    environment:
+      TZ: Europe/Berlin
+    healthcheck:
+      test: ['CMD', 'python3', '-c', "import urllib.request; urllib.request.urlopen('http://localhost:8123/manifest.json', timeout=5)"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+      start_period: 15s

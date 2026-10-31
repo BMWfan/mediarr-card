@@ -1,0 +1,47 @@
+name: Home Assistant integration tests
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install development environment
+        run: bash dev/setup.sh
+      - name: Install browser system dependencies
+        run: dev/node_modules/.bin/playwright install-deps chromium
+      - name: Start Home Assistant
+        run: bash dev/start.sh
+      - name: Check Home Assistant configuration
+        run: docker compose -p mediarr-card-dev -f dev/compose.yaml exec -T homeassistant python -m homeassistant --script check_config --config /config
+      - name: Test real Home Assistant frontend
+        run: bash dev/test.sh
+      - name: Capture service logs
+        if: always()
+        run: docker compose -p mediarr-card-dev -f dev/compose.yaml logs --no-color > dev/.runtime/service.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: homeassistant-test-results
+          path: |
+            dev/.runtime/dashboard.png
+            dev/.runtime/test-results.json
+            dev/.runtime/library-test-results.json
+            dev/.runtime/compact-desktop.png
+            dev/.runtime/library-desktop.png
+            dev/.runtime/library-mobile.png
+            dev/.runtime/service.log
+      - name: Stop development instance
+        if: always()
+        run: docker compose -p mediarr-card-dev -f dev/compose.yaml down

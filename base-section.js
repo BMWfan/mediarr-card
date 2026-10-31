@@ -21,6 +21,14 @@ export class BaseSection {
     const defaults = isDe
       ? {
           request: 'Anfragen',
+          media_details: 'Details',
+          synopsis: 'Handlung',
+          rating: 'Bewertung',
+          cast: 'Besetzung',
+          director: 'Regie',
+          genres: 'Genres',
+          runtime: 'Laufzeit',
+          no_media_details: 'Für diesen Titel sind keine weiteren Details verfügbar.',
           requested: 'Angefragt',
           failed: 'Fehlgeschlagen',
           sonarr_upcoming_shows: 'Sonarr',
@@ -71,6 +79,14 @@ export class BaseSection {
         }
       : {
           request: 'Request',
+          media_details: 'Details',
+          synopsis: 'Synopsis',
+          rating: 'Rating',
+          cast: 'Cast',
+          director: 'Director',
+          genres: 'Genres',
+          runtime: 'Runtime',
+          no_media_details: 'No additional details are available for this title.',
           requested: 'Requested',
           failed: 'Failed',
           sonarr_upcoming_shows: 'Sonarr',
@@ -155,7 +171,11 @@ export class BaseSection {
   buildPosterImage(item, alt = '') {
     const source = this._escapeHtml(this.getPosterSource(item));
     const escapedAlt = this._escapeHtml(alt);
-    return `<img src="${source}" alt="${escapedAlt}" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.onerror=null;this.src='${BaseSection.POSTER_PLACEHOLDER}'">`;
+    const summary = [item.overview, item.summary, item.description, item.plot]
+      .find(value => typeof value === 'string' && value.trim()) || '';
+    const metadata = [item.year, item.vote_average ?? item.rating].filter(value => value !== undefined && value !== null && value !== '').join(' · ');
+    return `<img src="${source}" alt="${escapedAlt}" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.onerror=null;this.src='${BaseSection.POSTER_PLACEHOLDER}'">
+      <span class="mediarr-result-summary">${this._escapeHtml(metadata)}${metadata && summary ? ' · ' : ''}${this._escapeHtml(summary)}</span>`;
   }
 
   generateTemplate(config = {}, cardInstance = this._currentCard) {
@@ -241,6 +261,7 @@ export class BaseSection {
   }
 
   updateInfo(cardInstance, item) {
+    this.updateMediaDetails(cardInstance, item);
     if (!item) return;
 
     const mediaBackground = item.banner || item.fanart;
@@ -256,6 +277,62 @@ export class BaseSection {
       ${details ? `<div class="details">${this._escapeHtml(details)}</div>` : ''}
       ${metadata ? `<div class="metadata">${this._escapeHtml(metadata)}</div>` : ''}
       ${overview ? `<div class="overview">${this._escapeHtml(overview)}</div>` : ''}
+    `;
+  }
+
+  // Shared by all providers, independently of their compact banner markup.
+  updateMediaDetails(cardInstance, item) {
+    if (cardInstance._libraryView) return;
+    let panel = cardInstance.querySelector('.media-details-panel');
+    if (!item || item.title_default) {
+      if (panel) panel.hidden = true;
+      return;
+    }
+    if (!panel) {
+      const banner = cardInstance.querySelector('.media-content');
+      if (!banner) return;
+      panel = document.createElement('details');
+      panel.className = 'media-details-panel';
+      banner.after(panel);
+    }
+
+    const text = (value) => {
+      if (typeof value === 'string') return value.trim();
+      if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+      return '';
+    };
+    const names = (value) => (Array.isArray(value) ? value : [value])
+      .map((entry) => text(entry?.name ?? entry?.tag ?? entry)).filter(Boolean).join(', ');
+    const firstText = (...values) => values.map(text).find(Boolean) || '';
+    const synopsis = firstText(item.overview, item.summary, item.description, item.plot);
+    const cast = [item.cast, item.actors, item.credits?.cast].map(names).find(Boolean) || '';
+    const director = [item.director, item.directors].map(names).find(Boolean) || '';
+    const genres = [item.genres, item.genre].map(names).find(Boolean) || '';
+    const runtime = text(item.runtime);
+    const ratings = [];
+    if (text(item.vote_average)) ratings.push(`TMDB: ${text(item.vote_average)}/10`);
+    if (text(item.rating)) ratings.push(text(item.rating));
+    if (text(item.community_rating ?? item.communityRating)) {
+      ratings.push(`${text(item.community_rating ?? item.communityRating)}/10`);
+    }
+    const rows = [
+      ['rating', ratings.join(' · ')],
+      ['genres', genres],
+      ['runtime', runtime ? (/^\d+(\.\d+)?$/.test(runtime) ? `${runtime} min` : runtime) : ''],
+      ['director', director],
+      ['cast', cast],
+    ].filter(([, value]) => value);
+    const esc = (value) => this._escapeHtml(value);
+    const title = firstText(item.title, item.name);
+    panel.hidden = false;
+    panel.open = true;
+    panel.innerHTML = `
+      <summary>${esc(this.t(cardInstance, 'media_details'))}${title ? ` · ${esc(title)}` : ''}</summary>
+      <div class="media-details-body">
+        ${synopsis ? `<h3>${esc(this.t(cardInstance, 'synopsis'))}</h3><p class="media-details-synopsis">${esc(synopsis)}</p>` : ''}
+        ${rows.length ? `<dl>${rows.map(([key, value]) => `<div><dt>${esc(this.t(cardInstance, key))}</dt><dd>${esc(value)}</dd></div>`).join('')}</dl>` : ''}
+        ${!synopsis && !rows.length ? `<p>${esc(this.t(cardInstance, 'no_media_details'))}</p>` : ''}
+      </div>
     `;
   }
 
