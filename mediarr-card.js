@@ -119,9 +119,11 @@ function normalizeMediaItem(raw, provider = '', entityKey = '') {
   };
 }
 
-function mediaIdentifiers(item, provider) {
+function mediaIdentifiers(item, provider, entityKey) {
+  // Seerr request IDs are local IDs; only discovery payloads expose TMDB as `id`.
+  const implicitTmdbId = provider === 'tmdb' || (provider === 'seer' && entityKey !== 'seer_entity');
   const ids = {
-    tmdb: mediaText(item.tmdb_id ?? item.tmdbId ?? item.ids?.tmdb ?? (['tmdb','seer'].includes(provider) ? item.id : undefined)),
+    tmdb: mediaText(item.tmdb_id ?? item.tmdbId ?? item.ids?.tmdb ?? (implicitTmdbId ? item.id : undefined)),
     tvdb: mediaText(item.tvdb_id ?? item.tvdbId ?? item.ids?.tvdb),
     imdb: mediaText(item.imdb_id ?? item.imdbId ?? item.ids?.imdb),
   };
@@ -146,7 +148,7 @@ function collectMediaLibrary(config, hass) {
       if (!raw || typeof raw !== 'object' || raw.title_default) return;
       const item = normalizeMediaItem(raw,provider,entityKey);
       if (!item.title) return;
-      records.push({item,index,entityKey,entityId,provider,kind:item.media_type,ids:mediaIdentifiers(item,provider)});
+      records.push({item,index,entityKey,entityId,provider,kind:item.media_type,ids:mediaIdentifiers(item,provider,entityKey)});
     });
   }
   const remember = record => {
