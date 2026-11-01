@@ -2,7 +2,7 @@
 
 All notable changes to this fork are documented in this file.
 
-## Unreleased
+## 0.4.1 (2026-11-01)
 
 - Correct legacy Plex/Jellyfin TV detection from episode numbers, movie years
   and descriptions, Sonarr episode-title suffixes and Jellyfin field casing.

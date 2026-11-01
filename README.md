@@ -57,13 +57,15 @@ Ambiguous media types stay unknown rather than being silently treated as movies.
 
 When the selected title lacks complete metadata, the card requests
 `mediarr/media_details` through the authenticated Home Assistant WebSocket.
-This requires the matching update of `BMWfan/mediarr_sensor`; v0.6.1 does not
+This requires `BMWfan/mediarr_sensor` v0.6.2 or newer; v0.6.1 does not
 provide that command. The backend uses the TMDB credential already configured
 in Mediarr and returns only public title metadata. Do not enter TMDB keys in
 card YAML or frontend URLs. Missing backend support/configuration and failures
 are explicitly shown with a retry action. Results are cached per language and
 title and cannot overwrite a different selection when a slow request finishes.
-Both the card and backend updates must be installed for automatic cast loading.
+For automatic cast loading, update the sensor integration to v0.6.2 and restart
+Home Assistant, then update this card to v0.4.1 and reload the frontend. The
+backend must have a valid TMDB credential configured.
 
 Search filters titles, years and descriptions from your currently loaded
 Mediarr sensor lists. It is not a global movie-catalog search. The watchlist
