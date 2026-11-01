@@ -2,6 +2,14 @@
 
 All notable changes to this fork are documented in this file.
 
+## Unreleased
+
+- Replace the compact opening link with a full-width film-night button,
+  including the clapperboard icon, subtitle and arrow without hover movement.
+- Give the desktop title list and film details separate scroll areas, so long
+  synopses and cast stay reachable while search and category controls remain
+  visible. Keep a single page scroll on mobile and reset details for a new title.
+
 ## 0.4.1 (2026-11-01)
 
 - Correct legacy Plex/Jellyfin TV detection from episode numbers, movie years

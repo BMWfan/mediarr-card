@@ -249,7 +249,7 @@ export class CompactMediaView {
     this.panel.querySelector('.compact-subtitle').textContent = this.label('Dein Filmabend','Your movie night');
     this.panel.querySelector('h3').textContent = recent.length ? this.label('Neu hinzugefügt','Recently added') : this.label('Dein nächster Filmabend','Your next movie night');
     this.panel.querySelector('.compact-watchlist-link').textContent = this.label('Auf deiner Merkliste','On your watchlist') + ` · ${waiting.length} ${this.label('Titel','titles')} ›`;
-    this.panel.querySelector('.mediarr-open-button').textContent = this.label('Mediarr öffnen ↗','Open Mediarr ↗');
+    this.panel.querySelector('.mediarr-open-button').innerHTML = `<span class="mediarr-open-icon"><ha-icon icon="mdi:movie-open-outline" aria-hidden="true"></ha-icon></span><span class="mediarr-open-copy"><strong>${this.label('Dein Filmabend','Your movie night')}</strong><span>${this.label('Entdecken, suchen und vormerken','Discover, search and save')}</span></span><ha-icon class="mediarr-open-arrow" icon="mdi:arrow-right" aria-hidden="true"></ha-icon>`;
     const renderRow = (selector, items, small = false) => {
       const row = this.panel.querySelector(selector);
       if (!small) row.style.gridAutoColumns = `minmax(64px, calc((100% - ${(limit - 1) * 10}px) / ${limit}))`;
@@ -299,6 +299,12 @@ export class MediaLibraryView {
     this.input = shell.querySelector('input');
     this.results = shell.querySelector('.library-results');
     this.focus = shell.querySelector('.library-focus');
+    this.results.tabIndex = 0;
+    this.results.setAttribute('role', 'region');
+    this.results.setAttribute('aria-label', this.label('Titelliste', 'Title list'));
+    this.focus.tabIndex = 0;
+    this.focus.setAttribute('role', 'region');
+    this.focus.setAttribute('aria-label', this.label('Filmdetails und Besetzung', 'Media details and cast'));
     this.input.oninput = () => this.render();
     this.refresh();
   }
@@ -382,6 +388,8 @@ export class MediaLibraryView {
   }
 
   renderDetails(entry) {
+    if (this._renderedDetailKey !== entry?.key) this.focus.scrollTop = 0;
+    this._renderedDetailKey = entry?.key;
     const esc=escapeMediaHtml;
     if (entry && (!entry.summary || !mediaCast(entry.item).length || entry.kind==='unknown')) void this.loadMetadata(entry);
     if (!entry) { this.focus.innerHTML=`<p class="library-empty">${esc(this.label('Wähle einen Titel aus.','Choose a title.'))}</p>`; return; }

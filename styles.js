@@ -1111,7 +1111,34 @@ export const styles = `
   .compact-watchlist { margin-top: 20px; }
   .compact-watchlist-link { display: block; width: 100%; padding: 0 0 12px; background: transparent; color: inherit; font: inherit; font-size: .9rem; text-align: left; cursor: pointer; border: 0; }
   .compact-empty { color: var(--secondary-text-color, #aab8cc); font-size: .83rem; white-space: normal; grid-column: 1 / -1; min-width: 200px; margin: 0; padding: 8px 0; }
-  .compact-media .mediarr-open-button { margin: 14px 0 0 auto; padding: 9px 12px; font-size: .9rem; }
+  .compact-media .mediarr-open-button {
+    display: flex; align-items: center; gap: 14px; width: 100%; box-sizing: border-box;
+    margin: 18px 0 0; padding: 14px 16px; text-align: left; border-radius: 14px;
+    border: 1px solid color-mix(in srgb, var(--primary-color, #03a9f4) 45%, transparent);
+    color: var(--primary-text-color, #f4f7fc);
+    background: linear-gradient(115deg, color-mix(in srgb, var(--primary-color, #03a9f4) 20%, var(--card-background-color, #142130)), var(--card-background-color, #142130));
+    transition: border-color .18s ease, box-shadow .18s ease;
+  }
+  .compact-media .mediarr-open-button:hover {
+    border-color: var(--primary-color, #03a9f4);
+    box-shadow: 0 0 18px color-mix(in srgb, var(--primary-color, #03a9f4) 15%, transparent);
+  }
+  .mediarr-open-icon { display: grid; place-items: center; width: 42px; height: 42px; flex-shrink: 0; border-radius: 12px; background: var(--primary-color, #03a9f4); color: #071722; }
+  .mediarr-open-copy { display: grid; gap: 3px; flex: 1; min-width: 0; }
+  .mediarr-open-copy strong { font-size: 1rem; font-weight: 650; }
+  .mediarr-open-copy > span { font-size: .78rem; color: var(--secondary-text-color, #aab8cc); }
+  .mediarr-open-arrow { flex-shrink: 0; color: var(--primary-color, #03a9f4); }
+  /* Desktop: keep controls visible and give each column its own viewport. */
+  @media (min-width: 701px) {
+    .mediarr-overlay-content { overflow: hidden; }
+    .mediarr-expanded, .mediarr-expanded ha-card, .mediarr-expanded .card-content { height: 100%; min-height: 0; }
+    .mediarr-expanded .mediarr-library { height: 100%; min-height: 0; display: grid; grid-template-rows: auto auto auto minmax(0, 1fr); }
+    .library-workspace { min-height: 0; align-items: stretch; }
+    .library-results, .library-focus { min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; scrollbar-width: thin; scrollbar-color: #526b82 transparent; scrollbar-gutter: stable; }
+    .library-results { padding: 3px 8px 8px 3px; }
+    .library-focus { position: static; padding-right: 8px; }
+    .library-results:focus-visible, .library-focus:focus-visible { outline: 2px solid #5adaff; outline-offset: -2px; }
+  }
   .compact-poster:focus-visible, .compact-watchlist-link:focus-visible { outline: 2px solid var(--primary-color, #2bc9f3); outline-offset: 2px; }
   .library-detail-body .library-metadata-status { color: #b9ccdf; font-size: .85rem; }
   .library-metadata-status:empty { display: none; }
