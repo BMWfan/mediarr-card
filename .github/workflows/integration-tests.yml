@@ -38,6 +38,7 @@ jobs:
             dev/.runtime/dashboard.png
             dev/.runtime/test-results.json
             dev/.runtime/library-test-results.json
+            dev/.runtime/metadata-test-results.json
             dev/.runtime/compact-desktop.png
             dev/.runtime/library-desktop.png
             dev/.runtime/library-mobile.png

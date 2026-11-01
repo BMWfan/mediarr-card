@@ -13,8 +13,8 @@ const suffix=Date.now();
 const config={visible_sections:['plex','tmdb','radarr','sonarr'],plex_entity:`sensor.library_plex_${suffix}`,tmdb_entity:`sensor.library_tmdb_${suffix}`,radarr_entity:`sensor.library_radarr_${suffix}`,sonarr_entity:`sensor.library_sonarr_${suffix}`};
 const movie={title:'Sternenreise',year:2026,tmdb_id:101,type:'movie',poster,banner:poster,overview:'Eine Pilotin folgt einem rätselhaften Signal bis an den Rand der bekannten Galaxie.',runtime:128,vote_average:8.4,genres:['Science-Fiction','Abenteuer'],cast:[{name:'Mara Winter',character:'Elara Voss'},{name:'Jonas Berg',character:'Captain Rhen'},{name:'Lea Sommer',character:'Dr. Tessa Kral'}]};
 const data={
- plex_entity:[{title:'Horizont',year:2025,tmdb_id:301,watched:false,poster,banner:poster}],
- tmdb_entity:[movie,{title:'Sternenstation',year:2026,tmdb_id:202,type:'tv',overview:'Das Leben auf einer abgelegenen Raumstation.',poster,banner:poster},{title:'Horizont',year:2025,tmdb_id:301,overview:'Eine Reise über die Grenzen des Bekannten.'},{title:'Fehlerfilm',year:2026,tmdb_id:303}],
+ plex_entity:[{title:'Horizont',year:2025,number:'2025',tmdb_id:301,watched:false,poster,banner:poster}],
+ tmdb_entity:[movie,{title:'Sternenstation',year:2026,tmdb_id:202,type:'tv',overview:'Das Leben auf einer abgelegenen Raumstation.',poster,banner:poster},{title:'Horizont',year:2025,tmdb_id:301,overview:'Eine Reise über die Grenzen des Bekannten.'},{title:'Fehlerfilm',year:2026,type:'movie',tmdb_id:303}],
  radarr_entity:[{title:'Jenseits der Horizonte',year:2030,tmdb_id:401,release_date:'2030-12-18',poster,banner:poster}],
  sonarr_entity:[{title:'Nordlicht',year:2026,tmdb_id:501,type:'tv',download_status:'downloading',download_progress:68,poster,banner:poster}],
 };

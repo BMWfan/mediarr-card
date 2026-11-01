@@ -79,3 +79,10 @@ docker compose -p mediarr-card-dev -f dev/compose.yaml down
 
 Supply the same `HA_DEV_RUNTIME_DIR` and `HA_DEV_PORT` overrides to Compose if used.
 Live processes do not survive a cloud snapshot; rerun `bash dev/start.sh`.
+
+The metadata regression tests use real legacy Plex/Jellyfin payload shapes and
+mock the `mediarr/media_details` WebSocket response in the HA browser. They
+cover type detection, year/synopsis normalization, delayed-response races,
+metadata caching and missing configuration. Backend tests run separately in
+`BMWfan/mediarr_sensor` with HA installed; no production TMDB credential is
+needed or recorded in these tests.

@@ -130,6 +130,8 @@ class MediarrCard extends HTMLElement {
     expanded._isExpandedView = true;
     expanded._initialLibrarySelection = selection;
     expanded._pendingLibraryRequests = this._pendingLibraryRequests ||= new Set();
+    expanded._mediaMetadataCache = this._mediaMetadataCache ||= new Map();
+    expanded._metadataBackendState = this._metadataBackendState ||= {unsupported:false};
     expanded.setConfig({ ...this.config });
     content.append(expanded);
     dialog.append(header, content);
