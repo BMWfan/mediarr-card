@@ -1,7 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {collectMediaLibrary, mediaImage, mediaCast, mediaEntriesForCard, mediaKind, normalizeMediaItem} from '../media-library.js';
+import {collectMediaLibrary, mediaImage, mediaCast, mediaEntriesForCard, mediaKind, normalizeMediaItem, mergeCatalogEntries, mediaDownload} from '../media-library.js';
 const state = data => ({state:'1',attributes:{data}});
+test('catalog results preserve owned/requested status and distinguish movie/TV ID collisions',()=>{
+ const local=collectMediaLibrary({plex_entity:'p',radarr_entity:'r'},{states:{p:state([{title:'Owned',type:'movie',tmdb_id:7,watched:true}]),r:state([{title:'Requested',tmdb_id:8}])}});
+ const merged=mergeCatalogEntries(local,[{title:'Owned',media_type:'movie',tmdb_id:7},{title:'New series',media_type:'tv',tmdb_id:7},{title:'Requested',media_type:'movie',tmdb_id:8}]);
+ assert.equal(merged.length,3);assert.equal(merged[0].stage,'ready');assert.equal(merged[0].watched,true);assert.equal(merged[1].stage,'waiting');assert.equal(merged[2].kind,'tv');assert.equal(merged[2].stage,'discover');
+});
+test('complete backend catalog augments sensor excerpts without losing progress or watched titles',()=>{
+ const card={config:{plex_entity:'p'},_hass:{states:{p:state([{title:'Recent',type:'movie',tmdb_id:1}])}},_fullLibraryState:{groups:{plex:[{title:'Older watched film',media_type:'movie',tmdb_id:2,watched:true}],radarr:[{title:'Downloading',media_type:'movie',tmdb_id:3,download_status:'downloading',download_progress:68}]}}};
+ const entries=mediaEntriesForCard(card);assert.equal(entries.length,3);assert.equal(entries.find(x=>x.ids.tmdb==='2').watched,true);assert.deepEqual(mediaDownload(entries.find(x=>x.ids.tmdb==='3')),{status:'downloading',progress:68});
+});
 test('merges IDs across providers, enriches metadata, available overrides request', () => {
   const entries=collectMediaLibrary({plex_entity:'p',radarr_entity:'r',tmdb_entity:'t'},{states:{
     p:state([{title:'Arrival',year:2016,tmdb_id:329865,watched:false}]),
