@@ -4,7 +4,7 @@ import {fetchMediaMetadata} from '../media-metadata.js';
 test('metadata uses authenticated HA WebSocket with typed ID and no credentials', async()=>{
  let request;
  const result=await fetchMediaMetadata({callWS:async msg=>{request=msg;return {media_type:'tv',tmdb_id:7,cast:[{name:'Actor'}]};}}, {title:'Dark',kind:'tv',ids:{tmdb:'7'},year:'2017'},'de-DE');
- assert.deepEqual(request,{type:'mediarr/media_details',media_type:'tv',title:'Dark',language:'de-DE',tmdb_id:7,year:2017});
+ assert.deepEqual(request,{type:'mediarr/media_details',media_type:'tv',title:'Dark',language:'de-DE',region:'DE',tmdb_id:7,year:2017});
  assert.equal(result.cast[0].name,'Actor');
 });
 test('unknown type remains explicit and backend failures propagate with safe codes',async()=>{

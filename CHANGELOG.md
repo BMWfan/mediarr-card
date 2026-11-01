@@ -2,7 +2,19 @@
 
 All notable changes to this fork are documented in this file.
 
-## Unreleased
+## 0.5.0 (2026-11-01)
+
+- Add authenticated TMDB catalog search alongside existing-library matches,
+  paged results, exact-ID requests, stale-response protection and explicit errors.
+- Add `view: library` for a full-page Home Assistant panel, alongside the compact
+  dashboard card and fullscreen overlay.
+- Read the complete Plex movie/show catalog and Radarr/Sonarr managed lists
+  through the backend, including watched titles and download queue progress.
+- Show download status and progress on list, detail and compact posters.
+- Keep discovery suggestions sourced from configured integrations; no new
+  recommendation engine or account-history import is introduced.
+- Show regional streaming subscriptions separately from rental/purchase offers,
+  with JustWatch/TMDB attribution. Requires mediarr_sensor 0.7.0.
 
 - Replace the compact opening link with a full-width film-night button,
   including the clapperboard icon, subtitle and arrow without hover movement.

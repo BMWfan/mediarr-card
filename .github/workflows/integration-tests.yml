@@ -42,6 +42,9 @@ jobs:
             dev/.runtime/compact-desktop.png
             dev/.runtime/library-desktop.png
             dev/.runtime/library-mobile.png
+            dev/.runtime/library-cast-scroll-desktop.png
+            dev/.runtime/catalog-full-page.png
+            dev/.runtime/full-library-download.png
             dev/.runtime/service.log
       - name: Stop development instance
         if: always()

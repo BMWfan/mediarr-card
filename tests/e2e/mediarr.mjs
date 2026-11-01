@@ -96,7 +96,7 @@ try {
   const search = expanded.locator('.mediarr-search');
   await search.fill('not-a-movie');
   assert.equal(await expanded.locator('.media-item:visible').count(),0);
-  assert.ok((await expanded.locator('[role=status]').textContent()).startsWith('0'));
+  assert.ok((await expanded.locator('.mediarr-search-status').textContent()).startsWith('0'));
   await search.fill('development fixture');
   await expanded.locator('.media-item:visible').waitFor();
   await expanded.locator('.media-item:visible').click();

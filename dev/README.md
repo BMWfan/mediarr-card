@@ -86,3 +86,13 @@ cover type detection, year/synopsis normalization, delayed-response races,
 metadata caching and missing configuration. Backend tests run separately in
 `BMWfan/mediarr_sensor` with HA installed; no production TMDB credential is
 needed or recorded in these tests.
+
+The catalog suite mocks authenticated catalog/search replies and request services,
+including typed-ID matching, pagination, late replies, explicit backend errors,
+independent scroll areas in every category and compact/full-page configuration.
+The full-library suite uses more than 100 synthetic Plex records, watched items,
+manager queues and regional streaming offers. It verifies complete catalog paging,
+bounded DOM rendering and progress updates on both large and compact posters.
+Production Plex/Radarr/Sonarr connectivity and personal TMDB account authorization
+are outside these browser tests. Backend tests exercise source transports with
+fixtures; real-HA command-registration/authentication is also smoke-tested locally.

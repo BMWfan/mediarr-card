@@ -2,6 +2,50 @@
 
 A visual overview card for Home Assistant that combines media servers, media managers, and discovery/request sources in one Lovelace card.
 
+## Complete media page (0.5.0 + Mediarr integration 0.7.0)
+
+Keep `view: compact` for the dashboard overview and its fullscreen opening button.
+Choose **Full-page media library** in the card editor, or use `view: library` on
+a Home Assistant **panel** view to fill the available dashboard content area:
+
+```yaml
+views:
+  - title: Medien
+    path: medien
+    panel: true
+    cards:
+      - type: custom:mediarr-card
+        view: library
+        streaming_region: DE
+```
+
+The backend needs Plex configured in Mediarr (manual credentials or its supported
+Home Assistant Plex connection). The full library reads all movie/show sections,
+not just recently-added sensors. **Meine Bibliothek** includes watched titles;
+**Vorhang auf** focuses on available, unwatched titles. Radarr/Sonarr configuration
+provides complete managed lists and queue progress, refreshed about once a minute
+while the large view is open. Partial/unavailable sources are explicitly labelled.
+Large catalogs are loaded in API pages and displayed in batches of 60 rows.
+
+Search combines local matches with new TMDB titles after two characters. It needs
+the existing TMDB credential in the integration. New titles use Mediarr's Seerr
+request services, which route to the configured Radarr/Sonarr servers. No direct
+Radarr/Sonarr request button is advertised when Seerr services are unavailable.
+Requests from catalog results carry the exact selected TMDB ID.
+
+Suggestions continue to come from the configured discovery integrations.
+Mediarr does not implement a second recommendation engine or imitate Netflix.
+Immaculaterr is optional and can be excluded using the data-source selection.
+Plex watch state belongs to the account of the configured Plex token, not
+necessarily to each individual Home Assistant user.
+
+Details show streaming offers for `streaming_region` (default `DE`), separating
+subscriptions from rentals and purchases. Availability data comes from
+JustWatch via TMDB and may change; links allow checking the current offer.
+This feature does not connect personal Netflix/Prime accounts or import histories.
+Netflix/Prime exports, TMDB account authorization and preference-feedback storage
+are not implemented in this release.
+
 ## Fork Notes
 
 This fork includes significant UX and maintenance updates compared to the upstream baseline.
