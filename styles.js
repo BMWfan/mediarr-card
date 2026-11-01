@@ -1113,4 +1113,7 @@ export const styles = `
   .compact-empty { color: var(--secondary-text-color, #aab8cc); font-size: .83rem; white-space: normal; grid-column: 1 / -1; min-width: 200px; margin: 0; padding: 8px 0; }
   .compact-media .mediarr-open-button { margin: 14px 0 0 auto; padding: 9px 12px; font-size: .9rem; }
   .compact-poster:focus-visible, .compact-watchlist-link:focus-visible { outline: 2px solid var(--primary-color, #2bc9f3); outline-offset: 2px; }
+  .library-detail-body .library-metadata-status { color: #b9ccdf; font-size: .85rem; }
+  .library-metadata-status:empty { display: none; }
+  .library-metadata-retry { border: 1px solid #34465a; border-radius: 6px; color: #6cdcff; background: transparent; padding: 7px 10px; margin-bottom: 16px; cursor: pointer; }
 `;

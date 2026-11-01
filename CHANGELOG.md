@@ -2,6 +2,16 @@
 
 All notable changes to this fork are documented in this file.
 
+## 0.4.1 (2026-11-01)
+
+- Correct legacy Plex/Jellyfin TV detection from episode numbers, movie years
+  and descriptions, Sonarr episode-title suffixes and Jellyfin field casing.
+- Preserve unknown media types; infer a missing type only from unambiguous ID
+  evidence. Unknown titles cannot accidentally submit movie requests.
+- Load complete selected-title metadata via the authenticated Mediarr backend,
+  with caching, race protection and explicit missing-backend/TMDB errors.
+  Requires the paired mediarr_sensor backend update for cast/credits loading.
+
 ## 0.4.0 (2026-10-31)
 
 - Default compact dashboard with recently added/discovery posters, a watchlist

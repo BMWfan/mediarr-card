@@ -73,7 +73,7 @@ function deriveVisibleSections(config) {
 }
 
 
-const MEDIARR_BUILD = '20261031-unified-library';
+const MEDIARR_BUILD = '20261101-metadata';
 console.log(`[mediarr-card] build ${MEDIARR_BUILD} loaded`);
 
 class MediarrCard extends HTMLElement {
@@ -130,6 +130,8 @@ class MediarrCard extends HTMLElement {
     expanded._isExpandedView = true;
     expanded._initialLibrarySelection = selection;
     expanded._pendingLibraryRequests = this._pendingLibraryRequests ||= new Set();
+    expanded._mediaMetadataCache = this._mediaMetadataCache ||= new Map();
+    expanded._metadataBackendState = this._metadataBackendState ||= {unsupported:false};
     expanded.setConfig({ ...this.config });
     content.append(expanded);
     dialog.append(header, content);

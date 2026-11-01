@@ -49,8 +49,23 @@ is used only without conflicting IDs. Films and series remain separate. Data
 sources are available in an unobtrusive disclosure in the detail view.
 
 The detail view includes a fading backdrop, overlapping poster/title,
-synopsis, metadata and cast portraits when provided. Missing photos use initials.
-Missing descriptions and unavailable actions are explicitly indicated.
+synopsis, metadata and cast portraits when provided. Legacy Plex/Jellyfin
+payloads are normalized: `number: S01E03` denotes TV, a four-digit movie
+`number` supplies the year, and a movie's legacy `episode` field supplies the
+short synopsis. A series episode title is not treated as its full synopsis.
+Ambiguous media types stay unknown rather than being silently treated as movies.
+
+When the selected title lacks complete metadata, the card requests
+`mediarr/media_details` through the authenticated Home Assistant WebSocket.
+This requires `BMWfan/mediarr_sensor` v0.6.2 or newer; v0.6.1 does not
+provide that command. The backend uses the TMDB credential already configured
+in Mediarr and returns only public title metadata. Do not enter TMDB keys in
+card YAML or frontend URLs. Missing backend support/configuration and failures
+are explicitly shown with a retry action. Results are cached per language and
+title and cannot overwrite a different selection when a slow request finishes.
+For automatic cast loading, update the sensor integration to v0.6.2 and restart
+Home Assistant, then update this card to v0.4.1 and reload the frontend. The
+backend must have a valid TMDB credential configured.
 
 Search filters titles, years and descriptions from your currently loaded
 Mediarr sensor lists. It is not a global movie-catalog search. The watchlist
