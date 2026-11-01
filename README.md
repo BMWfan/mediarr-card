@@ -1,3 +1,5 @@
+<p align="center"><img src="brand/icon.png" width="72" height="72" alt="Mediarr clapperboard icon"></p>
+
 # Mediarr Card for Home Assistant
 
 A visual overview card for Home Assistant that combines media servers, media managers, and discovery/request sources in one Lovelace card.
