@@ -73,7 +73,7 @@ function deriveVisibleSections(config) {
 }
 
 
-const MEDIARR_BUILD = '20261102-config';
+const MEDIARR_BUILD = '0.5.1-dev.1';
 console.log(`[mediarr-card] build ${MEDIARR_BUILD} loaded`);
 
 class MediarrCard extends HTMLElement {
@@ -345,7 +345,7 @@ class MediarrCard extends HTMLElement {
       return;
     }
     const preferredSections = deriveVisibleSections(this.config);
-    const orderedSections = preferredSections.filter((sectionKey) =>
+    const orderedSections = (this._isExpandedView || this.config.view === 'library') ? [] : preferredSections.filter((sectionKey) =>
       hasSectionEntities(this.config, sectionKey)
     );
   
@@ -539,6 +539,13 @@ class MediarrCard extends HTMLElement {
     if (this._compactView) {
       this._compactView.refresh();
       if (this._overlay) this._overlay.expanded.hass = hass;
+      return;
+    }
+
+    // The unified library owns its rendering. Legacy provider renderers assume
+    // legacy-only lists and payload formats and must not run in this view.
+    if (this._libraryView) {
+      this._libraryView.refresh();
       return;
     }
 
@@ -914,6 +921,7 @@ class MediarrCardEditor extends HTMLElement {
         .global-field input, .global-field select { width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid var(--divider-color); border-radius: 6px; background: var(--card-background-color); color: var(--primary-text-color); }
       </style>
       <div class="editor-root">
+        <div class="editor-subtitle">Mediarr · Build ${MEDIARR_BUILD}</div>
         <div class="editor-card">
           <div class="editor-title">Data Sources</div>
           <div class="editor-subtitle">Only active Mediarr sensors are shown here.</div>

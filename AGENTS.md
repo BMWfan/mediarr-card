@@ -1,5 +1,15 @@
 # Development environment
 
+## Release policy
+
+- Publish a HACS-installable developer prerelease from the working branch before
+  any stable release or merge to main. Use a version such as `0.5.1-dev.1`, set
+  GitHub `prerelease: true` and `make_latest: false`, and verify the tagged bundle.
+- Wait for the user's explicit approval after testing that developer version
+  before merging to main. Earlier general merge/deployment authorization does
+  not override this requirement. Do not modify existing stable tags/releases.
+- Apply this sequence to paired sensor-integration changes as well.
+
 Use the existing checkout; cloud tasks are isolated already. Do not create a Git
 worktree unless the user explicitly requests one. See `dev/README.md` for the
 local Home Assistant environment, requirements, overrides and test scope.

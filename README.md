@@ -21,9 +21,14 @@ views:
         streaming_region: DE
 ```
 
-Since 0.5.1, a card with only `type: custom:mediarr-card` defaults to the library
+Since 0.5.1-dev.1, a card with only `type: custom:mediarr-card` defaults to the library
 when no sensor entities are configured. On 0.5.0, explicitly include
 `view: library`; omitting it without sensors causes a configuration error.
+
+Developer versions are GitHub prereleases and can be selected in HACS after
+enabling beta/prerelease versions for this repository. The card editor shows
+the loaded build so a stale frontend resource can be identified. Main/stable
+updates require the user's explicit approval after testing a developer version.
 
 The backend needs Plex configured in Mediarr (manual credentials or its supported
 Home Assistant Plex connection). The full library reads all movie/show sections,

@@ -2,7 +2,10 @@
 
 All notable changes to this fork are documented in this file.
 
-## 0.5.1 (2026-11-02)
+## 0.5.1-dev.1 (2026-11-02)
+
+- Keep library/overlay rendering independent of legacy provider initialization
+  and updates, so malformed or legacy-only sensor fields cannot abort the library.
 
 - Fix the configuration error when adding a card without individual sensor
   entities. A minimal `type: custom:mediarr-card` now opens the backend library;
