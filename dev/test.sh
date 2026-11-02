@@ -8,3 +8,5 @@ node --test "$DEV_DIR/../tests/media-library.test.mjs" "$DEV_DIR/../tests/media-
 node "$DEV_DIR/../tests/e2e/mediarr.mjs"
 node "$DEV_DIR/../tests/e2e/library.mjs"
 node "$DEV_DIR/../tests/e2e/metadata.mjs"
+node "$DEV_DIR/../tests/e2e/catalog.mjs"
+node "$DEV_DIR/../tests/e2e/full-library.mjs"

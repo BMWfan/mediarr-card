@@ -1,4 +1,4 @@
-import { fetchMediaMetadata } from './media-metadata.js';
+import { fetchMediaMetadata, searchMediaCatalog, fetchMediaLibrary } from './media-metadata.js';
 // A source-independent view of the configured Mediarr sensors.
 export function mediaText(value) {
   return typeof value === 'string' ? value.trim() : typeof value === 'number' && Number.isFinite(value) ? String(value) : '';
@@ -189,9 +189,37 @@ export function collectMediaLibrary(config, hass) {
   return groups;
 }
 
-export function mediaEntriesForCard(card) {
-  const entries = collectMediaLibrary(card.config, card._hass);
-  const language = card._hass?.language || 'en';
+export function mergeCatalogEntries(local, results) {
+  const entries=local.slice();
+  for (const item of results) {
+    const existing=entries.find(entry=>entry.kind===item.media_type && String(entry.ids.tmdb)===String(item.tmdb_id));
+    if (existing) continue; // Local availability and requests always take precedence.
+    const entry=collectMediaLibrary({tmdb_entity:'catalog'},{states:{catalog:{state:'1',attributes:{data:[item]}}}})[0];
+    if (entry) {entry.catalog=true;entries.push(entry);}
+  }
+  return entries;
+}
+
+function metadataNamespace(card) {
+  const region=card.config.streaming_region || 'DE';
+  return (card._hass?.language || 'en')+(region==='DE'?'':`:${region}`);
+}
+
+export function mediaEntriesForCard(card, catalog = []) {
+  const remembered=card._catalogRequests ||= new Map();
+  const config={...card.config};
+  const states={...card._hass?.states};
+  if(card._fullLibraryState?.groups) {
+    for(const key of Object.keys(config)) if(key.endsWith('_entity') && config.visible_sections?.length && !config.visible_sections.includes(key.split('_')[0]))delete config[key];
+    config.visible_sections=[];
+    for(const [provider,items] of Object.entries(card._fullLibraryState.groups)) {
+      const id=`sensor.mediarr_full_${provider}`;
+      config[`${provider}_full_entity`]=id;
+      states[id]={state:'1',attributes:{data:items}};
+    }
+  }
+  const entries = mergeCatalogEntries(collectMediaLibrary(Object.fromEntries(Object.entries(config).sort(([a],[b])=>Number(b.includes('_full_entity'))-Number(a.includes('_full_entity')))),{states}), [...remembered.values(),...catalog]);
+  const language = metadataNamespace(card);
   for (const entry of entries) {
     const cached = card._mediaMetadataCache?.get(`${language}:${entry.key}`);
     if (!cached || Date.now() - cached.timestamp > 6 * 60 * 60 * 1000) continue;
@@ -217,6 +245,21 @@ export function mediaEntriesForCard(card) {
   return entries;
 }
 
+export function mediaDownload(entry) {
+  const ref=entry.refs.find(ref=>ref.item.download_status || typeof ref.item.download_progress==='number');
+  if(!ref)return null;
+  const raw=ref.item.download_progress;
+  return {status:ref.item.download_status || 'downloading',progress:typeof raw==='number'&&Number.isFinite(raw)?Math.max(0,Math.min(100,Math.round(raw))):null};
+}
+
+function downloadBadge(entry, label) {
+  const download=mediaDownload(entry);
+  if(!download)return '';
+  const text=({paused:label('Pausiert','Paused'),queued:label('Warteschlange','Queued'),importing:label('Importiert','Importing'),completed:label('Wird verarbeitet','Processing'),warning:label('Prüfung nötig','Needs attention')})[download.status] || label('Lädt herunter','Downloading');
+  const caption=`${text}${download.progress!==null?` · ${download.progress} %`:''}`;
+  return `<span class="media-download-badge" aria-label="${escapeMediaHtml(caption)}"><span>${escapeMediaHtml(caption)}</span>${download.progress!==null?`<span class="media-download-track" role="progressbar" aria-label="${escapeMediaHtml(text)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${download.progress}"><span style="width:${download.progress}%"></span></span>`:''}</span>`;
+}
+
 export class CompactMediaView {
   constructor(card) { this.card = card; }
   label(de, en) { return this.card._mediaLabel(de, en); }
@@ -238,7 +281,7 @@ export class CompactMediaView {
 
   refresh() {
     const entries = mediaEntriesForCard(this.card).filter(entry => entry.watched !== true);
-    const signature = JSON.stringify([this.card._hass?.language,this.card.config.compact_items,entries.map(entry=>[entry.key,entry.stage,entry.title,entry.poster,entry.kind,entry.item.added,entry.item.added_at])]);
+    const signature = JSON.stringify([this.card._hass?.language,this.card.config.compact_items,entries.map(entry=>[entry.key,entry.stage,entry.title,entry.poster,entry.kind,entry.item.added,entry.item.added_at,mediaDownload(entry)])]);
     if (signature === this.signature) return;
     this.signature = signature;
     const esc = escapeMediaHtml;
@@ -249,12 +292,12 @@ export class CompactMediaView {
     this.panel.querySelector('.compact-subtitle').textContent = this.label('Dein Filmabend','Your movie night');
     this.panel.querySelector('h3').textContent = recent.length ? this.label('Neu hinzugefügt','Recently added') : this.label('Dein nächster Filmabend','Your next movie night');
     this.panel.querySelector('.compact-watchlist-link').textContent = this.label('Auf deiner Merkliste','On your watchlist') + ` · ${waiting.length} ${this.label('Titel','titles')} ›`;
-    this.panel.querySelector('.mediarr-open-button').textContent = this.label('Mediarr öffnen ↗','Open Mediarr ↗');
+    this.panel.querySelector('.mediarr-open-button').innerHTML = `<span class="mediarr-open-icon"><ha-icon icon="mdi:movie-open-outline" aria-hidden="true"></ha-icon></span><span class="mediarr-open-copy"><strong>${this.label('Dein Filmabend','Your movie night')}</strong><span>${this.label('Entdecken, suchen und vormerken','Discover, search and save')}</span></span><ha-icon class="mediarr-open-arrow" icon="mdi:arrow-right" aria-hidden="true"></ha-icon>`;
     const renderRow = (selector, items, small = false) => {
       const row = this.panel.querySelector(selector);
       if (!small) row.style.gridAutoColumns = `minmax(64px, calc((100% - ${(limit - 1) * 10}px) / ${limit}))`;
       const focusedKey = row.querySelector('button:focus')?.dataset.key;
-      row.innerHTML = items.length ? items.slice(0,small?8:limit).map(entry=>`<button type="button" class="compact-poster" data-key="${esc(entry.key)}" aria-label="${esc(entry.title)}" aria-haspopup="dialog"><span class="compact-poster-art">${entry.poster?`<img src="${esc(entry.poster)}" alt="" loading="lazy">`:'<ha-icon icon="mdi:movie-open-outline"></ha-icon>'}${!small?`<span class="compact-kind">${esc(entry.kind==='tv'?this.label('Serie','Series'):entry.kind==='movie'?this.label('Film','Movie'):this.label('Medientyp unbekannt','Unknown media type'))}</span>`:''}</span>${!small?`<span class="compact-poster-title">${esc(entry.title)}</span>`:''}</button>`).join('') : `<p class="compact-empty">${esc(small?this.label('Noch keine Titel auf deiner Merkliste.','No titles on your watchlist yet.'):this.label('Noch keine Titel verfügbar.','No titles available yet.'))}</p>`;
+      row.innerHTML = items.length ? items.slice(0,small?8:limit).map(entry=>`<button type="button" class="compact-poster" data-key="${esc(entry.key)}" aria-label="${esc(entry.title)}" aria-haspopup="dialog"><span class="compact-poster-art">${downloadBadge(entry,this.label.bind(this))}${entry.poster?`<img src="${esc(entry.poster)}" alt="" loading="lazy">`:'<ha-icon icon="mdi:movie-open-outline"></ha-icon>'}${!small?`<span class="compact-kind">${esc(entry.kind==='tv'?this.label('Serie','Series'):entry.kind==='movie'?this.label('Film','Movie'):this.label('Medientyp unbekannt','Unknown media type'))}</span>`:''}</span>${!small?`<span class="compact-poster-title">${esc(entry.title)}</span>`:''}</button>`).join('') : `<p class="compact-empty">${esc(small?this.label('Noch keine Titel auf deiner Merkliste.','No titles on your watchlist yet.'):this.label('Noch keine Titel verfügbar.','No titles available yet.'))}</p>`;
       row.querySelectorAll('button').forEach(button => button.onclick = () => {
         const entry = entries.find(candidate=>candidate.key===button.dataset.key);
         this.card._overlayOpener = button;
@@ -280,11 +323,17 @@ export class MediaLibraryView {
     this.metadataErrors = new Map();
     this.card._mediaMetadataCache ||= new Map();
     this.card._metadataBackendState ||= {unsupported:false};
+    this.catalog=[];
+    this.searchVersion=0;
+    this.searchPage=0;
+    this.totalPages=0;
+    this.localLimit=60;
+    this.card._fullLibraryState ||= {groups:null,loaded:false};
   }
 
   label(de,en) { return this.card._mediaLabel(de,en); }
   stageLabel(stage) {
-    return ({all:this.label('Alle Titel','All titles'), discover:this.label('Dein nächster Filmabend','Your next movie night'),waiting:this.label('Deine Merkliste','Your watchlist'),ready:this.label('Vorhang auf','Ready to watch')})[stage];
+    return ({all:this.label('Alle Titel','All titles'),library:this.label('Meine Bibliothek','My library'),discover:this.label('Dein nächster Filmabend','Your next movie night'),waiting:this.label('Deine Merkliste','Your watchlist'),ready:this.label('Vorhang auf','Ready to watch')})[stage];
   }
 
   mount() {
@@ -299,22 +348,97 @@ export class MediaLibraryView {
     this.input = shell.querySelector('input');
     this.results = shell.querySelector('.library-results');
     this.focus = shell.querySelector('.library-focus');
-    this.input.oninput = () => this.render();
+    this.results.tabIndex = 0;
+    this.results.setAttribute('role', 'region');
+    this.results.setAttribute('aria-label', this.label('Titelliste', 'Title list'));
+    this.focus.tabIndex = 0;
+    this.focus.setAttribute('role', 'region');
+    this.focus.setAttribute('aria-label', this.label('Filmdetails und Besetzung', 'Media details and cast'));
+    this.input.maxLength=128;
+    this.input.placeholder=this.label('Filme und Serien suchen …','Search movies and series …');
+    this.searchStatus=document.createElement('p');
+    this.searchStatus.className='library-catalog-status';
+    this.searchStatus.setAttribute('role','status');
+    this.moreButton=document.createElement('button');
+    this.moreButton.type='button';
+    this.moreButton.className='library-load-more';
+    this.moreButton.textContent=this.label('Weitere Treffer','More results');
+    this.moreButton.onclick=()=>this.searchCatalog(this.searchPage+1);
+    shell.querySelector('.library-workspace').before(this.searchStatus);
+    shell.append(this.moreButton);
+    this.input.oninput = () => this.scheduleSearch();
     this.refresh();
+    this.loadLibrary();
+    this.libraryTimer=setInterval(()=>{if(document.visibilityState==='visible'&&this.card.isConnected)this.loadLibrary(true);},60000);
   }
 
   refresh() {
-    this.entries = mediaEntriesForCard(this.card);
+    this.entries = mediaEntriesForCard(this.card,this.catalog);
     this.render();
+  }
+
+  async loadLibrary(refresh=false) {
+    const state=this.card._fullLibraryState;
+    if(state.loading || (state.loaded&&!refresh))return;
+    state.loading=true;state.error=null;this.render();
+    try {
+      const groups={plex:[],radarr:[],sonarr:[]};
+      let page=1,response;
+      do {
+        response=await fetchMediaLibrary(this.card._hass,{page,refresh:refresh&&page===1});
+        if(!response?.groups || !Number.isInteger(response.total_pages) || response.total_pages<1 || response.total_pages>10000)throw {code:'library_unavailable'};
+        for(const provider of Object.keys(groups))groups[provider].push(...(response.groups[provider]||[]));
+        page++;
+      } while(page<=response.total_pages && this.card.isConnected);
+      if(!this.card.isConnected)return;
+      state.groups=groups;state.loaded=true;state.complete=response.complete;
+      if(!response.complete)state.error='library_incomplete';
+      state.updated=Date.now();
+    } catch(error) {state.error=error?.code || 'library_unavailable';}
+    finally {
+      state.loading=false;
+      if(this.card.isConnected)this.refresh();
+    }
+  }
+
+  destroy() {clearTimeout(this.searchTimer);clearInterval(this.libraryTimer);++this.searchVersion;}
+
+  scheduleSearch() {
+    clearTimeout(this.searchTimer);
+    ++this.searchVersion;
+    this.catalog=[];this.searchPage=0;this.totalPages=0;this.searchError=null;
+    this.localLimit=60;
+    this.searching=this.input.value.trim().length>=2;
+    this.refresh();
+    if(this.searching) this.searchTimer=setTimeout(()=>this.searchCatalog(1),350);
+  }
+
+  async searchCatalog(page=1) {
+    if(!this.card.isConnected)return;
+    const query=this.input.value.trim();
+    if(query.length<2)return;
+    const version=this.searchVersion;
+    this.searching=true;this.searchError=null;this.render();
+    try {
+      const response=await searchMediaCatalog(this.card._hass,query,this.card._hass?.language,page);
+      if(version!==this.searchVersion || !this.card.isConnected)return;
+      this.catalog=page===1?response.results:[...this.catalog,...response.results];
+      this.searchPage=response.page;this.totalPages=response.total_pages;
+    } catch(error) {
+      if(version!==this.searchVersion || !this.card.isConnected)return;
+      this.searchError=error?.code || 'metadata_unavailable';
+    } finally {
+      if(version===this.searchVersion && this.card.isConnected){this.searching=false;this.refresh();}
+    }
   }
 
   status(entry) {
     if (entry.stage === 'ready') return entry.watched === false ? this.label('Bereit · Noch nicht angesehen','Ready · Unwatched') : this.label('In deiner Bibliothek','In your library');
     if (entry.optimistic) return this.label('Angefragt · Status wird aktualisiert','Requested · Awaiting status');
-    const downloading = entry.refs.find(ref => ref.item.download_status === 'downloading' || typeof ref.item.download_progress === 'number');
+    const downloading = mediaDownload(entry);
     if (downloading) {
-      const progress = downloading.item.download_progress;
-      return this.label('Download läuft','Downloading') + (typeof progress === 'number' && progress >= 0 && progress <= 100 ? ` · ${Math.round(progress)} %` : '');
+      const caption=({paused:this.label('Pausiert','Paused'),queued:this.label('Warteschlange','Queued'),importing:this.label('Wird importiert','Importing'),warning:this.label('Download prüfen','Check download'),completed:this.label('Wird verarbeitet','Processing')})[downloading.status] || this.label('Download läuft','Downloading');
+      return caption+(downloading.progress!==null?` · ${downloading.progress} %`:'');
     }
     const releases = entry.refs.map(ref => mediaText(ref.item.release_date || ref.item.digital_release || ref.item.digitalRelease || ref.item.release)).filter(value => /^\d{4}-\d{2}-\d{2}/.test(value));
     const future = releases.map(value => new Date(value)).filter(date => Number.isFinite(date.valueOf()) && date > new Date()).sort((a,b)=>a-b)[0];
@@ -326,16 +450,28 @@ export class MediaLibraryView {
   render() {
     const esc = escapeMediaHtml;
     const query = this.input.value.trim().toLocaleLowerCase();
-    const visible = this.entries.filter(entry => entry.watched !== true &&
-      (query ? `${entry.title} ${entry.year} ${entry.summary}`.toLocaleLowerCase().includes(query) : this.category === 'all' || entry.stage === this.category));
+    const matchesCatalog=entry=>this.catalog.some(item=>item.media_type===entry.kind && String(item.tmdb_id)===String(entry.ids.tmdb));
+    const visible = this.entries.filter(entry => (query || this.category==='library' || entry.watched !== true) &&
+      (query ? matchesCatalog(entry) || `${entry.title} ${entry.year} ${entry.summary}`.toLocaleLowerCase().includes(query) : this.category==='library'?entry.stage==='ready':this.category === 'all' || entry.stage === this.category));
     const tabs = this.shell.querySelector('.library-tabs');
     const focusedTab = tabs.querySelector('button:focus')?.dataset.category;
-    tabs.innerHTML = ['all','discover','waiting','ready'].map(stage => `<button type="button" data-category="${stage}" aria-pressed="${this.category===stage}">${esc(this.stageLabel(stage))}</button>`).join('');
-    tabs.querySelectorAll('button').forEach(button => button.onclick = () => { this.category=button.dataset.category; this.input.value=''; this.render(); });
+    tabs.innerHTML = ['all','library','discover','waiting','ready'].map(stage => `<button type="button" data-category="${stage}" aria-pressed="${this.category===stage}">${esc(this.stageLabel(stage))}</button>`).join('');
+    tabs.querySelectorAll('button').forEach(button => button.onclick = () => { this.category=button.dataset.category; this.input.value=''; this.scheduleSearch(); });
+    const reload=document.createElement('button');reload.type='button';reload.className='library-refresh';reload.textContent=this.label('Aktualisieren','Refresh');reload.disabled=this.card._fullLibraryState.loading;reload.onclick=()=>{this.loadLibrary(true);};tabs.append(reload);
     if (focusedTab) [...tabs.querySelectorAll('button')].find(button => button.dataset.category === focusedTab)?.focus({preventScroll:true});
-    this.shell.querySelector('[role=status]').textContent = `${visible.length} ${this.label('Titel','titles')}` + (query ? ` · ${this.label('Suche in deinen Mediarr-Listen','Search in your Mediarr lists')}` : '');
+    this.shell.querySelector('.mediarr-search-status').textContent = `${visible.length} ${this.label('Titel','titles')}`;
+    this.searchStatus.textContent=!query?'':this.searching?this.label('TMDB wird durchsucht …','Searching TMDB …'):this.searchError==='unknown_command'?this.label('Globale Suche benötigt die aktualisierte Mediarr-Integration. Lokale Treffer werden angezeigt.','Global search requires the updated Mediarr integration. Showing local matches.'):this.searchError==='tmdb_not_configured'?this.label('Für die globale Suche den TMDB-Zugang in Mediarr einrichten.','Configure TMDB in Mediarr for global search.'):this.searchError?this.label('Katalogsuche nicht erreichbar. Lokale Treffer werden angezeigt.','Catalog search unavailable. Showing local matches.'):query.length<2?this.label('Ab zwei Zeichen auch neue Titel finden.','Type at least two characters to discover new titles.'):this.searchPage?this.label('Lokale Titel und TMDB-Treffer','Local titles and TMDB results'):'';
+    this.searchStatus.hidden=!this.searchStatus.textContent;
+    if(!query) {
+      const state=this.card._fullLibraryState;
+      this.searchStatus.textContent=state.loading?this.label('Vollständige Bibliothek wird geladen …','Loading complete library …'):state.error==='unknown_command'?this.label('Vollständige Bibliothek benötigt die aktualisierte Mediarr-Integration. Sensor-Ausschnitte werden angezeigt.','Complete library requires the updated Mediarr integration. Showing sensor excerpts.'):state.error?this.label('Bibliothek nicht vollständig erreichbar. Angezeigte Daten können unvollständig sein.','Library not fully reachable. Displayed data may be incomplete.'):'';
+      this.searchStatus.hidden=!this.searchStatus.textContent;
+    }
+    this.moreButton.hidden=visible.length<=this.localLimit && (!query || this.searchPage>=this.totalPages);
+    this.moreButton.onclick=()=>{if(visible.length>this.localLimit){this.localLimit+=60;this.render();}else this.searchCatalog(this.searchPage+1);};
+    this.moreButton.disabled=this.searching;
     if (!visible.some(entry => entry.key === this.selectedKey)) this.selectedKey = visible[0]?.key;
-    this.results.innerHTML = visible.length ? visible.map(entry => `<button type="button" class="media-item library-result ${entry.key===this.selectedKey?'selected':''}" data-key="${esc(entry.key)}" aria-pressed="${entry.key===this.selectedKey}"><span class="library-result-poster">${entry.poster?`<img src="${esc(entry.poster)}" alt="" loading="lazy">`:'<ha-icon icon="mdi:movie-open-outline"></ha-icon>'}</span><span class="media-item-title">${esc(entry.title)}</span><span class="library-result-meta">${esc([entry.year,entry.kind==='tv'?this.label('Serie','Series'):entry.kind==='movie'?this.label('Film','Movie'):this.label('Medientyp unbekannt','Unknown media type'),entry.rating?`★ ${entry.rating}`:''].filter(Boolean).join(' · '))}</span><span class="mediarr-result-summary">${esc(entry.summary)}</span><span class="library-status library-status-${entry.stage}">${esc(this.status(entry))}</span></button>`).join('') : `<p class="library-empty">${esc(query?this.label('Keine passenden Titel gefunden.','No matching titles found.'):this.label('Hier sind noch keine Titel vorhanden.','No titles here yet.'))}</p>`;
+    this.results.innerHTML = visible.length ? visible.slice(0,this.localLimit).map(entry => `<button type="button" class="media-item library-result ${entry.key===this.selectedKey?'selected':''}" data-key="${esc(entry.key)}" aria-pressed="${entry.key===this.selectedKey}"><span class="library-result-poster">${downloadBadge(entry,this.label.bind(this))}${entry.poster?`<img src="${esc(entry.poster)}" alt="" loading="lazy">`:'<ha-icon icon="mdi:movie-open-outline"></ha-icon>'}</span><span class="media-item-title">${esc(entry.title)}</span><span class="library-result-meta">${esc([entry.year,entry.kind==='tv'?this.label('Serie','Series'):entry.kind==='movie'?this.label('Film','Movie'):this.label('Medientyp unbekannt','Unknown media type'),entry.rating?`★ ${entry.rating}`:''].filter(Boolean).join(' · '))}</span><span class="mediarr-result-summary">${esc(entry.summary)}</span><span class="library-status library-status-${entry.stage}">${esc(this.status(entry))}</span></button>`).join('') : `<p class="library-empty">${esc(query?this.label('Keine passenden Titel gefunden.','No matching titles found.'):this.label('Hier sind noch keine Titel vorhanden.','No titles here yet.'))}</p>`;
     this.results.querySelectorAll('button').forEach(button => button.onclick = () => {
       const hadFocus = button.matches(':focus');
       this.selectedKey=button.dataset.key;
@@ -349,7 +485,7 @@ export class MediaLibraryView {
 
   async loadMetadata(entry, retry = false) {
     const language=this.card._hass?.language || 'en';
-    const key=`${language}:${entry.key}`;
+    const key=`${metadataNamespace(this.card)}:${entry.key}`;
     const cached=this.card._mediaMetadataCache.get(key);
     if (this.metadataPending.has(key)) return;
     if (!retry && (this.metadataErrors.has(key) || this.card._metadataBackendState.unsupported || (cached && Date.now()-cached.timestamp<6*60*60*1000))) return;
@@ -357,7 +493,7 @@ export class MediaLibraryView {
     this.metadataErrors.delete(key);
     if (retry) this.card._metadataBackendState.unsupported=false;
     try {
-      const data=await fetchMediaMetadata(this.card._hass,entry,language);
+      const data=await fetchMediaMetadata(this.card._hass,entry,language,this.card.config.streaming_region || 'DE');
       this.card._mediaMetadataCache.set(key,{timestamp:Date.now(),data});
       while(this.card._mediaMetadataCache.size>200) this.card._mediaMetadataCache.delete(this.card._mediaMetadataCache.keys().next().value);
     } catch(error) {
@@ -370,7 +506,7 @@ export class MediaLibraryView {
   }
 
   metadataMessage(entry) {
-    const key=`${this.card._hass?.language || 'en'}:${entry.key}`;
+    const key=`${metadataNamespace(this.card)}:${entry.key}`;
     if (this.metadataPending.has(key)) return this.label('Filmdetails werden geladen …','Loading title details …');
     const code=this.metadataErrors.get(key);
     if (code==='tmdb_not_configured') return this.label('Für vollständige Details den TMDB-Zugang in der Mediarr-Integration einrichten.','Configure TMDB in the Mediarr integration for complete details.');
@@ -382,8 +518,10 @@ export class MediaLibraryView {
   }
 
   renderDetails(entry) {
+    if (this._renderedDetailKey !== entry?.key) this.focus.scrollTop = 0;
+    this._renderedDetailKey = entry?.key;
     const esc=escapeMediaHtml;
-    if (entry && (!entry.summary || !mediaCast(entry.item).length || entry.kind==='unknown')) void this.loadMetadata(entry);
+    if (entry && (!entry.summary || !mediaCast(entry.item).length || entry.kind==='unknown' || entry.item.streaming===undefined)) void this.loadMetadata(entry);
     if (!entry) { this.focus.innerHTML=`<p class="library-empty">${esc(this.label('Wähle einen Titel aus.','Choose a title.'))}</p>`; return; }
     const item=entry.item;
     const genres=mediaNames(item.genres || item.genre).join(', ');
@@ -398,6 +536,8 @@ export class MediaLibraryView {
     }).join('');
     const castText=castMarkup?'':mediaNames(item.cast || item.actors).join(', ');
     const directors=mediaNames(item.director || item.directors).join(', ');
+    const offers=item.streaming;
+    const streaming=offers?`<section class="library-streaming"><h2>${esc(this.label('Streaming','Streaming'))} · ${esc(offers.region)}</h2>${[['subscription',this.label('Im Abo','Subscription')],['rent',this.label('Leihen','Rent')],['buy',this.label('Kaufen','Buy')]].map(([key,title])=>offers[key]?.length?`<p><strong>${esc(title)}</strong> ${offers[key].map(provider=>`<span class="streaming-provider">${esc(provider.name)}</span>`).join(' ')}</p>`:'').join('')}${!['subscription','rent','buy'].some(key=>offers[key]?.length)?`<p>${esc(this.label('Keine Anbieterangaben für dieses Land verfügbar.','No provider information available for this country.'))}</p>`:''}<small>${offers.link&&/^https:\/\/www\.themoviedb\.org\//.test(offers.link)?`<a href="${esc(offers.link)}" target="_blank" rel="noopener noreferrer">${esc(this.label('Verfügbarkeit prüfen','Check availability'))}</a> · `:''}JustWatch / TMDB</small></section>`:'';
     const actionable=this.requestService(entry);
     const busy=this.busy.has(entry.key);
     const playable = entry.refs.find(ref=>ref.provider==='plex' && ref.item.key && this.card.config.plex_url && this.card.config.plex_token);
@@ -409,7 +549,7 @@ export class MediaLibraryView {
         <div class="library-hero">
           <div class="library-backdrop"></div>
           <div class="library-title-row">
-            <div class="library-poster">${entry.poster ? `<img src="${esc(entry.poster)}" alt="${esc(entry.title)}">` : '<ha-icon icon="mdi:movie-open-outline"></ha-icon>'}</div>
+            <div class="library-poster">${downloadBadge(entry,this.label.bind(this))}${entry.poster ? `<img src="${esc(entry.poster)}" alt="${esc(entry.title)}">` : '<ha-icon icon="mdi:movie-open-outline"></ha-icon>'}</div>
             <div class="library-heading">
               <h1>${esc(entry.title)}</h1>
               <p class="library-metadata">${esc(metadata)}</p>
@@ -422,8 +562,9 @@ export class MediaLibraryView {
         <div class="library-detail-body">
           <h2>${esc(this.label('Handlung', 'Synopsis'))}</h2>
           <p class="library-metadata-status" role="status">${esc(this.metadataMessage(entry))}</p>
-          ${this.metadataMessage(entry) && !this.metadataPending.has(`${this.card._hass?.language || 'en'}:${entry.key}`) ? `<button type="button" class="library-metadata-retry">${esc(this.label('Details erneut laden','Retry details'))}</button>` : ''}
+          ${this.metadataMessage(entry) && !this.metadataPending.has(`${metadataNamespace(this.card)}:${entry.key}`) ? `<button type="button" class="library-metadata-retry">${esc(this.label('Details erneut laden','Retry details'))}</button>` : ''}
           <p class="media-details-synopsis">${esc(entry.summary || this.label('Für diesen Titel liegt noch keine Beschreibung vor.', 'No synopsis is available for this title yet.'))}</p>
+          ${streaming}
           ${directors ? `<p class="library-director"><strong>${esc(this.label('Regie', 'Director'))}</strong> ${esc(directors)}</p>` : ''}
           <h2>${esc(this.label('Besetzung', 'Cast'))}</h2>${castMarkup || castText ? `<div class="library-cast">${castMarkup || esc(castText)}</div>` : `<p>${esc(this.label('Für diesen Titel ist noch keine Besetzung verfügbar.', 'Cast information is not available for this title yet.'))}</p>`}
           <details class="library-sources"><summary>${esc(this.label('Datenquellen', 'Data sources'))}</summary>${esc([...new Set(entry.refs.map(ref => ref.provider))].join(', '))}</details>
@@ -455,6 +596,7 @@ export class MediaLibraryView {
     this.busy.add(entry.key);this.messages.delete(entry.key);this.render();
     try {
       let data={name:entry.title};
+      if(entry.catalog && entry.ids.tmdb) data.tmdb_id=Number(entry.ids.tmdb);
       if(service.suggestion) {
         const item=service.suggestion.item;
         data={media_type:item.media_type,library_section_key:item.library_section_key,suggestion_id:item.id,action:'approve',apply:true};
@@ -465,6 +607,7 @@ export class MediaLibraryView {
       }
       await this.card._hass.callService('mediarr',service.name,data);
       this.pending.add(entry.key);
+      if(entry.catalog) this.card._catalogRequests.set(entry.key,{...entry.item,tmdb_id:Number(entry.ids.tmdb),media_type:entry.kind});
     } catch(error) { this.messages.set(entry.key,error?.message||this.label('Hinzufügen fehlgeschlagen.','Could not add title.')); }
     finally { this.busy.delete(entry.key);this.refresh(); }
   }

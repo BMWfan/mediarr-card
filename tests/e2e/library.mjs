@@ -67,6 +67,35 @@ try {
  assert.equal(await expanded.locator('.library-request').isDisabled(),true,'missing service must not present a working request');
  await page.screenshot({path:path.join(runtime,'library-desktop.png')});
  passed.push('cinematic detail view, poster, cast and unavailable service handling');
+ // Exercise both scroll panes with enough actual sensor data to overflow.
+ await expanded.evaluate((el,id)=>{
+   el.__beforeScrollTest=el._hass;
+   const sensor=el._hass.states[id];
+   const items=sensor.attributes.data.map(item=>item.title==='Sternenreise'?{...item,overview:'Eine lange Handlung. '.repeat(180)}:item);
+   items.push(...Array.from({length:18},(_,i)=>({title:`Sterne Test ${i}`,type:'movie',tmdb_id:10000+i,overview:'Testtitel'})));
+   el.hass={...el._hass,states:{...el._hass.states,[id]:{...sensor,attributes:{...sensor.attributes,data:items}}}};
+ },config.tmdb_entity);
+ const detailPane=expanded.locator('.library-focus');
+ const listPane=expanded.locator('.library-results');
+ assert.ok(await detailPane.evaluate(el=>el.scrollHeight>el.clientHeight),'details must have a scroll viewport');
+ assert.ok(await listPane.evaluate(el=>el.scrollHeight>el.clientHeight),'list must have a separate scroll viewport');
+ await detailPane.hover();await page.mouse.wheel(0,800);
+ await page.waitForFunction(()=>document.querySelector('mediarr-overlay-host').shadowRoot.querySelector('.library-focus').scrollTop>0);
+ assert.equal(await listPane.evaluate(el=>el.scrollTop),0,'scrolling details must leave list in place');
+ const detailScroll=await detailPane.evaluate(el=>el.scrollTop);
+ await listPane.hover();await page.mouse.wheel(0,500);
+ await page.waitForFunction(()=>document.querySelector('mediarr-overlay-host').shadowRoot.querySelector('.library-results').scrollTop>0);
+ assert.equal(await detailPane.evaluate(el=>el.scrollTop),detailScroll,'scrolling list must leave details in place');
+ await detailPane.focus();await page.keyboard.press('End');
+ await expanded.locator('.library-person').last().scrollIntoViewIfNeeded();
+ const actorBounds=await expanded.locator('.library-person').last().boundingBox();
+ const paneBounds=await detailPane.boundingBox();
+ assert.ok(actorBounds.y>=paneBounds.y && actorBounds.y+actorBounds.height<=paneBounds.y+paneBounds.height+1,'cast must be reachable inside detail viewport');
+ await page.screenshot({path:path.join(runtime,'library-cast-scroll-desktop.png')});
+ passed.push('desktop list and details scroll independently with mouse and keyboard, reaching cast');
+ await expanded.evaluate(el=>{el.hass=el.__beforeScrollTest;delete el.__beforeScrollTest;});
+ await detailPane.evaluate(el=>el.scrollTop=0);
+ await listPane.evaluate(el=>el.scrollTop=0);
  const mockServices=async(fail=false)=>expanded.evaluate((el,fail)=>{
    const current=el._hass;
    el._hass={...current,services:{...current.services,mediarr:{submit_movie_request:{},submit_tv_request:{}}},callService:async(domain,service,data)=>{el.__calls??=[];el.__calls.push({domain,service,data});if(fail)throw new Error('Test backend rejected request');}};
@@ -115,6 +144,9 @@ try {
  passed.push('compact card fits a narrow mobile dashboard');
  assert.equal(await expanded.locator('.library-detail').evaluate(el=>el.scrollWidth>el.clientWidth),false);
  await expanded.locator('.library-focus').scrollIntoViewIfNeeded();
+ await expanded.locator('.library-person').last().scrollIntoViewIfNeeded();
+ const mobileCast=await expanded.locator('.library-person').last().boundingBox();
+ assert.ok(mobileCast.y>=0 && mobileCast.y+mobileCast.height<=845,`mobile page scroll must reach cast: ${JSON.stringify(mobileCast)}`);
  await page.screenshot({path:path.join(runtime,'library-mobile.png')});
  passed.push('mobile layout preserves readable details without horizontal overflow');
  await page.keyboard.press('Escape');await page.locator('mediarr-overlay-host').waitFor({state:'detached'});
