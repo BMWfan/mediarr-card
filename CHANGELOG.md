@@ -2,6 +2,13 @@
 
 All notable changes to this fork are documented in this file.
 
+## 0.5.1 (2026-11-02)
+
+- Fix the configuration error when adding a card without individual sensor
+  entities. A minimal `type: custom:mediarr-card` now opens the backend library;
+  configured sensor cards retain the compact default. Explicit compact mode
+  also accepts backend-only configuration. Legacy sections still require sensors.
+
 ## 0.5.0 (2026-11-01)
 
 - Add authenticated TMDB catalog search alongside existing-library matches,

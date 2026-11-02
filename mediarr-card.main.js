@@ -73,7 +73,7 @@ function deriveVisibleSections(config) {
 }
 
 
-const MEDIARR_BUILD = '20261101-library';
+const MEDIARR_BUILD = '20261102-config';
 console.log(`[mediarr-card] build ${MEDIARR_BUILD} loaded`);
 
 class MediarrCard extends HTMLElement {
@@ -574,13 +574,13 @@ class MediarrCard extends HTMLElement {
     const normalizedVisibleSections = deriveVisibleSections(config);
     const hasEntity = SECTION_ORDER.some((sectionKey) => hasSectionEntities(config, sectionKey));
   
-    if (!hasEntity && config.view !== 'library') {
-      throw new Error('Please define at least one media entity');
+    if (!hasEntity && config.view === 'legacy') {
+      throw new Error('Legacy view requires a media entity. Use view: library for the complete Mediarr backend library.');
     }
     
     // Set defaults for the new options
     this.config = {
-      view: 'compact',
+      view: hasEntity ? 'compact' : 'library',
       compact_items: 4,
       max_items: 10,            // Default max items if not specified
       days_to_check: 60,        // Default days to check if not specified
