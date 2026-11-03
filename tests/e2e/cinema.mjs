@@ -1,0 +1,132 @@
+import {chromium} from '../../dev/node_modules/playwright/index.mjs';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+import assert from 'node:assert/strict';
+const root=fileURLToPath(new URL('../../',import.meta.url));
+const runtime=process.env.HA_DEV_RUNTIME_DIR||path.join(root,'dev/.runtime');
+const base=`http://127.0.0.1:${process.env.HA_DEV_PORT||8124}`;
+const auth=JSON.parse(await fs.readFile(path.join(runtime,'local-auth.json'),'utf8'));
+await fs.copyFile(path.join(root,'tests/fixtures/library-artwork.svg'),path.join(runtime,'config/www/library-artwork.svg'));
+const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||undefined,args:['--no-sandbox','--disable-dev-shm-usage','--no-proxy-server']});
+const passed=[];
+try {
+ const page=await browser.newPage({viewport:{width:1536,height:1080}});
+ const errors=[];page.on('pageerror',error=>errors.push(error.message));
+ await page.addInitScript(({auth,base})=>localStorage.setItem('hassTokens',JSON.stringify({hassUrl:base,clientId:base+'/',...auth,expires:Date.now()+auth.expires_in*1000})),{auth,base});
+ await page.goto(base+'/mediarr-test/test');
+ await page.locator('mediarr-card').waitFor();
+ await page.locator('mediarr-card').evaluate(el=>el._hass.callWS({type:'lovelace/config',url_path:'mediarr-test',force:true}));
+ await page.goto(base+'/mediarr-test/cinema');
+ const source=page.locator('mediarr-card');await source.locator('.cinema-shell').waitFor();
+ await page.locator('#ha-launch-screen').waitFor({state:'detached'});
+ await source.evaluate(el=>{
+   const actual=el._hass;
+   const art='/local/library-artwork.svg';
+   const item=(title,id,extra={})=>({title,media_type:'movie',tmdb_id:id,year:2026,poster:art,banner:art+'?wide',overview:'Eine Pilotin entdeckt ein rätselhaftes Signal am Rand der Galaxie.',genres:['Science-Fiction'],cast:[{name:'Mara Winter',character:'Pilotin'}],...extra});
+   const groups={plex:[
+     item('Sternenreise',1,{watched:false,added:1800000000,library_key:'0:1',runtime:128,vote_average:8.4}),
+     item('Nordlicht',2,{watched:false,added:1790000000,library_key:'0:2',genres:['Thriller']}),
+     item('Angefangen',3,{watched:false,added:1780000000,in_progress:true,library_key:'0:3'}),
+     item('Schon gesehen',4,{watched:true,added:1770000000,library_key:'0:4'}),
+     item('Sternenstation',5,{media_type:'tv',watched:false,added:1760000000,library_key:'0:5'}),
+     item('Der letzte Hafen',6,{watched:false,added:1750000000,library_key:'0:6'}),
+     item('Zeitbruch',7,{watched:false,added:1740000000,library_key:'0:7'}),
+   ],radarr:[item('Nordpfad',11,{release_date:'2030-12-18'}),item('Downloadfilm',12,{download_status:'downloading',download_progress:68})],sonarr:[item('Downloadserie',13,{media_type:'tv',download_status:'paused',download_progress:24})]};
+   const discovery={trending:[item('Trendingfilm',21),item('Sternenreise',1),item('Nordpfad',11),item('Trendingserie',22,{media_type:'tv'})],upcoming:[item('Orbital',24,{release_date:'2030-11-01'}),item('Baldserie',25,{media_type:'tv',release_date:'2031-01-12'})]};
+   window.__cinemaCalls=[];window.__cinemaRequests=[];window.__cinemaAccount=false;
+   const config={type:'custom:mediarr-card',view:'library',plex_entity:'sensor.cinema_plex',radarr_entity:'sensor.cinema_radarr',sonarr_entity:'sensor.cinema_sonarr'};
+   const hass={...actual,language:'de',states:{...actual.states},services:{...actual.services,mediarr:{submit_movie_request:{},submit_tv_request:{}}},
+     callService:async(domain,service,data)=>window.__cinemaRequests.push({domain,service,data}),
+     callWS:async msg=>{
+       window.__cinemaCalls.push(msg);
+       if(msg.type==='mediarr/library')return {groups,page:1,total_pages:1,complete:true};
+       if(msg.type==='mediarr/players')return {players:[{entity_id:'media_player.plex_fixture',name:'Plex Test TV',available:true}]};
+       if(msg.type==='mediarr/play'){window.__lastCinemaPlayback=msg;return {accepted:true};}
+       if(msg.type==='mediarr/cinema')return {...discovery,personal:window.__cinemaAccount?[item('Persönlicher Tipp',23),item('Nordlicht',2),item('Nordpfad',11)]:[],account:{connected:window.__cinemaAccount,can_connect:true},errors:{}};
+       if(msg.type==='mediarr/collections')return msg.collection_id?{keys:['0:2']}:{collections:[{id:'0:42',title:'Meine Thriller',smart:true}]};
+       if(msg.type==='mediarr/tmdb_account'){
+         if(msg.action==='start')return {connected:false,can_connect:true,authorization_url:'https://www.themoviedb.org/auth/access?request_token=test-fixture-only'};
+         window.__cinemaAccount=msg.action==='finish';return {connected:window.__cinemaAccount,can_connect:true};
+       }
+       if(msg.type==='mediarr/search')return {results:[item('Nordlicht',2),item('Nordpfad',11),item('Nordstern',31)],page:1,total_pages:1};
+       if(msg.type==='mediarr/media_details')return item(msg.title,msg.tmdb_id,{media_type:msg.media_type,overview:'Vollständige Handlung aus dem Backend.',streaming:{region:'DE',subscription:[{name:'Netflix'}],rent:[],buy:[]}});
+       return actual.callWS(msg);
+     }};
+   window.__cinemaConfig=config;window.__cinemaHass=hass;window.__cinemaGroups=groups;
+   el.setConfig({...config,view:'compact'});el.hass=hass;el.setConfig(config);
+ });
+ await source.locator('.cinema-hero h1').filter({hasText:'Sternenreise'}).waitFor();
+ assert.equal(await source.locator('.library-tabs').count(),0,'no extra navigation menu');
+ assert.equal(await source.locator('.cinema-library-section .cinema-poster').count(),6,'only curated unwatched collection, not whole library wall');
+ assert.ok((await source.boundingBox()).width>1200,'real HA panel should fill content width');
+ await page.screenshot({path:path.join(runtime,'cinema-home-desktop.png')});
+ passed.push('real HA panel displays cinematic hero and curated poster rails without extra menu');
+ await source.locator('.cinema-primary').click();
+ await source.locator('[data-player="media_player.plex_fixture"]').click();
+ await source.locator('.cinema-player-list').filter({hasText:'Wiedergabe angefordert'}).waitFor();
+ assert.equal((await page.evaluate(()=>window.__lastCinemaPlayback)).library_key,'0:1');
+ await source.locator('.cinema-player-close').click();
+ passed.push('playback chooses an available HA Plex player and preserves the exact library item');
+ await source.locator('.cinema-selection').selectOption('started');
+ assert.equal(await source.locator('.cinema-library-section .cinema-poster').count(),1);
+ assert.ok((await source.locator('.cinema-library-section').textContent()).includes('Angefangen'));
+ await source.locator('.cinema-selection').selectOption('recent');
+ await source.locator('.cinema-kind').selectOption('tv');assert.equal(await source.locator('.cinema-library-section .cinema-poster').count(),1);
+ await source.locator('.cinema-kind').selectOption('all');await source.locator('.cinema-genre').selectOption('Thriller');assert.equal(await source.locator('.cinema-library-section .cinema-poster').count(),1);
+ await source.locator('.cinema-genre').selectOption('');await source.locator('.cinema-selection').selectOption('collection:0:42');
+ await source.locator('.cinema-library-section .cinema-poster').filter({hasText:'Nordlicht'}).waitFor();
+ assert.equal(await source.locator('.cinema-library-section .cinema-poster').count(),1);
+ assert.ok(await page.evaluate(()=>window.__cinemaCalls.some(x=>x.collection_id==='0:42')));
+ passed.push('local selections, media kind, genre and native Plex smart collection change the poster selection');
+ await source.locator('.cinema-selection').selectOption('recent');
+ const body=source.locator('.cinema-body');await body.evaluate(el=>el.scrollTop=280);
+ const before=await body.evaluate(el=>el.scrollTop);
+ await source.locator('.cinema-library-section .cinema-poster').filter({hasText:'Nordlicht'}).click();
+ await source.locator('.library-heading h1').filter({hasText:'Nordlicht'}).waitFor();
+ await source.locator('.library-person').waitFor();
+ await source.locator('.library-person').scrollIntoViewIfNeeded();
+ await source.locator('.cinema-back').click();
+ assert.equal(await source.locator('.cinema-selection').inputValue(),'recent');
+ assert.ok(Math.abs((await body.evaluate(el=>el.scrollTop))-before)<2);
+ passed.push('full-page film details reach cast and back restores selection and vertical position');
+ await source.locator('.cinema-period').selectOption('day');
+ await page.waitForFunction(()=>window.__cinemaCalls.some(x=>x.type==='mediarr/cinema'&&x.period==='day'));
+ await source.locator('[data-account=start]').click();
+ await source.locator('.cinema-account a').waitFor();
+ assert.ok((await source.locator('.cinema-account a').getAttribute('href')).startsWith('https://www.themoviedb.org/auth/access?'));
+ await source.locator('[data-account=finish]').click();
+ await source.locator('[data-rail=personal] .cinema-poster').filter({hasText:'Persönlicher Tipp'}).waitFor();
+ assert.equal(await source.locator('[data-rail=personal] .cinema-poster').count(),1,'owned/requested titles excluded from native recommendation rail');
+ passed.push('trending period and per-account authorization use native TMDB replies without a local recommendation engine');
+ await source.locator('.cinema-upcoming-mode').selectOption('all');
+ await source.locator('.cinema-upcoming-card').filter({hasText:'Orbital'}).waitFor();
+ assert.ok((await source.locator('.cinema-upcoming').textContent()).includes('Veröffentlichung'));
+ assert.equal(await source.locator('.cinema-downloads [role=progressbar]').first().getAttribute('aria-valuenow'),'68');
+ passed.push('upcoming releases distinguish release dates and downloads display actual queue percentages');
+ const search=source.locator('.mediarr-search');await search.fill('Nord');
+ await source.locator('.cinema-search-result').filter({hasText:'Nordstern'}).waitFor();
+ assert.equal(await source.locator('.cinema-search-result').count(),3);
+ assert.ok((await source.locator('.cinema-search-result').filter({hasText:'Nordlicht'}).textContent()).includes('Mediathek'));
+ assert.ok((await source.locator('.cinema-search-result').filter({hasText:'Nordpfad'}).textContent()).includes('Vorgemerkt'));
+ await source.locator('.cinema-search-result').filter({hasText:'Nordstern'}).click();
+ await source.locator('.library-request').click();await source.locator('.library-status-waiting').waitFor();
+ assert.deepEqual((await page.evaluate(()=>window.__cinemaRequests))[0],{domain:'mediarr',service:'submit_movie_request',data:{name:'Nordstern',tmdb_id:31}});
+ await source.locator('.cinema-back').click();assert.equal(await search.inputValue(),'Nord');
+ await page.screenshot({path:path.join(runtime,'cinema-search-desktop.png')});
+ passed.push('global search shows owned, tracked and missing movies; new request uses exact TMDB ID and preserves query on back');
+ await page.setViewportSize({width:390,height:844});
+ await source.locator('.cinema-shell').waitFor();
+ await source.evaluate(el=>{el._fullLibraryState={loaded:true,complete:true,groups:window.__cinemaGroups};el.hass=window.__cinemaHass;el.setConfig(window.__cinemaConfig);});
+ await source.locator('.mediarr-search').fill('');
+ await source.locator('.cinema-home').waitFor();
+ assert.equal(await source.evaluate(el=>el.scrollWidth>el.clientWidth),false);
+ await source.locator('.cinema-library-section .cinema-poster').first().click();
+ await source.locator('.library-person').scrollIntoViewIfNeeded();
+ const cast=await source.locator('.library-person').boundingBox();assert.ok(cast.y>=0&&cast.y+cast.height<=845);
+ await source.locator('.cinema-back').click();
+ await page.screenshot({path:path.join(runtime,'cinema-home-mobile.png')});
+ passed.push('mobile layout has usable horizontal poster rails, no page overflow and reachable cast');
+ assert.deepEqual(errors,[]);
+ console.log(`PASS: ${passed.length} cinema checks\n${passed.join('\n')}`);
+} finally {await browser.close();}

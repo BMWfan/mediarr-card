@@ -1,4 +1,6 @@
 import { MediaLibraryView, CompactMediaView } from './media-library.js';
+import { CinemaLibraryView } from './cinema-library.js';
+import { cinemaStyles } from './cinema-styles.js';
 // main-card.js
 import { PlexSection } from './plex-section.js?v=20260406-01';
 import { JellyfinSection } from './jellyfin-section.js?v=20260406-01';
@@ -73,7 +75,7 @@ function deriveVisibleSections(config) {
 }
 
 
-const MEDIARR_BUILD = '0.5.1-dev.1';
+const MEDIARR_BUILD = '0.6.0-dev.1';
 console.log(`[mediarr-card] build ${MEDIARR_BUILD} loaded`);
 
 class MediarrCard extends HTMLElement {
@@ -111,7 +113,7 @@ class MediarrCard extends HTMLElement {
       host.style.setProperty(name, theme.getPropertyValue(name));
     }
     const style = document.createElement('style');
-    style.textContent = styles;
+    style.textContent = styles + cinemaStyles;
     const dialog = document.createElement('dialog');
     dialog.className = 'mediarr-overlay-dialog';
     dialog.setAttribute('aria-label', 'Mediarr');
@@ -206,7 +208,7 @@ class MediarrCard extends HTMLElement {
   _arrangeExpandedView() {
     this.classList.add('mediarr-expanded');
     this.classList.toggle('mediarr-page', !this._isExpandedView);
-    this._libraryView = new MediaLibraryView(this);
+    this._libraryView = this.config.library_layout === 'classic' ? new MediaLibraryView(this) : new CinemaLibraryView(this);
     this._libraryView.mount();
   }
 
@@ -472,7 +474,7 @@ class MediarrCard extends HTMLElement {
     
     // Add styles
     const style = document.createElement('style');
-    style.textContent = styles;
+    style.textContent = styles + cinemaStyles;
     this.appendChild(style);
 
     // Initialize click handlers
@@ -578,6 +580,7 @@ class MediarrCard extends HTMLElement {
 
   setConfig(config) {
     const previousView = this.config?.view;
+    const previousLayout = this.config?.library_layout;
     const normalizedVisibleSections = deriveVisibleSections(config);
     const hasEntity = SECTION_ORDER.some((sectionKey) => hasSectionEntities(config, sectionKey));
   
@@ -589,6 +592,7 @@ class MediarrCard extends HTMLElement {
     this.config = {
       view: hasEntity ? 'compact' : 'library',
       compact_items: 4,
+      library_layout: 'cinema',
       max_items: 10,            // Default max items if not specified
       days_to_check: 60,        // Default days to check if not specified
       radarr_release_types: ['Digital', 'Theaters'], // Default to digital and theatrical, exclude physical
@@ -611,13 +615,13 @@ class MediarrCard extends HTMLElement {
     if (config.jellyfin_url && !config.jellyfin_url.endsWith('/')) {
       this._formattedJellyfinUrl = config.jellyfin_url + '/';
     }
-    if (this.content && !this._isExpandedView && previousView !== this.config.view) {
+    if (this.content && !this._isExpandedView && (previousView !== this.config.view || previousLayout !== this.config.library_layout)) {
       this._closeMediaOverlay();
       this._compactView = null;
       this._libraryView?.destroy();
       this.content = null;
       this._libraryView = null;
-      this.classList.remove('mediarr-compact','mediarr-expanded','mediarr-page');
+      this.classList.remove('mediarr-compact','mediarr-expanded','mediarr-page','mediarr-cinema');
       this.innerHTML = '';
       if (this._hass) this.hass = this._hass;
     }
@@ -966,6 +970,10 @@ class MediarrCardEditor extends HTMLElement {
               </select>
             </div>
             <div class="global-field">
+              <label class="field-label">Large view design</label>
+              <select data-library-layout><option value="cinema" ${this._config.library_layout!=='classic'?'selected':''}>Cinema</option><option value="classic" ${this._config.library_layout==='classic'?'selected':''}>Classic list and details</option></select>
+            </div>
+            <div class="global-field">
               <label class="field-label" for="mediarr-compact-items">Compact Posters</label>
               <input id="mediarr-compact-items" type="number" min="1" max="8" data-number-key="compact_items" value="${this._config.compact_items ?? 4}">
             </div>
@@ -1029,6 +1037,7 @@ class MediarrCardEditor extends HTMLElement {
     });
 
     this.querySelector('[data-view-mode]')?.addEventListener('change', event => this._updateConfigValue('view', event.target.value));
+    this.querySelector('[data-library-layout]')?.addEventListener('change',event=>this._updateConfigValue('library_layout',event.target.value));
     this.querySelector('[data-streaming-region]')?.addEventListener('change',event=>{const region=event.target.value.trim().toUpperCase();if(/^[A-Z]{2}$/.test(region))this._updateConfigValue('streaming_region',region);});
 
     this.querySelectorAll('[data-number-key]').forEach((input) => {

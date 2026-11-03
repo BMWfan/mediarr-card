@@ -28,6 +28,7 @@ try {
  await page.addInitScript(({auth,base})=>localStorage.setItem('hassTokens',JSON.stringify({hassUrl:base,clientId:base+'/',...auth,expires:Date.now()+auth.expires_in*1000})),{auth,base});
  await page.goto(base+'/mediarr-test/test');
  const source=page.locator('mediarr-card');await source.locator('.mediarr-open-button').waitFor();
+ await source.evaluate(el=>el.setConfig({...el.config,library_layout:'classic'}));
  await source.evaluate((el,{config,states})=>{el.setConfig({...el.config,...config});el.hass={...el._hass,language:'de',states:{...el._hass.states,...states}};},{config,states});
  assert.equal(await source.locator('.compact-media').count(),1);
  assert.equal(await source.locator('.section, .media-details-panel').count(),0);

@@ -35,12 +35,12 @@ try {
    el.setConfig(config);
    try {
      el.hass={...actual,language:'de',states};
-     const initial=el.querySelectorAll('.library-result').length;
+     const initial=el._libraryView.entries.length;
      states[config.radarr_entity]=state(config.radarr_entity,{unexpected:'Not an array'});
      states[config.tmdb_now_playing_entity]=state(config.tmdb_now_playing_entity,null);
      states[config.immaculaterr_movies_entity]={entity_id:config.immaculaterr_movies_entity,state:'unavailable',attributes:{}};
      el.hass={...actual,language:'de',states};
-     return {initial,after:el.querySelectorAll('.library-result').length,error:null};
+     return {initial,after:el._libraryView.entries.length,error:null};
    } catch(error) {return {error:error.message};}
  });
  assert.equal(result.error,null,'full-page library must not call legacy release filters or renderers');
@@ -48,8 +48,8 @@ try {
  await source.evaluate(el=>el.setConfig({...el.config,view:'compact'}));
  await source.locator('.mediarr-open-button').click();
  const expanded=page.locator('mediarr-overlay-host mediarr-card');
- await expanded.locator('.mediarr-library').waitFor();
- assert.equal(await expanded.locator('.library-result').count(),3);
+ await expanded.locator('.cinema-shell').waitFor();
+ assert.equal(await expanded.evaluate(el=>el._libraryView.entries.length),3);
  assert.deepEqual(errors,[]);
  console.log('PASS: 3 provider configuration checks\nfull source configuration with active media player and non-string release field\nmalformed/empty/unavailable sensor updates keep the unified library usable\ncompact opening overlay is independent of legacy renderers');
 } finally {await browser.close();}

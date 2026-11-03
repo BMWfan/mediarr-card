@@ -34,7 +34,7 @@ try {
   // Playwright CSS locators traverse Home Assistant's open shadow roots.
   const card = page.locator('mediarr-card');
   await card.waitFor();
-  await card.evaluate(el => { el.setConfig({...el.config, view:'legacy'}); el.hass=el._hass; });
+  await card.evaluate(el => { el.setConfig({...el.config, view:'legacy',library_layout:'classic'}); el.hass=el._hass; });
   await card.locator('.media-item-title').filter({hasText:'Mediarr Cloud Test'}).waitFor();
   passed.push('authenticated dashboard renders Plex fixture');
   await card.locator('.section-header').click();

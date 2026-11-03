@@ -15,6 +15,7 @@ try {
  await page.addInitScript(({auth,base})=>localStorage.setItem('hassTokens',JSON.stringify({hassUrl:base,clientId:base+'/',...auth,expires:Date.now()+auth.expires_in*1000})),{auth,base});
  await page.goto(base+'/mediarr-test/test');
  const source=page.locator('mediarr-card');await source.locator('.mediarr-open-button').waitFor();
+ await source.evaluate(el=>el.setConfig({...el.config,library_layout:'classic'}));
  await source.evaluate(el=>{
    const original=el._hass;window.libraryCalls=[];
    const plex=Array.from({length:125},(_,i)=>({title:`Library film ${i}`,media_type:'movie',tmdb_id:10000+i,year:2000+i%20,watched:i%2===0,has_watched:i%2===0,overview:'Complete catalog fixture.',cast:[{name:'Test Actor'}]}));
@@ -66,7 +67,7 @@ try {
  assert.equal(await page.locator('mediarr-card-editor [data-view-mode] option[value=library]').count(),1);
  passed.push('card editor exposes full-page view and streaming country');
  await source.evaluate(el=>el.setConfig({type:'custom:mediarr-card'}));
- await source.locator('.mediarr-library').waitFor();
+ await source.locator('.cinema-shell').waitFor();
  assert.equal(await source.evaluate(el=>el.config.view),'library','minimal configuration must default to the backend library');
  assert.equal(await source.evaluate(el=>el.classList.contains('mediarr-page')),true);
  await source.evaluate(el=>el.setConfig({type:'custom:mediarr-card',view:'compact'}));

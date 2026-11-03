@@ -233,7 +233,7 @@ export function mediaEntriesForCard(card, catalog = []) {
     entry.summary=metadataText(metadata.overview) || entry.summary;
     entry.rating=mediaText(metadata.vote_average ?? entry.rating);
     entry.poster=entry.poster || mediaImage(metadata.poster);
-    entry.banner=entry.banner || mediaImage(metadata.backdrop || metadata.banner);
+    entry.banner=(!entry.banner || entry.banner===entry.poster)?mediaImage(metadata.backdrop || metadata.banner)||entry.banner:entry.banner;
   }
   const pending = card._pendingLibraryRequests ||= new Set();
   for (const entry of entries) {
@@ -252,7 +252,7 @@ export function mediaDownload(entry) {
   return {status:ref.item.download_status || 'downloading',progress:typeof raw==='number'&&Number.isFinite(raw)?Math.max(0,Math.min(100,Math.round(raw))):null};
 }
 
-function downloadBadge(entry, label) {
+export function downloadBadge(entry, label) {
   const download=mediaDownload(entry);
   if(!download)return '';
   const text=({paused:label('Pausiert','Paused'),queued:label('Warteschlange','Queued'),importing:label('Importiert','Importing'),completed:label('Wird verarbeitet','Processing'),warning:label('Prüfung nötig','Needs attention')})[download.status] || label('Lädt herunter','Downloading');

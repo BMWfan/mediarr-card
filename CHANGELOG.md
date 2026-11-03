@@ -2,6 +2,19 @@
 
 All notable changes to this fork are documented in this file.
 
+## 0.6.0-dev.1 (2026-11-03)
+
+- Replace the large default view with the approved cinema page: full-width
+  spotlight, curated collection controls, poster rails and a single page scroll.
+- Add native Plex collection selection, trending period, sourced TMDB account
+  recommendations, upcoming releases and real download queues without extra menus.
+- Add full-page film details with context-preserving back navigation, global
+  library/manager/TMDB search and exact-ID requests. Compact cards remain intact.
+- Add secure TMDB account approval and authorized HA Plex player selection via
+  mediarr_sensor 0.8.0-dev.1. Credentials stay in HA, and each HA user connects
+  their own TMDB account. There is no local recommendation engine.
+- Keep the previous large layout available with `library_layout: classic`.
+
 ## 0.5.1-dev.1 (2026-11-02)
 
 - Keep library/overlay rendering independent of legacy provider initialization
