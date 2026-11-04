@@ -849,7 +849,7 @@ class CinemaLibraryView extends MediaLibraryView {
       this.selectedKey=this.detailKey;super.renderDetails(entry);
       this.focus.querySelector('.library-play')?.remove();
       if(entry?.stage==='ready'&&entry.refs.some(ref=>ref.provider==='plex'&&ref.item.library_key)) {
-        const play=document.createElement('button');play.type='button';play.className='library-request cinema-detail-play';play.textContent=this.label('Abspielen','Play');
+        const play=document.createElement('button');play.type='button';play.className='library-request cinema-detail-play';play.innerHTML=`<ha-icon icon="mdi:play" aria-hidden="true"></ha-icon>${esc(this.label('Abspielen','Play'))}`;
         play.onclick=()=>this.play(entry);this.focus.querySelector('.library-actions').prepend(play);
       }
       const trailer=this.focus.querySelector('.library-trailer');
@@ -887,7 +887,7 @@ class CinemaLibraryView extends MediaLibraryView {
     const canPlay=entry.stage==='ready'&&entry.refs.some(ref=>ref.provider==='plex'&&ref.item.library_key);
     const canRequest=entry.stage==='discover'&&this.requestService(entry);
     const action=canPlay?this.label('Abspielen','Play'):canRequest?this.label('Hinzufügen','Add'):this.label('Details','Details');
-    return `<section class="cinema-hero"><div class="cinema-hero-backdrop"></div><div class="cinema-hero-copy"><h1>${esc(entry.title)}</h1><p class="cinema-hero-meta">${esc([entry.year,mediaNames(entry.item.genres).slice(0,2).join(' · '),entry.item.runtime?`${entry.item.runtime} min`:null,entry.rating?`★ ${entry.rating}`:null].filter(Boolean).join(' · '))}</p><span class="cinema-availability cinema-availability-${entry.stage}">${esc(this.status(entry))}</span><p class="cinema-hero-synopsis">${esc(entry.summary||this.label('Öffne den Film für Handlung und Besetzung.','Open this title for synopsis and cast.'))}</p><div class="cinema-hero-actions"><button type="button" class="cinema-primary" data-hero-action="${canPlay?'play':canRequest?'request':'details'}">${esc(action)}</button>${entry.item.trailer?.url?`<button type="button" class="cinema-hero-trailer"><ha-icon icon="mdi:movie-play-outline" aria-hidden="true"></ha-icon>${esc(this.label('Trailer','Trailer'))}</button>`:''}${canPlay||canRequest?`<button type="button" data-select-key="${esc(entry.key)}">${esc(this.label('Details','Details'))}</button>`:''}</div></div></section>`;
+    return `<section class="cinema-hero"><div class="cinema-hero-backdrop"></div><div class="cinema-hero-copy"><h1>${esc(entry.title)}</h1><p class="cinema-hero-meta">${esc([entry.year,mediaNames(entry.item.genres).slice(0,2).join(' · '),entry.item.runtime?`${entry.item.runtime} min`:null,entry.rating?`★ ${entry.rating}`:null].filter(Boolean).join(' · '))}</p><span class="cinema-availability cinema-availability-${entry.stage}">${esc(this.status(entry))}</span><p class="cinema-hero-synopsis">${esc(entry.summary||this.label('Öffne den Film für Handlung und Besetzung.','Open this title for synopsis and cast.'))}</p><div class="cinema-hero-actions"><button type="button" class="cinema-primary" data-hero-action="${canPlay?'play':canRequest?'request':'details'}">${canPlay?'<ha-icon icon="mdi:play" aria-hidden="true"></ha-icon>':''}${esc(action)}</button>${entry.item.trailer?.url?`<button type="button" class="cinema-hero-trailer"><ha-icon icon="mdi:movie-play-outline" aria-hidden="true"></ha-icon>${esc(this.label('Trailer','Trailer'))}</button>`:''}${canPlay||canRequest?`<button type="button" data-select-key="${esc(entry.key)}">${esc(this.label('Details','Details'))}</button>`:''}</div></div></section>`;
   }
 
   accountMarkup() {
@@ -1168,8 +1168,8 @@ const cinemaStyles = `
   }
   .mediarr-cinema .library-actions > button,
   .mediarr-cinema .library-actions > .library-trailer { margin:0; }
-  .library-trailer, .cinema-hero-trailer { gap:8px; }
-  .library-trailer ha-icon, .cinema-hero-trailer ha-icon { --mdc-icon-size:20px; flex-shrink:0; }
+  .library-trailer, .cinema-hero-actions > button, .library-actions > button { gap:8px; }
+  .library-actions ha-icon, .cinema-hero-actions ha-icon { --mdc-icon-size:20px; flex-shrink:0; }
   @media (max-width:1050px) {
     .cinema-section-heading { align-items:flex-start; }
     .cinema-filters { margin-left:0; }

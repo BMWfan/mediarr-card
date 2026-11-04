@@ -9,6 +9,8 @@ All notable changes to this fork are documented in this file.
   mismatched detail-action margins and wrap hero actions on narrow screens.
 - Replace the trailer emoji with Home Assistant's `mdi:movie-play-outline` icon
   in details and the hero, with consistent icon sizing and label spacing.
+- Add a matching `mdi:play` icon to Play in details and the hero, keeping it
+  visually distinct from the trailer's clapperboard.
 
 ## 0.6.0-dev.4 (2026-11-04)
 

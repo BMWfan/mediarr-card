@@ -132,8 +132,8 @@ export const cinemaStyles = `
   }
   .mediarr-cinema .library-actions > button,
   .mediarr-cinema .library-actions > .library-trailer { margin:0; }
-  .library-trailer, .cinema-hero-trailer { gap:8px; }
-  .library-trailer ha-icon, .cinema-hero-trailer ha-icon { --mdc-icon-size:20px; flex-shrink:0; }
+  .library-trailer, .cinema-hero-actions > button, .library-actions > button { gap:8px; }
+  .library-actions ha-icon, .cinema-hero-actions ha-icon { --mdc-icon-size:20px; flex-shrink:0; }
   @media (max-width:1050px) {
     .cinema-section-heading { align-items:flex-start; }
     .cinema-filters { margin-left:0; }
