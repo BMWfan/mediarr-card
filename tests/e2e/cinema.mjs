@@ -36,7 +36,7 @@ try {
    const discovery={trending:[item('Trendingfilm',21),item('Sternenreise',1),item('Nordpfad',11),item('Trendingserie',22,{media_type:'tv'})],upcoming:[item('Orbital',24,{release_date:'2030-11-01'}),item('Baldserie',25,{media_type:'tv',release_date:'2031-01-12'})]};
    window.__cinemaCalls=[];window.__cinemaRequests=[];window.__cinemaAccount=false;
    const config={type:'custom:mediarr-card',view:'library',plex_entity:'sensor.cinema_plex',radarr_entity:'sensor.cinema_radarr',sonarr_entity:'sensor.cinema_sonarr'};
-   const hass={...actual,language:'de',states:{...actual.states},services:{...actual.services,mediarr:{submit_movie_request:{},submit_tv_request:{}}},
+   const hass={...actual,language:'de',states:{...actual.states,'sensor.cinema_plex':{state:'2',attributes:{data:[{title:'Sternenstation',number:'S02E03',poster:art},{title:'Sternenstation',number:'S02E04',poster:art}]}}},services:{...actual.services,mediarr:{submit_movie_request:{},submit_tv_request:{}}},
      callService:async(domain,service,data)=>window.__cinemaRequests.push({domain,service,data}),
      callWS:async msg=>{
        window.__cinemaCalls.push(msg);
@@ -59,6 +59,7 @@ try {
  await source.locator('.cinema-hero h1').filter({hasText:'Sternenreise'}).waitFor();
  assert.equal(await source.locator('.library-tabs').count(),0,'no extra navigation menu');
  assert.equal(await source.locator('.cinema-library-section .cinema-poster').count(),6,'only curated unwatched collection, not whole library wall');
+ assert.equal(await source.locator('.cinema-library-section .cinema-poster').filter({hasText:'Sternenstation'}).count(),1,'episode sensor entries must not duplicate the dated Plex series');
  assert.ok((await source.boundingBox()).width>1200,'real HA panel should fill content width');
  await page.screenshot({path:path.join(runtime,'cinema-home-desktop.png')});
  passed.push('real HA panel displays cinematic hero and curated poster rails without extra menu');
@@ -68,6 +69,14 @@ try {
  assert.equal((await page.evaluate(()=>window.__lastCinemaPlayback)).library_key,'0:1');
  await source.locator('.cinema-player-close').click();
  passed.push('playback chooses an available HA Plex player and preserves the exact library item');
+ await source.locator('.cinema-unseen input').uncheck();
+ await source.locator('.cinema-selection').selectOption('unwatched');
+ assert.equal(await source.locator('.cinema-unseen input').isChecked(),true);
+ assert.equal(await source.locator('.cinema-unseen input').isDisabled(),true);
+ await source.locator('.cinema-selection').selectOption('recent');
+ assert.equal(await source.locator('.cinema-unseen input').isDisabled(),false);
+ assert.equal(await source.locator('.cinema-unseen input').isChecked(),false,'restore the independently selected unwatched preference');
+ await source.locator('.cinema-unseen input').check();
  await source.locator('.cinema-selection').selectOption('started');
  assert.equal(await source.locator('.cinema-library-section .cinema-poster').count(),1);
  assert.ok((await source.locator('.cinema-library-section').textContent()).includes('Angefangen'));

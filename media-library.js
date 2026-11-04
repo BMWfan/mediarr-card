@@ -139,6 +139,26 @@ export function collectMediaLibrary(config, hass) {
       if (kinds.size===1) { record.kind=[...kinds][0]; record.item.media_type=record.kind; remember(record); changed=true; }
     }
   }
+  // Episode-based Plex sensors often omit the show's premiere year and IDs.
+  // Recover the year only from an unambiguous series identity before grouping;
+  // otherwise the same show gets separate dated and undated poster entries.
+  const datedSeries = new Map();
+  for (const record of records) {
+    if (record.kind !== 'tv' || !record.item.year) continue;
+    const key = normalized(record.item.title);
+    if (!datedSeries.has(key)) datedSeries.set(key, []);
+    datedSeries.get(key).push(record);
+  }
+  const conflictingIds = (a,b) => Object.keys(a).some(key => b[key] && a[key] !== b[key]);
+  for (const record of records) {
+    if (record.kind !== 'tv' || record.item.year) continue;
+    const candidates = (datedSeries.get(normalized(record.item.title)) || [])
+      .filter(candidate => !conflictingIds(record.ids,candidate.ids));
+    if (candidates.length && new Set(candidates.map(candidate => candidate.item.year)).size === 1 &&
+        !candidates.some((candidate,index) => candidates.slice(index+1).some(other => conflictingIds(candidate.ids,other.ids)))) {
+      record.item.year = candidates[0].item.year;
+    }
+  }
   for (const {item,index,entityKey,entityId,provider,kind,ids} of records) {
       const title = item.title;
       const identityKeys = Object.entries(ids).map(([key,value]) => `${kind}:${key}:${value}`);

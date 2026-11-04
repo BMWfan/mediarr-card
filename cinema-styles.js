@@ -42,6 +42,7 @@ export const cinemaStyles = `
   .mediarr-cinema select option, .mediarr-cinema select optgroup { background:#10181f; color:#ecf3f8; }
   .cinema-unseen { display:flex; gap:6px; align-items:center; border:1px solid #566774; padding:6px 9px; border-radius:7px; color:#d1e4ec; font-size:.8rem; cursor:pointer; }
   .cinema-unseen input { accent-color:#2bd6e4; }
+  .cinema-unseen:has(input:disabled) { opacity:.45; cursor:default; }
   .cinema-rail { display:grid; grid-auto-flow:column; grid-auto-columns:calc((100% - 5 * 14px) / 6); gap:14px; overflow-x:auto; padding:3px 3px 12px; scroll-snap-type:x proximity; scrollbar-width:thin; scrollbar-color:#344957 transparent; align-items:start; }
   .cinema-poster { min-width:0; border:0; background:transparent; color:#eef3f8; padding:0; text-align:left; scroll-snap-align:start; }
   .cinema-poster-art { position:relative; display:grid; place-items:center; aspect-ratio:2/3; background:linear-gradient(140deg,#21394a,#101923); border-radius:9px; overflow:hidden; box-shadow:0 0 0 1px #ffffff0c; }

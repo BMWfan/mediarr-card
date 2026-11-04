@@ -2,6 +2,14 @@
 
 All notable changes to this fork are documented in this file.
 
+## 0.6.0-dev.2 (2026-11-04)
+
+- Merge undated episode-sensor entries into an unambiguous dated series so the
+  Cinema library does not show the same series twice. Conflicting IDs and
+  same-name remakes remain separate. No sensor-integration update is required.
+- Keep the Unwatched checkbox checked and disabled while the Unwatched selection
+  already enforces that filter; restore its prior preference on other selections.
+
 ## 0.6.0-dev.1 (2026-11-03)
 
 - Replace the large default view with the approved cinema page: full-width
