@@ -92,7 +92,7 @@ export class CinemaLibraryView extends MediaLibraryView {
   }
 
   poster(entry) {
-    return `<button class="cinema-poster" type="button" data-select-key="${esc(entry.key)}" aria-label="${esc(entry.title)}"><span class="cinema-poster-art">${entry.poster?`<img src="${esc(entry.poster)}" alt="" loading="lazy">`:'<ha-icon icon="mdi:movie-open-outline"></ha-icon>'}<span class="cinema-poster-status cinema-status-${entry.stage}" title="${esc(this.status(entry))}">${entry.stage==='ready'?'✓':entry.stage==='waiting'?'◷':'+'}</span>${downloadBadge(entry,this.label.bind(this))}</span><strong>${esc(entry.title)}</strong><small>${esc(entry.year||this.label(entry.kind==='tv'?'Serie':'Film',entry.kind==='tv'?'Series':'Movie'))}</small>${entry.kind==='tv'?`<span class="cinema-episode-status">${esc(seriesEpisodeLabel(entry,this.label.bind(this)))}</span>`:''}</button>`;
+    return `<button class="cinema-poster" type="button" data-select-key="${esc(entry.key)}" aria-label="${esc(entry.title)}"><span class="cinema-poster-art">${entry.poster?`<img src="${esc(entry.poster)}" alt="" loading="lazy">`:'<ha-icon icon="mdi:movie-open-outline"></ha-icon>'}<span class="cinema-poster-status cinema-status-${entry.stage}" title="${esc(this.status(entry))}">${entry.stage==='ready'?'✓':entry.stage==='waiting'?'◷':'+'}</span>${downloadBadge(entry,this.label.bind(this))}</span><strong>${esc(entry.title)}</strong><small>${esc(entry.year||this.label(entry.kind==='tv'?'Serie':'Film',entry.kind==='tv'?'Series':'Movie'))}</small>${entry.stage==='ready'&&entry.kind==='tv'?`<span class="cinema-episode-status">${esc(seriesEpisodeLabel(entry,this.label.bind(this)))}</span>`:''}</button>`;
   }
 
   rail(name,entries,empty='') {

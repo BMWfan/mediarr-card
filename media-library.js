@@ -593,7 +593,7 @@ export class MediaLibraryView {
               <p class="library-status library-status-${entry.stage}">${esc(this.status(entry))}</p>
               ${actionMarkup}
               ${trailerUrl?`<a class="library-trailer" href="${esc(trailerUrl)}" target="_blank" rel="noopener noreferrer">▶ ${esc(this.label('Trailer ansehen','Watch trailer'))}</a>`:''}
-              ${entry.kind==='tv'?`<p class="library-episode-status">${esc(seriesEpisodeLabel(entry,this.label.bind(this)))}</p>`:''}
+              ${entry.stage==='ready'&&entry.kind==='tv'?`<p class="library-episode-status">${esc(seriesEpisodeLabel(entry,this.label.bind(this)))}</p>`:''}
               <p class="library-action-message" role="alert">${esc(this.messages.get(entry.key) || '')}</p>
             </div>
           </div>

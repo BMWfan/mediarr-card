@@ -645,7 +645,7 @@ class MediaLibraryView {
               <p class="library-status library-status-${entry.stage}">${esc(this.status(entry))}</p>
               ${actionMarkup}
               ${trailerUrl?`<a class="library-trailer" href="${esc(trailerUrl)}" target="_blank" rel="noopener noreferrer">▶ ${esc(this.label('Trailer ansehen','Watch trailer'))}</a>`:''}
-              ${entry.kind==='tv'?`<p class="library-episode-status">${esc(seriesEpisodeLabel(entry,this.label.bind(this)))}</p>`:''}
+              ${entry.stage==='ready'&&entry.kind==='tv'?`<p class="library-episode-status">${esc(seriesEpisodeLabel(entry,this.label.bind(this)))}</p>`:''}
               <p class="library-action-message" role="alert">${esc(this.messages.get(entry.key) || '')}</p>
             </div>
           </div>
@@ -798,7 +798,7 @@ class CinemaLibraryView extends MediaLibraryView {
   }
 
   poster(entry) {
-    return `<button class="cinema-poster" type="button" data-select-key="${esc(entry.key)}" aria-label="${esc(entry.title)}"><span class="cinema-poster-art">${entry.poster?`<img src="${esc(entry.poster)}" alt="" loading="lazy">`:'<ha-icon icon="mdi:movie-open-outline"></ha-icon>'}<span class="cinema-poster-status cinema-status-${entry.stage}" title="${esc(this.status(entry))}">${entry.stage==='ready'?'✓':entry.stage==='waiting'?'◷':'+'}</span>${downloadBadge(entry,this.label.bind(this))}</span><strong>${esc(entry.title)}</strong><small>${esc(entry.year||this.label(entry.kind==='tv'?'Serie':'Film',entry.kind==='tv'?'Series':'Movie'))}</small>${entry.kind==='tv'?`<span class="cinema-episode-status">${esc(seriesEpisodeLabel(entry,this.label.bind(this)))}</span>`:''}</button>`;
+    return `<button class="cinema-poster" type="button" data-select-key="${esc(entry.key)}" aria-label="${esc(entry.title)}"><span class="cinema-poster-art">${entry.poster?`<img src="${esc(entry.poster)}" alt="" loading="lazy">`:'<ha-icon icon="mdi:movie-open-outline"></ha-icon>'}<span class="cinema-poster-status cinema-status-${entry.stage}" title="${esc(this.status(entry))}">${entry.stage==='ready'?'✓':entry.stage==='waiting'?'◷':'+'}</span>${downloadBadge(entry,this.label.bind(this))}</span><strong>${esc(entry.title)}</strong><small>${esc(entry.year||this.label(entry.kind==='tv'?'Serie':'Film',entry.kind==='tv'?'Series':'Movie'))}</small>${entry.stage==='ready'&&entry.kind==='tv'?`<span class="cinema-episode-status">${esc(seriesEpisodeLabel(entry,this.label.bind(this)))}</span>`:''}</button>`;
   }
 
   rail(name,entries,empty='') {
