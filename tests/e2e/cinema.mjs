@@ -29,10 +29,10 @@ try {
      item('Nordlicht',2,{watched:false,added:1790000000,library_key:'0:2',genres:['Thriller']}),
      item('Angefangen',3,{watched:false,added:1780000000,in_progress:true,library_key:'0:3'}),
      item('Schon gesehen',4,{watched:true,added:1770000000,library_key:'0:4'}),
-     item('Sternenstation',5,{media_type:'tv',watched:false,added:1760000000,library_key:'0:5'}),
+     item('Sternenstation',5,{media_type:'tv',watched:false,added:1760000000,library_key:'0:5',episode_progress:{available:true,started:true,unwatched_count:3,ranges:[{season:4,first:6,last:8}]}}),
      item('Der letzte Hafen',6,{watched:false,added:1750000000,library_key:'0:6'}),
      item('Zeitbruch',7,{watched:false,added:1740000000,library_key:'0:7'}),
-   ],radarr:[item('Nordpfad',11,{release_date:'2030-12-18'}),item('Downloadfilm',12,{download_status:'downloading',download_progress:68})],sonarr:[item('Downloadserie',13,{media_type:'tv',download_status:'paused',download_progress:24})]};
+   ],radarr:[item('Nordpfad',11,{release_date:'2030-12-18',poster:'',banner:''}),item('Downloadfilm',12,{download_status:'downloading',download_progress:68})],sonarr:[item('Downloadserie',13,{media_type:'tv',download_status:'paused',download_progress:24})]};
    const discovery={trending:[item('Trendingfilm',21),item('Sternenreise',1),item('Nordpfad',11),item('Trendingserie',22,{media_type:'tv'})],upcoming:[item('Orbital',24,{release_date:'2030-11-01'}),item('Baldserie',25,{media_type:'tv',release_date:'2031-01-12'})]};
    window.__cinemaCalls=[];window.__cinemaRequests=[];window.__cinemaAccount=false;
    const config={type:'custom:mediarr-card',view:'library',plex_entity:'sensor.cinema_plex',radarr_entity:'sensor.cinema_radarr',sonarr_entity:'sensor.cinema_sonarr'};
@@ -50,10 +50,11 @@ try {
          window.__cinemaAccount=msg.action==='finish';return {connected:window.__cinemaAccount,can_connect:true};
        }
        if(msg.type==='mediarr/search')return {results:[item('Nordlicht',2),item('Nordpfad',11),item('Nordstern',31)],page:1,total_pages:1};
-       if(msg.type==='mediarr/media_details')return item(msg.title,msg.tmdb_id,{media_type:msg.media_type,overview:'Vollständige Handlung aus dem Backend.',streaming:{region:'DE',subscription:[{name:'Netflix'}],rent:[],buy:[]}});
+       if(msg.type==='mediarr/media_details')return item(msg.title,msg.tmdb_id,{media_type:msg.media_type,overview:'Vollständige Handlung aus dem Backend.',trailer:{url:'https://www.youtube.com/watch?v=abcdef12345'},streaming:{region:'DE',subscription:[{name:'Netflix'}],rent:[],buy:[]}});
        return actual.callWS(msg);
      }};
    window.__cinemaConfig=config;window.__cinemaHass=hass;window.__cinemaGroups=groups;
+   el._metadataBackendState={unsupported:false};el._mediaMetadataCache=new Map();
    el.setConfig({...config,view:'compact'});el.hass=hass;el.setConfig(config);
  });
  await source.locator('.cinema-hero h1').filter({hasText:'Sternenreise'}).waitFor();
@@ -62,6 +63,7 @@ try {
  assert.equal(await source.locator('.cinema-library-section .cinema-poster').filter({hasText:'Sternenstation'}).count(),1,'episode sensor entries must not duplicate the dated Plex series');
  assert.ok((await source.boundingBox()).width>1200,'real HA panel should fill content width');
  await page.screenshot({path:path.join(runtime,'cinema-home-desktop.png')});
+ await source.locator('.cinema-upcoming-card').filter({hasText:'Nordpfad'}).locator('img').waitFor();
  passed.push('real HA panel displays cinematic hero and curated poster rails without extra menu');
  await source.locator('.cinema-primary').click();
  await source.locator('[data-player="media_player.plex_fixture"]').click();
@@ -82,6 +84,10 @@ try {
  assert.ok((await source.locator('.cinema-library-section').textContent()).includes('Angefangen'));
  await source.locator('.cinema-selection').selectOption('recent');
  await source.locator('.cinema-kind').selectOption('tv');assert.equal(await source.locator('.cinema-library-section .cinema-poster').count(),1);
+ assert.ok((await source.locator('.cinema-episode-status').first().textContent()).includes('3 neue Folgen · S04 E06–E08'));
+ await source.evaluate(el=>{window.__cinemaGroups.plex.find(item=>item.tmdb_id===5).episode_progress={available:true,started:true,unwatched_count:0,ranges:[]};el._libraryView.refresh();});
+ assert.equal(await source.locator('.cinema-library-section .cinema-poster').count(),0,'old season gaps must not keep a caught-up show in the unwatched selection');
+ await source.evaluate(el=>{window.__cinemaGroups.plex.find(item=>item.tmdb_id===5).episode_progress={available:true,started:true,unwatched_count:3,ranges:[{season:4,first:6,last:8}]};el._libraryView.refresh();});
  await source.locator('.cinema-kind').selectOption('all');await source.locator('.cinema-genre').selectOption('Thriller');assert.equal(await source.locator('.cinema-library-section .cinema-poster').count(),1);
  await source.locator('.cinema-genre').selectOption('');await source.locator('.cinema-selection').selectOption('collection:0:42');
  await source.locator('.cinema-library-section .cinema-poster').filter({hasText:'Nordlicht'}).waitFor();
@@ -89,15 +95,19 @@ try {
  assert.ok(await page.evaluate(()=>window.__cinemaCalls.some(x=>x.collection_id==='0:42')));
  passed.push('local selections, media kind, genre and native Plex smart collection change the poster selection');
  await source.locator('.cinema-selection').selectOption('recent');
- const body=source.locator('.cinema-body');await body.evaluate(el=>el.scrollTop=280);
- const before=await body.evaluate(el=>el.scrollTop);
+ assert.equal(await source.locator('.cinema-body').evaluate(el=>getComputedStyle(el).overflowY),'visible');
+ await source.evaluate(el=>el._libraryView.scrollSurface().scrollTop=280);
+ const before=await source.evaluate(el=>el._libraryView.scrollSurface().scrollTop);
+ assert.ok(before>0,'the HA scroll surface must move with content');
  await source.locator('.cinema-library-section .cinema-poster').filter({hasText:'Nordlicht'}).click();
  await source.locator('.library-heading h1').filter({hasText:'Nordlicht'}).waitFor();
  await source.locator('.library-person').waitFor();
+ assert.equal(await source.locator('.library-trailer').getAttribute('href'),'https://www.youtube.com/watch?v=abcdef12345');
+ assert.equal(await source.locator('iframe').count(),0,'trailers must not embed or autoplay');
  await source.locator('.library-person').scrollIntoViewIfNeeded();
  await source.locator('.cinema-back').click();
  assert.equal(await source.locator('.cinema-selection').inputValue(),'recent');
- assert.ok(Math.abs((await body.evaluate(el=>el.scrollTop))-before)<2);
+ assert.ok(Math.abs((await source.evaluate(el=>el._libraryView.scrollSurface().scrollTop))-before)<2);
  passed.push('full-page film details reach cast and back restores selection and vertical position');
  await source.locator('.cinema-period').selectOption('day');
  await page.waitForFunction(()=>window.__cinemaCalls.some(x=>x.type==='mediarr/cinema'&&x.period==='day'));
@@ -136,6 +146,16 @@ try {
  await source.locator('.cinema-back').click();
  await page.screenshot({path:path.join(runtime,'cinema-home-mobile.png')});
  passed.push('mobile layout has usable horizontal poster rails, no page overflow and reachable cast');
+ await page.setViewportSize({width:1536,height:1080});
+ await source.evaluate(el=>{el.setConfig({...window.__cinemaConfig,view:'compact'});el.hass=window.__cinemaHass;});
+ await source.locator('.mediarr-open-button').click();
+ const overlay=page.locator('mediarr-overlay-host');
+ await overlay.locator('.cinema-shell').waitFor();
+ assert.equal(await overlay.locator('.cinema-body').evaluate(el=>getComputedStyle(el).overflowY),'auto');
+ await overlay.locator('.cinema-body').evaluate(el=>el.scrollTop=200);
+ assert.ok(await overlay.locator('.cinema-body').evaluate(el=>el.scrollTop>0));
+ await overlay.locator('.mediarr-overlay-close').click();
+ passed.push('HA scrolls the full-page card while the compact-card overlay retains its own scroll surface');
  assert.deepEqual(errors,[]);
  console.log(`PASS: ${passed.length} cinema checks\n${passed.join('\n')}`);
 } finally {await browser.close();}

@@ -1,4 +1,4 @@
-import {MediaLibraryView, mediaEntriesForCard, mediaText, mediaNames, mediaImage, mediaDownload, escapeMediaHtml, downloadBadge} from './media-library.js';
+import {MediaLibraryView, mediaEntriesForCard, mediaText, mediaNames, mediaImage, mediaDownload, escapeMediaHtml, downloadBadge, hasUnwatchedMedia, seriesEpisodeLabel} from './media-library.js';
 
 const esc=escapeMediaHtml;
 const identity=item=>`${item.media_type}:${item.tmdb_id}`;
@@ -10,8 +10,8 @@ const timestamp=value=>{
 
 export function curatedCinemaEntries(entries,{selection='recent',kind='all',genre='',unseen=true,collectionKeys=[]}={}) {
   return entries.filter(entry=>entry.stage==='ready' && (kind==='all'||entry.kind===kind) &&
-    (!genre||mediaNames(entry.item.genres||entry.item.genre).includes(genre)) && (!unseen||entry.watched!==true) &&
-    (selection==='unwatched'?entry.watched!==true:selection==='started'?entry.item.in_progress===true:
+    (!genre||mediaNames(entry.item.genres||entry.item.genre).includes(genre)) && (!unseen||hasUnwatchedMedia(entry)) &&
+    (selection==='unwatched'?hasUnwatchedMedia(entry):selection==='started'?entry.item.in_progress===true:
       selection.startsWith('collection:')?entry.refs.some(ref=>collectionKeys.includes(ref.item.library_key)):true))
     .sort((a,b)=>timestamp(b.item.added||b.item.added_at)-timestamp(a.item.added||a.item.added_at)||a.title.localeCompare(b.title));
 }
@@ -92,7 +92,7 @@ export class CinemaLibraryView extends MediaLibraryView {
   }
 
   poster(entry) {
-    return `<button class="cinema-poster" type="button" data-select-key="${esc(entry.key)}" aria-label="${esc(entry.title)}"><span class="cinema-poster-art">${entry.poster?`<img src="${esc(entry.poster)}" alt="" loading="lazy">`:'<ha-icon icon="mdi:movie-open-outline"></ha-icon>'}<span class="cinema-poster-status cinema-status-${entry.stage}" title="${esc(this.status(entry))}">${entry.stage==='ready'?'✓':entry.stage==='waiting'?'◷':'+'}</span>${downloadBadge(entry,this.label.bind(this))}</span><strong>${esc(entry.title)}</strong><small>${esc(entry.year||this.label(entry.kind==='tv'?'Serie':'Film',entry.kind==='tv'?'Series':'Movie'))}</small></button>`;
+    return `<button class="cinema-poster" type="button" data-select-key="${esc(entry.key)}" aria-label="${esc(entry.title)}"><span class="cinema-poster-art">${entry.poster?`<img src="${esc(entry.poster)}" alt="" loading="lazy">`:'<ha-icon icon="mdi:movie-open-outline"></ha-icon>'}<span class="cinema-poster-status cinema-status-${entry.stage}" title="${esc(this.status(entry))}">${entry.stage==='ready'?'✓':entry.stage==='waiting'?'◷':'+'}</span>${downloadBadge(entry,this.label.bind(this))}</span><strong>${esc(entry.title)}</strong><small>${esc(entry.year||this.label(entry.kind==='tv'?'Serie':'Film',entry.kind==='tv'?'Series':'Movie'))}</small>${entry.kind==='tv'?`<span class="cinema-episode-status">${esc(seriesEpisodeLabel(entry,this.label.bind(this)))}</span>`:''}</button>`;
   }
 
   rail(name,entries,empty='') {
@@ -123,7 +123,7 @@ export class CinemaLibraryView extends MediaLibraryView {
     }
     if(this.input.value.trim()){this.renderSearch();return;}
     const own=curatedCinemaEntries(this.entries,{selection:this.selection,kind:this.kind,genre:this.genre,unseen:this.unseen,collectionKeys:this.collectionKeys});
-    const hero=own.find(entry=>entry.key===this.heroKey)||own[0]||this.entries.find(entry=>entry.stage==='ready')||this.sourceEntries('trending')[0];
+    const hero=own.find(entry=>entry.key===this.heroKey)||own[0]||this.sourceEntries('trending')[0];
     this.heroKey=hero?.key;
     const genres=[...new Set(this.entries.filter(entry=>entry.stage==='ready').flatMap(entry=>mediaNames(entry.item.genres||entry.item.genre)))].sort();
     const trending=this.sourceEntries('trending').length?this.sourceEntries('trending'):this.entries.filter(entry=>entry.stage==='discover'&&entry.refs.some(ref=>ref.provider==='tmdb'&&!ref.entityKey.includes('upcoming'))).slice(0,20);
@@ -139,6 +139,8 @@ export class CinemaLibraryView extends MediaLibraryView {
     for(const el of this.home.querySelectorAll('[data-rail]'))el.scrollLeft=railScroll.get(el.dataset.rail)||0;
     if(activeKey)[...this.home.querySelectorAll('[data-select-key]')].find(el=>el.dataset.selectKey===activeKey)?.focus({preventScroll:true});
     this.bindImages(this.home);
+    // Manager lists may have IDs but no cover; enrich only a bounded visible set.
+    for(const entry of upcoming.slice(0,12).filter(entry=>!entry.poster))void this.loadMetadata(entry);
     if(hero?.banner){const bg=this.home.querySelector('.cinema-hero-backdrop');if(bg)bg.style.backgroundImage=`url(${JSON.stringify(hero.banner)})`;}
     if(hero && (!hero.banner || hero.banner===hero.poster))void this.loadMetadata(hero);
   }

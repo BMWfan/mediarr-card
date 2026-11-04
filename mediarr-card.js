@@ -60,6 +60,22 @@ function mediaNames(value) {
   return (Array.isArray(value) ? value : [value]).map(entry => mediaText(entry?.name ?? entry?.tag ?? entry)).filter(Boolean);
 }
 
+function hasUnwatchedMedia(entry) {
+  const progress = entry.kind === 'tv' && entry.item.episode_progress;
+  return progress?.available === true ? progress.unwatched_count > 0 : entry.watched !== true;
+}
+
+function seriesEpisodeLabel(entry, label) {
+  if (entry.kind !== 'tv') return '';
+  const progress = entry.item.episode_progress;
+  if (!progress || progress.available !== true) return label('Folgenstatus nicht verfügbar','Episode status unavailable');
+  const count = progress.unwatched_count;
+  if (!count) return label('Auf dem neuesten Stand','Up to date');
+  const code = number => String(number).padStart(2,'0');
+  const ranges = (progress.ranges || []).slice(0,3).map(range => `S${code(range.season)} E${code(range.first)}${range.last>range.first?`–E${code(range.last)}`:''}`).join(', ');
+  return `${count} ${progress.started?label(count===1?'neue Folge':'neue Folgen',count===1?'new episode':'new episodes'):label(count===1?'ungesehene Folge':'ungesehene Folgen',count===1?'unwatched episode':'unwatched episodes')}${ranges?' · '+ranges:''}${progress.ranges?.length>3?' …':''}`;
+}
+
 function mediaImage(value) {
   const url = mediaText(value);
   return /^(https?:\/\/|\/(?!\/)|data:image\/(png|jpeg|webp|gif|svg\+xml)[;,])/i.test(url) ? url : '';
@@ -593,9 +609,10 @@ class MediaLibraryView {
     if (this._renderedDetailKey !== entry?.key) this.focus.scrollTop = 0;
     this._renderedDetailKey = entry?.key;
     const esc=escapeMediaHtml;
-    if (entry && (!entry.summary || !mediaCast(entry.item).length || entry.kind==='unknown' || entry.item.streaming===undefined)) void this.loadMetadata(entry);
+    if (entry && (!entry.summary || !mediaCast(entry.item).length || entry.kind==='unknown' || entry.item.streaming===undefined || entry.item.trailer===undefined)) void this.loadMetadata(entry);
     if (!entry) { this.focus.innerHTML=`<p class="library-empty">${esc(this.label('Wähle einen Titel aus.','Choose a title.'))}</p>`; return; }
     const item=entry.item;
+    const trailerUrl=/^https:\/\/www\.youtube\.com\/watch\?v=[A-Za-z0-9_-]{11}$/.test(item.trailer?.url||'')?item.trailer.url:'';
     const genres=mediaNames(item.genres || item.genre).join(', ');
     const runtime=mediaText(item.runtime);
     const metadata=[entry.year,genres,runtime?`${runtime}${/^\d+$/.test(runtime)?' min':''}`:'',entry.rating?`★ ${entry.rating}`:''].filter(Boolean).join(' · ');
@@ -627,6 +644,8 @@ class MediaLibraryView {
               <p class="library-metadata">${esc(metadata)}</p>
               <p class="library-status library-status-${entry.stage}">${esc(this.status(entry))}</p>
               ${actionMarkup}
+              ${trailerUrl?`<a class="library-trailer" href="${esc(trailerUrl)}" target="_blank" rel="noopener noreferrer">▶ ${esc(this.label('Trailer ansehen','Watch trailer'))}</a>`:''}
+              ${entry.kind==='tv'?`<p class="library-episode-status">${esc(seriesEpisodeLabel(entry,this.label.bind(this)))}</p>`:''}
               <p class="library-action-message" role="alert">${esc(this.messages.get(entry.key) || '')}</p>
             </div>
           </div>
@@ -697,8 +716,8 @@ const timestamp=value=>{
 
 function curatedCinemaEntries(entries,{selection='recent',kind='all',genre='',unseen=true,collectionKeys=[]}={}) {
   return entries.filter(entry=>entry.stage==='ready' && (kind==='all'||entry.kind===kind) &&
-    (!genre||mediaNames(entry.item.genres||entry.item.genre).includes(genre)) && (!unseen||entry.watched!==true) &&
-    (selection==='unwatched'?entry.watched!==true:selection==='started'?entry.item.in_progress===true:
+    (!genre||mediaNames(entry.item.genres||entry.item.genre).includes(genre)) && (!unseen||hasUnwatchedMedia(entry)) &&
+    (selection==='unwatched'?hasUnwatchedMedia(entry):selection==='started'?entry.item.in_progress===true:
       selection.startsWith('collection:')?entry.refs.some(ref=>collectionKeys.includes(ref.item.library_key)):true))
     .sort((a,b)=>timestamp(b.item.added||b.item.added_at)-timestamp(a.item.added||a.item.added_at)||a.title.localeCompare(b.title));
 }
@@ -779,7 +798,7 @@ class CinemaLibraryView extends MediaLibraryView {
   }
 
   poster(entry) {
-    return `<button class="cinema-poster" type="button" data-select-key="${esc(entry.key)}" aria-label="${esc(entry.title)}"><span class="cinema-poster-art">${entry.poster?`<img src="${esc(entry.poster)}" alt="" loading="lazy">`:'<ha-icon icon="mdi:movie-open-outline"></ha-icon>'}<span class="cinema-poster-status cinema-status-${entry.stage}" title="${esc(this.status(entry))}">${entry.stage==='ready'?'✓':entry.stage==='waiting'?'◷':'+'}</span>${downloadBadge(entry,this.label.bind(this))}</span><strong>${esc(entry.title)}</strong><small>${esc(entry.year||this.label(entry.kind==='tv'?'Serie':'Film',entry.kind==='tv'?'Series':'Movie'))}</small></button>`;
+    return `<button class="cinema-poster" type="button" data-select-key="${esc(entry.key)}" aria-label="${esc(entry.title)}"><span class="cinema-poster-art">${entry.poster?`<img src="${esc(entry.poster)}" alt="" loading="lazy">`:'<ha-icon icon="mdi:movie-open-outline"></ha-icon>'}<span class="cinema-poster-status cinema-status-${entry.stage}" title="${esc(this.status(entry))}">${entry.stage==='ready'?'✓':entry.stage==='waiting'?'◷':'+'}</span>${downloadBadge(entry,this.label.bind(this))}</span><strong>${esc(entry.title)}</strong><small>${esc(entry.year||this.label(entry.kind==='tv'?'Serie':'Film',entry.kind==='tv'?'Series':'Movie'))}</small>${entry.kind==='tv'?`<span class="cinema-episode-status">${esc(seriesEpisodeLabel(entry,this.label.bind(this)))}</span>`:''}</button>`;
   }
 
   rail(name,entries,empty='') {
@@ -810,7 +829,7 @@ class CinemaLibraryView extends MediaLibraryView {
     }
     if(this.input.value.trim()){this.renderSearch();return;}
     const own=curatedCinemaEntries(this.entries,{selection:this.selection,kind:this.kind,genre:this.genre,unseen:this.unseen,collectionKeys:this.collectionKeys});
-    const hero=own.find(entry=>entry.key===this.heroKey)||own[0]||this.entries.find(entry=>entry.stage==='ready')||this.sourceEntries('trending')[0];
+    const hero=own.find(entry=>entry.key===this.heroKey)||own[0]||this.sourceEntries('trending')[0];
     this.heroKey=hero?.key;
     const genres=[...new Set(this.entries.filter(entry=>entry.stage==='ready').flatMap(entry=>mediaNames(entry.item.genres||entry.item.genre)))].sort();
     const trending=this.sourceEntries('trending').length?this.sourceEntries('trending'):this.entries.filter(entry=>entry.stage==='discover'&&entry.refs.some(ref=>ref.provider==='tmdb'&&!ref.entityKey.includes('upcoming'))).slice(0,20);
@@ -826,6 +845,8 @@ class CinemaLibraryView extends MediaLibraryView {
     for(const el of this.home.querySelectorAll('[data-rail]'))el.scrollLeft=railScroll.get(el.dataset.rail)||0;
     if(activeKey)[...this.home.querySelectorAll('[data-select-key]')].find(el=>el.dataset.selectKey===activeKey)?.focus({preventScroll:true});
     this.bindImages(this.home);
+    // Manager lists may have IDs but no cover; enrich only a bounded visible set.
+    for(const entry of upcoming.slice(0,12).filter(entry=>!entry.poster))void this.loadMetadata(entry);
     if(hero?.banner){const bg=this.home.querySelector('.cinema-hero-backdrop');if(bg)bg.style.backgroundImage=`url(${JSON.stringify(hero.banner)})`;}
     if(hero && (!hero.banner || hero.banner===hero.poster))void this.loadMetadata(hero);
   }
@@ -948,7 +969,9 @@ class CinemaLibraryView extends MediaLibraryView {
 const cinemaStyles = `
   .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
   .mediarr-cinema { max-width:none; color:#f4f6fa; background:#090d12; }
-  .mediarr-cinema.mediarr-page { padding:0; }
+  .mediarr-cinema.mediarr-page { padding:0; height:auto; min-height:calc(100dvh - var(--header-height,56px)); }
+  .mediarr-cinema.mediarr-page .cinema-shell { height:auto; }
+  .mediarr-cinema.mediarr-page .cinema-body { overflow:visible; flex:none; }
   .mediarr-cinema ha-card { background:#090d12; color:#f4f6fa; border:0; border-radius:0; }
   .mediarr-cinema .card-content { padding:0; }
   .cinema-shell { display:flex; flex-direction:column; height:100%; min-height:0; font-family:var(--ha-font-family-body,Roboto,sans-serif); }
@@ -989,6 +1012,9 @@ const cinemaStyles = `
   .mediarr-cinema select option, .mediarr-cinema select optgroup { background:#10181f; color:#ecf3f8; }
   .cinema-unseen { display:flex; gap:6px; align-items:center; border:1px solid #566774; padding:6px 9px; border-radius:7px; color:#d1e4ec; font-size:.8rem; cursor:pointer; }
   .cinema-unseen input { accent-color:#2bd6e4; }
+  .cinema-episode-status { color:#6ce6ed; line-height:1.5; font-size:.75rem; }
+  .library-trailer { display:inline-block; color:#6ce6ed; border:1px solid #34586b; border-radius:7px; padding:8px 12px; margin:8px 0; text-decoration:none; }
+  .library-episode-status { color:#6ce6ed; line-height:1.6; }
   .cinema-unseen:has(input:disabled) { opacity:.45; cursor:default; }
   .cinema-rail { display:grid; grid-auto-flow:column; grid-auto-columns:calc((100% - 5 * 14px) / 6); gap:14px; overflow-x:auto; padding:3px 3px 12px; scroll-snap-type:x proximity; scrollbar-width:thin; scrollbar-color:#344957 transparent; align-items:start; }
   .cinema-poster { min-width:0; border:0; background:transparent; color:#eef3f8; padding:0; text-align:left; scroll-snap-align:start; }
@@ -4037,7 +4063,7 @@ function deriveVisibleSections(config) {
 }
 
 
-const MEDIARR_BUILD = '0.6.0-dev.2';
+const MEDIARR_BUILD = '0.6.0-dev.3';
 console.log(`[mediarr-card] build ${MEDIARR_BUILD} loaded`);
 
 class MediarrCard extends HTMLElement {

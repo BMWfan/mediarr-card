@@ -1,7 +1,9 @@
 export const cinemaStyles = `
   .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
   .mediarr-cinema { max-width:none; color:#f4f6fa; background:#090d12; }
-  .mediarr-cinema.mediarr-page { padding:0; }
+  .mediarr-cinema.mediarr-page { padding:0; height:auto; min-height:calc(100dvh - var(--header-height,56px)); }
+  .mediarr-cinema.mediarr-page .cinema-shell { height:auto; }
+  .mediarr-cinema.mediarr-page .cinema-body { overflow:visible; flex:none; }
   .mediarr-cinema ha-card { background:#090d12; color:#f4f6fa; border:0; border-radius:0; }
   .mediarr-cinema .card-content { padding:0; }
   .cinema-shell { display:flex; flex-direction:column; height:100%; min-height:0; font-family:var(--ha-font-family-body,Roboto,sans-serif); }
@@ -42,6 +44,9 @@ export const cinemaStyles = `
   .mediarr-cinema select option, .mediarr-cinema select optgroup { background:#10181f; color:#ecf3f8; }
   .cinema-unseen { display:flex; gap:6px; align-items:center; border:1px solid #566774; padding:6px 9px; border-radius:7px; color:#d1e4ec; font-size:.8rem; cursor:pointer; }
   .cinema-unseen input { accent-color:#2bd6e4; }
+  .cinema-episode-status { color:#6ce6ed; line-height:1.5; font-size:.75rem; }
+  .library-trailer { display:inline-block; color:#6ce6ed; border:1px solid #34586b; border-radius:7px; padding:8px 12px; margin:8px 0; text-decoration:none; }
+  .library-episode-status { color:#6ce6ed; line-height:1.6; }
   .cinema-unseen:has(input:disabled) { opacity:.45; cursor:default; }
   .cinema-rail { display:grid; grid-auto-flow:column; grid-auto-columns:calc((100% - 5 * 14px) / 6); gap:14px; overflow-x:auto; padding:3px 3px 12px; scroll-snap-type:x proximity; scrollbar-width:thin; scrollbar-color:#344957 transparent; align-items:start; }
   .cinema-poster { min-width:0; border:0; background:transparent; color:#eef3f8; padding:0; text-align:left; scroll-snap-align:start; }

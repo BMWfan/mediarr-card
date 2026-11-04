@@ -2,6 +2,17 @@
 
 All notable changes to this fork are documented in this file.
 
+## 0.6.0-dev.3 (2026-11-04)
+
+- Unwatched series use available episodes after the furthest watched/started
+  episode, ignoring old season gaps. One poster shows counts and episode ranges.
+  Requires sensor 0.8.0-dev.2; unavailable episode status is explicit.
+- Add a safe external official YouTube trailer link from TMDB details, without
+  embedding or autoplay. Prefer the configured language with English fallback.
+- Let Home Assistant scroll the permanent Cinema page as its content grows;
+  retain the independent scroll surface in the compact-card fullscreen overlay.
+- Show manager artwork on waiting titles and fetch missing covers via metadata.
+
 ## 0.6.0-dev.2 (2026-11-04)
 
 - Merge undated episode-sensor entries into an unambiguous dated series so the

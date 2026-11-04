@@ -6,7 +6,7 @@ A visual overview card for Home Assistant that combines media servers, media man
 
 ## Cinema developer version
 
-Pair **card 0.6.0-dev.2** with **sensor integration 0.8.0-dev.1**. These are HACS
+Pair **card 0.6.0-dev.3** with **sensor integration 0.8.0-dev.2**. These are HACS
 prereleases: enable beta versions and select the versions explicitly. Main and
 stable releases are unchanged until user approval. Update the sensor first and
 restart Home Assistant, then update the card and reload the frontend.
@@ -17,6 +17,18 @@ trending, personal TMDB recommendations, upcoming titles and actual queue progre
 There are no additional Mediarr navigation menus. Opening a poster shows full
 details; the back button retains query, filters and position. The compact card
 still opens the same cinema page. `library_layout: classic` retains the old layout.
+
+The full-page card grows with its content and uses Home Assistant's scroll surface.
+The fullscreen overlay opened from the compact card retains its own scroll area.
+For series, Unwatched counts available unplayed episodes after the furthest
+played/partially played episode; older gaps and specials do not revive the show.
+One poster displays counts and ranges such as `3 new episodes · S04 E06–E08`.
+Never-started series show all regular unwatched episodes. Status uses the configured
+Plex account, not an automatically selected HA user's Plex profile. Missing episode
+status is labelled, and older backends retain the old aggregate watched fallback.
+Details offer an official TMDB-sourced YouTube trailer when present, opening an
+external page without autoplay or embedding. Waiting titles use public manager
+cover artwork, with a TMDB metadata fallback when no cover is supplied.
 
 **Personal recommendations:** in the Mediarr integration's TMDB options, keep your
 existing API key and optionally add your **TMDB API Read Access Token** (from your
