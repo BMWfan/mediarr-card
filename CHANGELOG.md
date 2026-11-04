@@ -2,6 +2,17 @@
 
 All notable changes to this fork are documented in this file.
 
+## 0.6.0-dev.4 (2026-11-04)
+
+- Place Trailer alongside Play in Cinema details and highlights. User clicks
+  open a floating in-page YouTube player with fullscreen support and an external
+  fallback. Closing removes the iframe; Escape closes the trailer first.
+- Preserve poster/image nodes, filter controls and unchanged details across HA
+  live updates to prevent repeated redraws and flickering on mobile.
+- Add player-list refresh and useful offline guidance, distinguishing disabled
+  entities from missing/unavailable players with sensor 0.8.0-dev.3. A player
+  must be reachable in HA before playback can be requested.
+
 ## 0.6.0-dev.3 (2026-11-04)
 
 - Unwatched series use available episodes after the furthest watched/started

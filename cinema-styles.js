@@ -46,6 +46,14 @@ export const cinemaStyles = `
   .cinema-unseen input { accent-color:#2bd6e4; }
   .cinema-episode-status { color:#6ce6ed; line-height:1.5; font-size:.75rem; }
   .library-trailer { display:inline-block; color:#6ce6ed; border:1px solid #34586b; border-radius:7px; padding:8px 12px; margin:8px 0; text-decoration:none; }
+  .library-actions { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+  .cinema-trailer-window { position:fixed; right:20px; bottom:20px; width:min(480px,calc(100vw - 24px)); z-index:1000; background:#101923; color:#f1f7fb; border:1px solid #3f5e70; border-radius:12px; box-shadow:0 14px 70px #000b; overflow:hidden; }
+  .cinema-trailer-window header { display:flex; align-items:center; gap:12px; padding:8px 12px; }
+  .cinema-trailer-window strong { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .cinema-trailer-close { background:transparent; border:0; color:#eff8fc; padding:8px; cursor:pointer; }
+  .cinema-trailer-window iframe { display:block; width:100%; aspect-ratio:16/9; border:0; background:#000; }
+  .cinema-trailer-window > a { display:block; padding:10px 12px; font-size:.75rem; color:#81e4ed; }
+  @media (max-width:700px) { .cinema-trailer-window { right:12px; bottom:max(12px,env(safe-area-inset-bottom)); } }
   .library-episode-status { color:#6ce6ed; line-height:1.6; }
   .cinema-unseen:has(input:disabled) { opacity:.45; cursor:default; }
   .cinema-rail { display:grid; grid-auto-flow:column; grid-auto-columns:calc((100% - 5 * 14px) / 6); gap:14px; overflow-x:auto; padding:3px 3px 12px; scroll-snap-type:x proximity; scrollbar-width:thin; scrollbar-color:#344957 transparent; align-items:start; }
@@ -106,6 +114,7 @@ export const cinemaStyles = `
   .cinema-player-list { display:grid; gap:12px; line-height:1.6; }
   .cinema-player-dialog button { padding:10px 14px; background:#122935; border:1px solid #34586b; border-radius:7px; color:#d2f2fa; }
   .cinema-player-close { margin-top:20px; }
+  .cinema-player-refresh { margin-top:20px; margin-right:12px; }
   @media (max-width:1050px) {
     .cinema-section-heading { align-items:flex-start; }
     .cinema-filters { margin-left:0; }

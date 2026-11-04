@@ -6,7 +6,7 @@ A visual overview card for Home Assistant that combines media servers, media man
 
 ## Cinema developer version
 
-Pair **card 0.6.0-dev.3** with **sensor integration 0.8.0-dev.2**. These are HACS
+Pair **card 0.6.0-dev.4** with **sensor integration 0.8.0-dev.3**. These are HACS
 prereleases: enable beta versions and select the versions explicitly. Main and
 stable releases are unchanged until user approval. Update the sensor first and
 restart Home Assistant, then update the card and reload the frontend.
@@ -27,8 +27,10 @@ Never-started series show all regular unwatched episodes. Status uses the config
 Plex account, not an automatically selected HA user's Plex profile. Missing episode
 status is labelled, and older backends retain the old aggregate watched fallback.
 Details offer an official TMDB-sourced YouTube trailer when present, opening an
-external page without autoplay or embedding. Waiting titles use public manager
+floating in-page player after a click, with fullscreen support and an external fallback. Closing stops playback. Waiting titles use public manager
 cover artwork, with a TMDB metadata fallback when no cover is supplied.
+
+Cinema preserves loaded poster nodes and unchanged details during HA live updates. The player dialog can refresh the current HA list and explains disabled/unavailable clients; refresh does not wake devices. Open Plex on the target device and allow remote control before retrying.
 
 **Personal recommendations:** in the Mediarr integration's TMDB options, keep your
 existing API key and optionally add your **TMDB API Read Access Token** (from your

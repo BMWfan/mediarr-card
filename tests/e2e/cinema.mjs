@@ -12,8 +12,9 @@ const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||u
 const passed=[];
 try {
  const page=await browser.newPage({viewport:{width:1536,height:1080}});
+ await page.route('https://www.youtube-nocookie.com/**',route=>route.fulfill({contentType:'text/html',body:'<p>Trailer fixture</p>'}));
  const errors=[];page.on('pageerror',error=>errors.push(error.message));
- await page.addInitScript(({auth,base})=>localStorage.setItem('hassTokens',JSON.stringify({hassUrl:base,clientId:base+'/',...auth,expires:Date.now()+auth.expires_in*1000})),{auth,base});
+ await page.addInitScript(({auth,base})=>{if(location.origin===new URL(base).origin)localStorage.setItem('hassTokens',JSON.stringify({hassUrl:base,clientId:base+'/',...auth,expires:Date.now()+auth.expires_in*1000}));},{auth,base});
  await page.goto(base+'/mediarr-test/test');
  await page.locator('mediarr-card').waitFor();
  await page.locator('mediarr-card').evaluate(el=>el._hass.callWS({type:'lovelace/config',url_path:'mediarr-test',force:true}));
@@ -34,14 +35,14 @@ try {
      item('Zeitbruch',7,{watched:false,added:1740000000,library_key:'0:7'}),
    ],radarr:[item('Nordpfad',11,{release_date:'2030-12-18',poster:'',banner:''}),item('Downloadfilm',12,{download_status:'downloading',download_progress:68})],sonarr:[item('Downloadserie',13,{media_type:'tv',download_status:'paused',download_progress:24})]};
    const discovery={trending:[item('Trendingfilm',21),item('Sternenreise',1),item('Nordpfad',11),item('Trendingserie',22,{media_type:'tv'})],upcoming:[item('Orbital',24,{release_date:'2030-11-01'}),item('Baldserie',25,{media_type:'tv',release_date:'2031-01-12'})]};
-   window.__cinemaCalls=[];window.__cinemaRequests=[];window.__cinemaAccount=false;
+   window.__cinemaCalls=[];window.__cinemaRequests=[];window.__cinemaAccount=false;window.__cinemaPlayersReady=false;
    const config={type:'custom:mediarr-card',view:'library',plex_entity:'sensor.cinema_plex',radarr_entity:'sensor.cinema_radarr',sonarr_entity:'sensor.cinema_sonarr'};
    const hass={...actual,language:'de',states:{...actual.states,'sensor.cinema_plex':{state:'2',attributes:{data:[{title:'Sternenstation',number:'S02E03',poster:art},{title:'Sternenstation',number:'S02E04',poster:art}]}}},services:{...actual.services,mediarr:{submit_movie_request:{},submit_tv_request:{}}},
      callService:async(domain,service,data)=>window.__cinemaRequests.push({domain,service,data}),
      callWS:async msg=>{
        window.__cinemaCalls.push(msg);
        if(msg.type==='mediarr/library')return {groups,page:1,total_pages:1,complete:true};
-       if(msg.type==='mediarr/players')return {players:[{entity_id:'media_player.plex_fixture',name:'Plex Test TV',available:true}]};
+       if(msg.type==='mediarr/players')return {players:[{entity_id:'media_player.plex_fixture',name:'Plex Test TV',available:window.__cinemaPlayersReady,reason:window.__cinemaPlayersReady?'available':'unavailable'},{entity_id:'media_player.disabled_fixture',name:'Disabled Plex',available:false,reason:'disabled'}]};
        if(msg.type==='mediarr/play'){window.__lastCinemaPlayback=msg;return {accepted:true};}
        if(msg.type==='mediarr/cinema')return {...discovery,personal:window.__cinemaAccount?[item('Persönlicher Tipp',23),item('Nordlicht',2),item('Nordpfad',11)]:[],account:{connected:window.__cinemaAccount,can_connect:true},errors:{}};
        if(msg.type==='mediarr/collections')return msg.collection_id?{keys:['0:2']}:{collections:[{id:'0:42',title:'Meine Thriller',smart:true}]};
@@ -50,7 +51,7 @@ try {
          window.__cinemaAccount=msg.action==='finish';return {connected:window.__cinemaAccount,can_connect:true};
        }
        if(msg.type==='mediarr/search')return {results:[item('Nordlicht',2),item('Nordpfad',11),item('Nordstern',31)],page:1,total_pages:1};
-       if(msg.type==='mediarr/media_details')return item(msg.title,msg.tmdb_id,{media_type:msg.media_type,overview:'Vollständige Handlung aus dem Backend.',trailer:{url:'https://www.youtube.com/watch?v=abcdef12345'},streaming:{region:'DE',subscription:[{name:'Netflix'}],rent:[],buy:[]}});
+       if(msg.type==='mediarr/media_details')return item(msg.title,msg.tmdb_id,{media_type:msg.media_type,genres:groups.plex.find(x=>x.tmdb_id===msg.tmdb_id)?.genres||['Science-Fiction'],overview:'Vollständige Handlung aus dem Backend.',trailer:{url:'https://www.youtube.com/watch?v=abcdef12345'},streaming:{region:'DE',subscription:[{name:'Netflix'}],rent:[],buy:[]}});
        return actual.callWS(msg);
      }};
    window.__cinemaConfig=config;window.__cinemaHass=hass;window.__cinemaGroups=groups;
@@ -66,6 +67,11 @@ try {
  await source.locator('.cinema-upcoming-card').filter({hasText:'Nordpfad'}).locator('img').waitFor();
  passed.push('real HA panel displays cinematic hero and curated poster rails without extra menu');
  await source.locator('.cinema-primary').click();
+ assert.equal(await source.locator('[data-player="media_player.plex_fixture"]').isDisabled(),true);
+ assert.ok((await source.locator('.cinema-player-list').textContent()).includes('Öffne Plex'));
+ assert.ok((await source.locator('[data-player="media_player.disabled_fixture"]').textContent()).includes('In HA deaktiviert'));
+ await page.evaluate(()=>window.__cinemaPlayersReady=true);
+ await source.locator('.cinema-player-refresh').click();
  await source.locator('[data-player="media_player.plex_fixture"]').click();
  await source.locator('.cinema-player-list').filter({hasText:'Wiedergabe angefordert'}).waitFor();
  assert.equal((await page.evaluate(()=>window.__lastCinemaPlayback)).library_key,'0:1');
@@ -103,7 +109,19 @@ try {
  await source.locator('.library-heading h1').filter({hasText:'Nordlicht'}).waitFor();
  await source.locator('.library-person').waitFor();
  assert.equal(await source.locator('.library-trailer').getAttribute('href'),'https://www.youtube.com/watch?v=abcdef12345');
- assert.equal(await source.locator('iframe').count(),0,'trailers must not embed or autoplay');
+ assert.equal(await source.locator('iframe').count(),0,'no trailer before user clicks');
+ assert.equal(await source.locator('.library-actions').locator('.cinema-detail-play').count(),1);
+ assert.equal(await source.locator('.library-actions').locator('.library-trailer').count(),1);
+ await source.locator('.library-trailer').click();
+ await source.locator('.cinema-trailer-window iframe').waitFor();
+ assert.equal(await source.evaluate(el=>{const video=el.querySelector('iframe');el.hass={...window.__cinemaHass};return video===el.querySelector('iframe');}),true,'status updates keep the running trailer');
+ assert.match(await source.locator('.cinema-trailer-window iframe').getAttribute('src'),/^https:\/\/www\.youtube-nocookie\.com\/embed\/abcdef12345/);
+ await page.keyboard.press('Escape');
+ assert.equal(await source.locator('.cinema-trailer-window').count(),0);
+ assert.ok((await source.locator('.library-heading h1').textContent()).includes('Nordlicht'));
+ await source.locator('.library-trailer').click();
+ await source.locator('.cinema-trailer-close').click();
+ assert.equal(await source.locator('iframe').count(),0,'closing removes the player and stops playback');
  await source.locator('.library-person').scrollIntoViewIfNeeded();
  await source.locator('.cinema-back').click();
  assert.equal(await source.locator('.cinema-selection').inputValue(),'recent');
@@ -141,9 +159,15 @@ try {
  await source.locator('.cinema-home').waitFor();
  assert.equal(await source.evaluate(el=>el.scrollWidth>el.clientWidth),false);
  await source.locator('.cinema-library-section .cinema-poster').first().click();
+ await source.locator('.library-trailer').click();
+ const trailerBox=await source.locator('.cinema-trailer-window').boundingBox();assert.ok(trailerBox.x>=0&&trailerBox.x+trailerBox.width<=391);
+ await source.locator('.cinema-trailer-close').click();
  await source.locator('.library-person').scrollIntoViewIfNeeded();
  const cast=await source.locator('.library-person').boundingBox();assert.ok(cast.y>=0&&cast.y+cast.height<=845);
  await source.locator('.cinema-back').click();
+ const stable=await source.evaluate(el=>{const image=el.querySelector('.cinema-library-section img');const checkbox=el.querySelector('.cinema-unseen input');checkbox.focus();for(let i=0;i<6;i++)el.hass={...window.__cinemaHass};window.__cinemaGroups.radarr.find(item=>item.tmdb_id===12).download_progress=69;el._libraryView.refresh();return {image:image===el.querySelector('.cinema-library-section img'),checkbox:checkbox===el.querySelector('.cinema-unseen input'),focus:checkbox.getRootNode().activeElement===checkbox};});
+ assert.deepEqual(stable,{image:true,checkbox:true,focus:true});
+ passed.push('mobile live updates preserve loaded poster nodes, native controls and focus');
  await page.screenshot({path:path.join(runtime,'cinema-home-mobile.png')});
  passed.push('mobile layout has usable horizontal poster rails, no page overflow and reachable cast');
  await page.setViewportSize({width:1536,height:1080});
@@ -154,6 +178,12 @@ try {
  assert.equal(await overlay.locator('.cinema-body').evaluate(el=>getComputedStyle(el).overflowY),'auto');
  await overlay.locator('.cinema-body').evaluate(el=>el.scrollTop=200);
  assert.ok(await overlay.locator('.cinema-body').evaluate(el=>el.scrollTop>0));
+ await overlay.locator('.cinema-library-section .cinema-poster').filter({hasText:'Nordlicht'}).click();
+ await overlay.locator('.library-trailer').click();
+ await overlay.locator('.cinema-trailer-window iframe').waitFor();
+ await page.keyboard.press('Escape');
+ assert.equal(await page.locator('mediarr-overlay-host').count(),1,'Escape closes trailer before fullscreen overlay');
+ assert.equal(await overlay.locator('.cinema-trailer-window').count(),0);
  await overlay.locator('.mediarr-overlay-close').click();
  passed.push('HA scrolls the full-page card while the compact-card overlay retains its own scroll surface');
  assert.deepEqual(errors,[]);

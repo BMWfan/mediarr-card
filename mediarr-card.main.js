@@ -75,7 +75,7 @@ function deriveVisibleSections(config) {
 }
 
 
-const MEDIARR_BUILD = '0.6.0-dev.3';
+const MEDIARR_BUILD = '0.6.0-dev.4';
 console.log(`[mediarr-card] build ${MEDIARR_BUILD} loaded`);
 
 class MediarrCard extends HTMLElement {
@@ -163,7 +163,8 @@ class MediarrCard extends HTMLElement {
       event.preventDefault();
       const cancel = expanded.querySelector('.mediarr-modal-overlay .mediarr-btn-cancel');
       const clients = expanded.querySelector('.client-modal:not(.hidden)');
-      if (cancel) cancel.click();
+      if (expanded._libraryView?.trailerWindow) expanded._libraryView.closeTrailer();
+      else if (cancel) cancel.click();
       else if (clients) clients.classList.add('hidden');
       else requestClose();
     });
