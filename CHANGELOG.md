@@ -2,6 +2,14 @@
 
 All notable changes to this fork are documented in this file.
 
+## 0.6.0-dev.5 (2026-11-04)
+
+- Match Play/Add and the other Cinema text actions to the compact Trailer button:
+  shared minimum height, font size, padding, borders and corners. Remove the
+  mismatched detail-action margins and wrap hero actions on narrow screens.
+- Replace the trailer emoji with Home Assistant's `mdi:movie-play-outline` icon
+  in details and the hero, with consistent icon sizing and label spacing.
+
 ## 0.6.0-dev.4 (2026-11-04)
 
 - Place Trailer alongside Play in Cinema details and highlights. User clicks

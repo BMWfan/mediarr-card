@@ -6,7 +6,7 @@ A visual overview card for Home Assistant that combines media servers, media man
 
 ## Cinema developer version
 
-Pair **card 0.6.0-dev.4** with **sensor integration 0.8.0-dev.3**. These are HACS
+Pair **card 0.6.0-dev.5** with **sensor integration 0.8.0-dev.3**. These are HACS
 prereleases: enable beta versions and select the versions explicitly. Main and
 stable releases are unchanged until user approval. Update the sensor first and
 restart Home Assistant, then update the card and reload the frontend.

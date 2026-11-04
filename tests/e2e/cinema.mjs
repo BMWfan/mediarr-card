@@ -112,6 +112,7 @@ try {
  assert.equal(await source.locator('iframe').count(),0,'no trailer before user clicks');
  assert.equal(await source.locator('.library-actions').locator('.cinema-detail-play').count(),1);
  assert.equal(await source.locator('.library-actions').locator('.library-trailer').count(),1);
+ await source.locator('.library-actions').screenshot({path:path.join(runtime,'cinema-buttons-desktop.png')});
  await source.locator('.library-trailer').click();
  await source.locator('.cinema-trailer-window iframe').waitFor();
  assert.equal(await source.evaluate(el=>{const video=el.querySelector('iframe');el.hass={...window.__cinemaHass};return video===el.querySelector('iframe');}),true,'status updates keep the running trailer');
@@ -160,6 +161,7 @@ try {
  assert.equal(await source.evaluate(el=>el.scrollWidth>el.clientWidth),false);
  await source.locator('.cinema-library-section .cinema-poster').first().click();
  await source.locator('.library-trailer').click();
+ await source.locator('.library-actions').screenshot({path:path.join(runtime,'cinema-buttons-mobile.png')});
  const trailerBox=await source.locator('.cinema-trailer-window').boundingBox();assert.ok(trailerBox.x>=0&&trailerBox.x+trailerBox.width<=391);
  await source.locator('.cinema-trailer-close').click();
  await source.locator('.library-person').scrollIntoViewIfNeeded();

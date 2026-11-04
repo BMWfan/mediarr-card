@@ -644,7 +644,7 @@ class MediaLibraryView {
               <p class="library-metadata">${esc(metadata)}</p>
               <p class="library-status library-status-${entry.stage}">${esc(this.status(entry))}</p>
               <div class="library-actions">${actionMarkup}
-              ${trailerUrl?`<a class="library-trailer" href="${esc(trailerUrl)}" target="_blank" rel="noopener noreferrer">▶ ${esc(this.label('Trailer ansehen','Watch trailer'))}</a>`:''}</div>
+              ${trailerUrl?`<a class="library-trailer" href="${esc(trailerUrl)}" target="_blank" rel="noopener noreferrer"><ha-icon icon="mdi:movie-play-outline" aria-hidden="true"></ha-icon>${esc(this.label('Trailer ansehen','Watch trailer'))}</a>`:''}</div>
               ${entry.stage==='ready'&&entry.kind==='tv'?`<p class="library-episode-status">${esc(seriesEpisodeLabel(entry,this.label.bind(this)))}</p>`:''}
               <p class="library-action-message" role="alert">${esc(this.messages.get(entry.key) || '')}</p>
             </div>
@@ -887,7 +887,7 @@ class CinemaLibraryView extends MediaLibraryView {
     const canPlay=entry.stage==='ready'&&entry.refs.some(ref=>ref.provider==='plex'&&ref.item.library_key);
     const canRequest=entry.stage==='discover'&&this.requestService(entry);
     const action=canPlay?this.label('Abspielen','Play'):canRequest?this.label('Hinzufügen','Add'):this.label('Details','Details');
-    return `<section class="cinema-hero"><div class="cinema-hero-backdrop"></div><div class="cinema-hero-copy"><h1>${esc(entry.title)}</h1><p class="cinema-hero-meta">${esc([entry.year,mediaNames(entry.item.genres).slice(0,2).join(' · '),entry.item.runtime?`${entry.item.runtime} min`:null,entry.rating?`★ ${entry.rating}`:null].filter(Boolean).join(' · '))}</p><span class="cinema-availability cinema-availability-${entry.stage}">${esc(this.status(entry))}</span><p class="cinema-hero-synopsis">${esc(entry.summary||this.label('Öffne den Film für Handlung und Besetzung.','Open this title for synopsis and cast.'))}</p><div class="cinema-hero-actions"><button type="button" class="cinema-primary" data-hero-action="${canPlay?'play':canRequest?'request':'details'}">${esc(action)}</button>${entry.item.trailer?.url?`<button type="button" class="cinema-hero-trailer">▶ ${esc(this.label('Trailer','Trailer'))}</button>`:''}${canPlay||canRequest?`<button type="button" data-select-key="${esc(entry.key)}">${esc(this.label('Details','Details'))}</button>`:''}</div></div></section>`;
+    return `<section class="cinema-hero"><div class="cinema-hero-backdrop"></div><div class="cinema-hero-copy"><h1>${esc(entry.title)}</h1><p class="cinema-hero-meta">${esc([entry.year,mediaNames(entry.item.genres).slice(0,2).join(' · '),entry.item.runtime?`${entry.item.runtime} min`:null,entry.rating?`★ ${entry.rating}`:null].filter(Boolean).join(' · '))}</p><span class="cinema-availability cinema-availability-${entry.stage}">${esc(this.status(entry))}</span><p class="cinema-hero-synopsis">${esc(entry.summary||this.label('Öffne den Film für Handlung und Besetzung.','Open this title for synopsis and cast.'))}</p><div class="cinema-hero-actions"><button type="button" class="cinema-primary" data-hero-action="${canPlay?'play':canRequest?'request':'details'}">${esc(action)}</button>${entry.item.trailer?.url?`<button type="button" class="cinema-hero-trailer"><ha-icon icon="mdi:movie-play-outline" aria-hidden="true"></ha-icon>${esc(this.label('Trailer','Trailer'))}</button>`:''}${canPlay||canRequest?`<button type="button" data-select-key="${esc(entry.key)}">${esc(this.label('Details','Details'))}</button>`:''}</div></div></section>`;
   }
 
   accountMarkup() {
@@ -1066,7 +1066,7 @@ const cinemaStyles = `
   .cinema-availability-ready { border-color:#3e8159; color:#a5e9b8; background:#14371e80; }
   .cinema-availability-waiting { border-color:#877443; color:#eed89b; background:#30281380; }
   .cinema-hero-synopsis { margin:16px 0 22px; font-size:.95rem; line-height:1.6; color:#e0e5eb; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
-  .cinema-hero-actions { display:flex; gap:12px; }
+  .cinema-hero-actions { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
   .mediarr-cinema button { font-family:inherit; cursor:pointer; }
   .cinema-hero-actions button, .cinema-account button, .cinema-account a, .cinema-reload { padding:9px 18px; color:#f0f4f8; border:1px solid #798a99; border-radius:7px; background:#111920a0; font-size:.85rem; }
   .cinema-hero-actions .cinema-primary { background:#2bd6e4; color:#07161b; border-color:#2bd6e4; font-weight:650; }
@@ -1151,6 +1151,25 @@ const cinemaStyles = `
   .cinema-player-dialog button { padding:10px 14px; background:#122935; border:1px solid #34586b; border-radius:7px; color:#d2f2fa; }
   .cinema-player-close { margin-top:20px; }
   .cinema-player-refresh { margin-top:20px; margin-right:12px; }
+  /* Text actions share the compact trailer proportions, including native buttons. */
+  .mediarr-cinema .library-actions > button,
+  .mediarr-cinema .library-actions > .library-trailer,
+  .mediarr-cinema .cinema-hero-actions > button,
+  .mediarr-cinema .cinema-account button,
+  .mediarr-cinema .cinema-account a,
+  .mediarr-cinema .cinema-reload,
+  .mediarr-cinema .library-metadata-retry,
+  .mediarr-cinema .cinema-player-refresh,
+  .mediarr-cinema .cinema-player-close {
+    box-sizing:border-box; display:inline-flex; align-items:center; justify-content:center;
+    min-height:42px; padding:8px 14px; border-width:1px; border-style:solid;
+    border-radius:7px; font-family:inherit; font-size:.9rem; line-height:1.4;
+    text-align:center; text-decoration:none; vertical-align:middle;
+  }
+  .mediarr-cinema .library-actions > button,
+  .mediarr-cinema .library-actions > .library-trailer { margin:0; }
+  .library-trailer, .cinema-hero-trailer { gap:8px; }
+  .library-trailer ha-icon, .cinema-hero-trailer ha-icon { --mdc-icon-size:20px; flex-shrink:0; }
   @media (max-width:1050px) {
     .cinema-section-heading { align-items:flex-start; }
     .cinema-filters { margin-left:0; }
@@ -4140,7 +4159,7 @@ function deriveVisibleSections(config) {
 }
 
 
-const MEDIARR_BUILD = '0.6.0-dev.4';
+const MEDIARR_BUILD = '0.6.0-dev.5';
 console.log(`[mediarr-card] build ${MEDIARR_BUILD} loaded`);
 
 class MediarrCard extends HTMLElement {

@@ -30,7 +30,7 @@ export const cinemaStyles = `
   .cinema-availability-ready { border-color:#3e8159; color:#a5e9b8; background:#14371e80; }
   .cinema-availability-waiting { border-color:#877443; color:#eed89b; background:#30281380; }
   .cinema-hero-synopsis { margin:16px 0 22px; font-size:.95rem; line-height:1.6; color:#e0e5eb; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
-  .cinema-hero-actions { display:flex; gap:12px; }
+  .cinema-hero-actions { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
   .mediarr-cinema button { font-family:inherit; cursor:pointer; }
   .cinema-hero-actions button, .cinema-account button, .cinema-account a, .cinema-reload { padding:9px 18px; color:#f0f4f8; border:1px solid #798a99; border-radius:7px; background:#111920a0; font-size:.85rem; }
   .cinema-hero-actions .cinema-primary { background:#2bd6e4; color:#07161b; border-color:#2bd6e4; font-weight:650; }
@@ -115,6 +115,25 @@ export const cinemaStyles = `
   .cinema-player-dialog button { padding:10px 14px; background:#122935; border:1px solid #34586b; border-radius:7px; color:#d2f2fa; }
   .cinema-player-close { margin-top:20px; }
   .cinema-player-refresh { margin-top:20px; margin-right:12px; }
+  /* Text actions share the compact trailer proportions, including native buttons. */
+  .mediarr-cinema .library-actions > button,
+  .mediarr-cinema .library-actions > .library-trailer,
+  .mediarr-cinema .cinema-hero-actions > button,
+  .mediarr-cinema .cinema-account button,
+  .mediarr-cinema .cinema-account a,
+  .mediarr-cinema .cinema-reload,
+  .mediarr-cinema .library-metadata-retry,
+  .mediarr-cinema .cinema-player-refresh,
+  .mediarr-cinema .cinema-player-close {
+    box-sizing:border-box; display:inline-flex; align-items:center; justify-content:center;
+    min-height:42px; padding:8px 14px; border-width:1px; border-style:solid;
+    border-radius:7px; font-family:inherit; font-size:.9rem; line-height:1.4;
+    text-align:center; text-decoration:none; vertical-align:middle;
+  }
+  .mediarr-cinema .library-actions > button,
+  .mediarr-cinema .library-actions > .library-trailer { margin:0; }
+  .library-trailer, .cinema-hero-trailer { gap:8px; }
+  .library-trailer ha-icon, .cinema-hero-trailer ha-icon { --mdc-icon-size:20px; flex-shrink:0; }
   @media (max-width:1050px) {
     .cinema-section-heading { align-items:flex-start; }
     .cinema-filters { margin-left:0; }
