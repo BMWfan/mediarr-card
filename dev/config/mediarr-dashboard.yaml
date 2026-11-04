@@ -1,8 +1,15 @@
 title: Mediarr Test
 views:
-  - title: Test
-    path: test
-    cards:
-      - type: custom:mediarr-card
-        plex_entity: sensor.plex_mediarr_dev
-        max_items: 10
+- title: Test
+  path: test
+  cards:
+  - type: custom:mediarr-card
+    plex_entity: sensor.plex_mediarr_dev
+    max_items: 10
+- title: Cinema
+  path: cinema
+  type: panel
+  cards:
+  - type: custom:mediarr-card
+    view: library
+    plex_entity: sensor.plex_mediarr_dev

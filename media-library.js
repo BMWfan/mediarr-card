@@ -8,6 +8,22 @@ export function mediaNames(value) {
   return (Array.isArray(value) ? value : [value]).map(entry => mediaText(entry?.name ?? entry?.tag ?? entry)).filter(Boolean);
 }
 
+export function hasUnwatchedMedia(entry) {
+  const progress = entry.kind === 'tv' && entry.item.episode_progress;
+  return progress?.available === true ? progress.unwatched_count > 0 : entry.watched !== true;
+}
+
+export function seriesEpisodeLabel(entry, label) {
+  if (entry.kind !== 'tv') return '';
+  const progress = entry.item.episode_progress;
+  if (!progress || progress.available !== true) return label('Folgenstatus nicht verfügbar','Episode status unavailable');
+  const count = progress.unwatched_count;
+  if (!count) return label('Auf dem neuesten Stand','Up to date');
+  const code = number => String(number).padStart(2,'0');
+  const ranges = (progress.ranges || []).slice(0,3).map(range => `S${code(range.season)} E${code(range.first)}${range.last>range.first?`–E${code(range.last)}`:''}`).join(', ');
+  return `${count} ${progress.started?label(count===1?'neue Folge':'neue Folgen',count===1?'new episode':'new episodes'):label(count===1?'ungesehene Folge':'ungesehene Folgen',count===1?'unwatched episode':'unwatched episodes')}${ranges?' · '+ranges:''}${progress.ranges?.length>3?' …':''}`;
+}
+
 export function mediaImage(value) {
   const url = mediaText(value);
   return /^(https?:\/\/|\/(?!\/)|data:image\/(png|jpeg|webp|gif|svg\+xml)[;,])/i.test(url) ? url : '';
@@ -139,6 +155,26 @@ export function collectMediaLibrary(config, hass) {
       if (kinds.size===1) { record.kind=[...kinds][0]; record.item.media_type=record.kind; remember(record); changed=true; }
     }
   }
+  // Episode-based Plex sensors often omit the show's premiere year and IDs.
+  // Recover the year only from an unambiguous series identity before grouping;
+  // otherwise the same show gets separate dated and undated poster entries.
+  const datedSeries = new Map();
+  for (const record of records) {
+    if (record.kind !== 'tv' || !record.item.year) continue;
+    const key = normalized(record.item.title);
+    if (!datedSeries.has(key)) datedSeries.set(key, []);
+    datedSeries.get(key).push(record);
+  }
+  const conflictingIds = (a,b) => Object.keys(a).some(key => b[key] && a[key] !== b[key]);
+  for (const record of records) {
+    if (record.kind !== 'tv' || record.item.year) continue;
+    const candidates = (datedSeries.get(normalized(record.item.title)) || [])
+      .filter(candidate => !conflictingIds(record.ids,candidate.ids));
+    if (candidates.length && new Set(candidates.map(candidate => candidate.item.year)).size === 1 &&
+        !candidates.some((candidate,index) => candidates.slice(index+1).some(other => conflictingIds(candidate.ids,other.ids)))) {
+      record.item.year = candidates[0].item.year;
+    }
+  }
   for (const {item,index,entityKey,entityId,provider,kind,ids} of records) {
       const title = item.title;
       const identityKeys = Object.entries(ids).map(([key,value]) => `${kind}:${key}:${value}`);
@@ -233,7 +269,7 @@ export function mediaEntriesForCard(card, catalog = []) {
     entry.summary=metadataText(metadata.overview) || entry.summary;
     entry.rating=mediaText(metadata.vote_average ?? entry.rating);
     entry.poster=entry.poster || mediaImage(metadata.poster);
-    entry.banner=entry.banner || mediaImage(metadata.backdrop || metadata.banner);
+    entry.banner=(!entry.banner || entry.banner===entry.poster)?mediaImage(metadata.backdrop || metadata.banner)||entry.banner:entry.banner;
   }
   const pending = card._pendingLibraryRequests ||= new Set();
   for (const entry of entries) {
@@ -252,7 +288,7 @@ export function mediaDownload(entry) {
   return {status:ref.item.download_status || 'downloading',progress:typeof raw==='number'&&Number.isFinite(raw)?Math.max(0,Math.min(100,Math.round(raw))):null};
 }
 
-function downloadBadge(entry, label) {
+export function downloadBadge(entry, label) {
   const download=mediaDownload(entry);
   if(!download)return '';
   const text=({paused:label('Pausiert','Paused'),queued:label('Warteschlange','Queued'),importing:label('Importiert','Importing'),completed:label('Wird verarbeitet','Processing'),warning:label('Prüfung nötig','Needs attention')})[download.status] || label('Lädt herunter','Downloading');
@@ -521,9 +557,10 @@ export class MediaLibraryView {
     if (this._renderedDetailKey !== entry?.key) this.focus.scrollTop = 0;
     this._renderedDetailKey = entry?.key;
     const esc=escapeMediaHtml;
-    if (entry && (!entry.summary || !mediaCast(entry.item).length || entry.kind==='unknown' || entry.item.streaming===undefined)) void this.loadMetadata(entry);
+    if (entry && (!entry.summary || !mediaCast(entry.item).length || entry.kind==='unknown' || entry.item.streaming===undefined || entry.item.trailer===undefined)) void this.loadMetadata(entry);
     if (!entry) { this.focus.innerHTML=`<p class="library-empty">${esc(this.label('Wähle einen Titel aus.','Choose a title.'))}</p>`; return; }
     const item=entry.item;
+    const trailerUrl=/^https:\/\/www\.youtube\.com\/watch\?v=[A-Za-z0-9_-]{11}$/.test(item.trailer?.url||'')?item.trailer.url:'';
     const genres=mediaNames(item.genres || item.genre).join(', ');
     const runtime=mediaText(item.runtime);
     const metadata=[entry.year,genres,runtime?`${runtime}${/^\d+$/.test(runtime)?' min':''}`:'',entry.rating?`★ ${entry.rating}`:''].filter(Boolean).join(' · ');
@@ -554,7 +591,9 @@ export class MediaLibraryView {
               <h1>${esc(entry.title)}</h1>
               <p class="library-metadata">${esc(metadata)}</p>
               <p class="library-status library-status-${entry.stage}">${esc(this.status(entry))}</p>
-              ${actionMarkup}
+              <div class="library-actions">${actionMarkup}
+              ${trailerUrl?`<a class="library-trailer" href="${esc(trailerUrl)}" target="_blank" rel="noopener noreferrer"><ha-icon icon="mdi:movie-play-outline" aria-hidden="true"></ha-icon>${esc(this.label('Trailer ansehen','Watch trailer'))}</a>`:''}</div>
+              ${entry.stage==='ready'&&entry.kind==='tv'?`<p class="library-episode-status">${esc(seriesEpisodeLabel(entry,this.label.bind(this)))}</p>`:''}
               <p class="library-action-message" role="alert">${esc(this.messages.get(entry.key) || '')}</p>
             </div>
           </div>

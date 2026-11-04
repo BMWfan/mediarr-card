@@ -14,6 +14,7 @@ try {
  await page.addInitScript(({auth,base})=>localStorage.setItem('hassTokens',JSON.stringify({hassUrl:base,clientId:base+'/',...auth,expires:Date.now()+auth.expires_in*1000})),{auth,base});
  await page.goto(base+'/mediarr-test/test');
  const source=page.locator('mediarr-card');await source.locator('.mediarr-open-button').waitFor();
+ await source.evaluate(el=>el.setConfig({...el.config,library_layout:'classic'}));
  await source.evaluate(el=>{
    window.__metadataCalls=[];window.__metadataResolvers={};
    const actual=el._hass;

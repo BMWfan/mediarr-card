@@ -2,6 +2,69 @@
 
 All notable changes to this fork are documented in this file.
 
+## 0.6.0-dev.5 (2026-11-04)
+
+- Match Play/Add and the other Cinema text actions to the compact Trailer button:
+  shared minimum height, font size, padding, borders and corners. Remove the
+  mismatched detail-action margins and wrap hero actions on narrow screens.
+- Replace the trailer emoji with Home Assistant's `mdi:movie-play-outline` icon
+  in details and the hero, with consistent icon sizing and label spacing.
+- Add a matching `mdi:play` icon to Play in details and the hero, keeping it
+  visually distinct from the trailer's clapperboard.
+
+## 0.6.0-dev.4 (2026-11-04)
+
+- Place Trailer alongside Play in Cinema details and highlights. User clicks
+  open a floating in-page YouTube player with fullscreen support and an external
+  fallback. Closing removes the iframe; Escape closes the trailer first.
+- Preserve poster/image nodes, filter controls and unchanged details across HA
+  live updates to prevent repeated redraws and flickering on mobile.
+- Add player-list refresh and useful offline guidance, distinguishing disabled
+  entities from missing/unavailable players with sensor 0.8.0-dev.3. A player
+  must be reachable in HA before playback can be requested.
+
+## 0.6.0-dev.3 (2026-11-04)
+
+- Unwatched series use available episodes after the furthest watched/started
+  episode, ignoring old season gaps. One poster shows counts and episode ranges.
+  Requires sensor 0.8.0-dev.2; unavailable episode status is explicit.
+- Add a safe external official YouTube trailer link from TMDB details, without
+  embedding or autoplay. Prefer the configured language with English fallback.
+- Let Home Assistant scroll the permanent Cinema page as its content grows;
+  retain the independent scroll surface in the compact-card fullscreen overlay.
+- Show manager artwork on waiting titles and fetch missing covers via metadata.
+
+## 0.6.0-dev.2 (2026-11-04)
+
+- Merge undated episode-sensor entries into an unambiguous dated series so the
+  Cinema library does not show the same series twice. Conflicting IDs and
+  same-name remakes remain separate. No sensor-integration update is required.
+- Keep the Unwatched checkbox checked and disabled while the Unwatched selection
+  already enforces that filter; restore its prior preference on other selections.
+
+## 0.6.0-dev.1 (2026-11-03)
+
+- Replace the large default view with the approved cinema page: full-width
+  spotlight, curated collection controls, poster rails and a single page scroll.
+- Add native Plex collection selection, trending period, sourced TMDB account
+  recommendations, upcoming releases and real download queues without extra menus.
+- Add full-page film details with context-preserving back navigation, global
+  library/manager/TMDB search and exact-ID requests. Compact cards remain intact.
+- Add secure TMDB account approval and authorized HA Plex player selection via
+  mediarr_sensor 0.8.0-dev.1. Credentials stay in HA, and each HA user connects
+  their own TMDB account. There is no local recommendation engine.
+- Keep the previous large layout available with `library_layout: classic`.
+
+## 0.5.1-dev.1 (2026-11-02)
+
+- Keep library/overlay rendering independent of legacy provider initialization
+  and updates, so malformed or legacy-only sensor fields cannot abort the library.
+
+- Fix the configuration error when adding a card without individual sensor
+  entities. A minimal `type: custom:mediarr-card` now opens the backend library;
+  configured sensor cards retain the compact default. Explicit compact mode
+  also accepts backend-only configuration. Legacy sections still require sensors.
+
 ## 0.5.0 (2026-11-01)
 
 - Add authenticated TMDB catalog search alongside existing-library matches,

@@ -1,4 +1,6 @@
 import { MediaLibraryView, CompactMediaView } from './media-library.js';
+import { CinemaLibraryView } from './cinema-library.js';
+import { cinemaStyles } from './cinema-styles.js';
 // main-card.js
 import { PlexSection } from './plex-section.js?v=20260406-01';
 import { JellyfinSection } from './jellyfin-section.js?v=20260406-01';
@@ -73,7 +75,7 @@ function deriveVisibleSections(config) {
 }
 
 
-const MEDIARR_BUILD = '20261101-library';
+const MEDIARR_BUILD = '0.6.0-dev.5';
 console.log(`[mediarr-card] build ${MEDIARR_BUILD} loaded`);
 
 class MediarrCard extends HTMLElement {
@@ -111,7 +113,7 @@ class MediarrCard extends HTMLElement {
       host.style.setProperty(name, theme.getPropertyValue(name));
     }
     const style = document.createElement('style');
-    style.textContent = styles;
+    style.textContent = styles + cinemaStyles;
     const dialog = document.createElement('dialog');
     dialog.className = 'mediarr-overlay-dialog';
     dialog.setAttribute('aria-label', 'Mediarr');
@@ -161,7 +163,8 @@ class MediarrCard extends HTMLElement {
       event.preventDefault();
       const cancel = expanded.querySelector('.mediarr-modal-overlay .mediarr-btn-cancel');
       const clients = expanded.querySelector('.client-modal:not(.hidden)');
-      if (cancel) cancel.click();
+      if (expanded._libraryView?.trailerWindow) expanded._libraryView.closeTrailer();
+      else if (cancel) cancel.click();
       else if (clients) clients.classList.add('hidden');
       else requestClose();
     });
@@ -206,7 +209,7 @@ class MediarrCard extends HTMLElement {
   _arrangeExpandedView() {
     this.classList.add('mediarr-expanded');
     this.classList.toggle('mediarr-page', !this._isExpandedView);
-    this._libraryView = new MediaLibraryView(this);
+    this._libraryView = this.config.library_layout === 'classic' ? new MediaLibraryView(this) : new CinemaLibraryView(this);
     this._libraryView.mount();
   }
 
@@ -345,7 +348,7 @@ class MediarrCard extends HTMLElement {
       return;
     }
     const preferredSections = deriveVisibleSections(this.config);
-    const orderedSections = preferredSections.filter((sectionKey) =>
+    const orderedSections = (this._isExpandedView || this.config.view === 'library') ? [] : preferredSections.filter((sectionKey) =>
       hasSectionEntities(this.config, sectionKey)
     );
   
@@ -472,7 +475,7 @@ class MediarrCard extends HTMLElement {
     
     // Add styles
     const style = document.createElement('style');
-    style.textContent = styles;
+    style.textContent = styles + cinemaStyles;
     this.appendChild(style);
 
     // Initialize click handlers
@@ -542,6 +545,13 @@ class MediarrCard extends HTMLElement {
       return;
     }
 
+    // The unified library owns its rendering. Legacy provider renderers assume
+    // legacy-only lists and payload formats and must not run in this view.
+    if (this._libraryView) {
+      this._libraryView.refresh();
+      return;
+    }
+
     if (this.config.media_player_entity) {
       this._updateNowPlaying(hass.states[this.config.media_player_entity]);
     }
@@ -571,17 +581,19 @@ class MediarrCard extends HTMLElement {
 
   setConfig(config) {
     const previousView = this.config?.view;
+    const previousLayout = this.config?.library_layout;
     const normalizedVisibleSections = deriveVisibleSections(config);
     const hasEntity = SECTION_ORDER.some((sectionKey) => hasSectionEntities(config, sectionKey));
   
-    if (!hasEntity && config.view !== 'library') {
-      throw new Error('Please define at least one media entity');
+    if (!hasEntity && config.view === 'legacy') {
+      throw new Error('Legacy view requires a media entity. Use view: library for the complete Mediarr backend library.');
     }
     
     // Set defaults for the new options
     this.config = {
-      view: 'compact',
+      view: hasEntity ? 'compact' : 'library',
       compact_items: 4,
+      library_layout: 'cinema',
       max_items: 10,            // Default max items if not specified
       days_to_check: 60,        // Default days to check if not specified
       radarr_release_types: ['Digital', 'Theaters'], // Default to digital and theatrical, exclude physical
@@ -604,13 +616,13 @@ class MediarrCard extends HTMLElement {
     if (config.jellyfin_url && !config.jellyfin_url.endsWith('/')) {
       this._formattedJellyfinUrl = config.jellyfin_url + '/';
     }
-    if (this.content && !this._isExpandedView && previousView !== this.config.view) {
+    if (this.content && !this._isExpandedView && (previousView !== this.config.view || previousLayout !== this.config.library_layout)) {
       this._closeMediaOverlay();
       this._compactView = null;
       this._libraryView?.destroy();
       this.content = null;
       this._libraryView = null;
-      this.classList.remove('mediarr-compact','mediarr-expanded','mediarr-page');
+      this.classList.remove('mediarr-compact','mediarr-expanded','mediarr-page','mediarr-cinema');
       this.innerHTML = '';
       if (this._hass) this.hass = this._hass;
     }
@@ -914,6 +926,7 @@ class MediarrCardEditor extends HTMLElement {
         .global-field input, .global-field select { width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid var(--divider-color); border-radius: 6px; background: var(--card-background-color); color: var(--primary-text-color); }
       </style>
       <div class="editor-root">
+        <div class="editor-subtitle">Mediarr · Build ${MEDIARR_BUILD}</div>
         <div class="editor-card">
           <div class="editor-title">Data Sources</div>
           <div class="editor-subtitle">Only active Mediarr sensors are shown here.</div>
@@ -956,6 +969,10 @@ class MediarrCardEditor extends HTMLElement {
                 <option value="library" ${this._config.view === 'library' ? 'selected' : ''}>Full-page media library</option>
                 <option value="legacy" ${this._config.view === 'legacy' ? 'selected' : ''}>Legacy source sections</option>
               </select>
+            </div>
+            <div class="global-field">
+              <label class="field-label">Large view design</label>
+              <select data-library-layout><option value="cinema" ${this._config.library_layout!=='classic'?'selected':''}>Cinema</option><option value="classic" ${this._config.library_layout==='classic'?'selected':''}>Classic list and details</option></select>
             </div>
             <div class="global-field">
               <label class="field-label" for="mediarr-compact-items">Compact Posters</label>
@@ -1021,6 +1038,7 @@ class MediarrCardEditor extends HTMLElement {
     });
 
     this.querySelector('[data-view-mode]')?.addEventListener('change', event => this._updateConfigValue('view', event.target.value));
+    this.querySelector('[data-library-layout]')?.addEventListener('change',event=>this._updateConfigValue('library_layout',event.target.value));
     this.querySelector('[data-streaming-region]')?.addEventListener('change',event=>{const region=event.target.value.trim().toUpperCase();if(/^[A-Z]{2}$/.test(region))this._updateConfigValue('streaming_region',region);});
 
     this.querySelectorAll('[data-number-key]').forEach((input) => {

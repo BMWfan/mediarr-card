@@ -7,7 +7,8 @@ permissions:
   contents: read
 jobs:
   browser:
-    runs-on: ubuntu-latest
+    # Match the OS supported by our pinned Playwright browser build.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -45,6 +46,7 @@ jobs:
             dev/.runtime/library-cast-scroll-desktop.png
             dev/.runtime/catalog-full-page.png
             dev/.runtime/full-library-download.png
+            dev/.runtime/cinema-*.png
             dev/.runtime/service.log
       - name: Stop development instance
         if: always()

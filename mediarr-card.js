@@ -60,6 +60,22 @@ function mediaNames(value) {
   return (Array.isArray(value) ? value : [value]).map(entry => mediaText(entry?.name ?? entry?.tag ?? entry)).filter(Boolean);
 }
 
+function hasUnwatchedMedia(entry) {
+  const progress = entry.kind === 'tv' && entry.item.episode_progress;
+  return progress?.available === true ? progress.unwatched_count > 0 : entry.watched !== true;
+}
+
+function seriesEpisodeLabel(entry, label) {
+  if (entry.kind !== 'tv') return '';
+  const progress = entry.item.episode_progress;
+  if (!progress || progress.available !== true) return label('Folgenstatus nicht verfügbar','Episode status unavailable');
+  const count = progress.unwatched_count;
+  if (!count) return label('Auf dem neuesten Stand','Up to date');
+  const code = number => String(number).padStart(2,'0');
+  const ranges = (progress.ranges || []).slice(0,3).map(range => `S${code(range.season)} E${code(range.first)}${range.last>range.first?`–E${code(range.last)}`:''}`).join(', ');
+  return `${count} ${progress.started?label(count===1?'neue Folge':'neue Folgen',count===1?'new episode':'new episodes'):label(count===1?'ungesehene Folge':'ungesehene Folgen',count===1?'unwatched episode':'unwatched episodes')}${ranges?' · '+ranges:''}${progress.ranges?.length>3?' …':''}`;
+}
+
 function mediaImage(value) {
   const url = mediaText(value);
   return /^(https?:\/\/|\/(?!\/)|data:image\/(png|jpeg|webp|gif|svg\+xml)[;,])/i.test(url) ? url : '';
@@ -191,6 +207,26 @@ function collectMediaLibrary(config, hass) {
       if (kinds.size===1) { record.kind=[...kinds][0]; record.item.media_type=record.kind; remember(record); changed=true; }
     }
   }
+  // Episode-based Plex sensors often omit the show's premiere year and IDs.
+  // Recover the year only from an unambiguous series identity before grouping;
+  // otherwise the same show gets separate dated and undated poster entries.
+  const datedSeries = new Map();
+  for (const record of records) {
+    if (record.kind !== 'tv' || !record.item.year) continue;
+    const key = normalized(record.item.title);
+    if (!datedSeries.has(key)) datedSeries.set(key, []);
+    datedSeries.get(key).push(record);
+  }
+  const conflictingIds = (a,b) => Object.keys(a).some(key => b[key] && a[key] !== b[key]);
+  for (const record of records) {
+    if (record.kind !== 'tv' || record.item.year) continue;
+    const candidates = (datedSeries.get(normalized(record.item.title)) || [])
+      .filter(candidate => !conflictingIds(record.ids,candidate.ids));
+    if (candidates.length && new Set(candidates.map(candidate => candidate.item.year)).size === 1 &&
+        !candidates.some((candidate,index) => candidates.slice(index+1).some(other => conflictingIds(candidate.ids,other.ids)))) {
+      record.item.year = candidates[0].item.year;
+    }
+  }
   for (const {item,index,entityKey,entityId,provider,kind,ids} of records) {
       const title = item.title;
       const identityKeys = Object.entries(ids).map(([key,value]) => `${kind}:${key}:${value}`);
@@ -285,7 +321,7 @@ function mediaEntriesForCard(card, catalog = []) {
     entry.summary=metadataText(metadata.overview) || entry.summary;
     entry.rating=mediaText(metadata.vote_average ?? entry.rating);
     entry.poster=entry.poster || mediaImage(metadata.poster);
-    entry.banner=entry.banner || mediaImage(metadata.backdrop || metadata.banner);
+    entry.banner=(!entry.banner || entry.banner===entry.poster)?mediaImage(metadata.backdrop || metadata.banner)||entry.banner:entry.banner;
   }
   const pending = card._pendingLibraryRequests ||= new Set();
   for (const entry of entries) {
@@ -573,9 +609,10 @@ class MediaLibraryView {
     if (this._renderedDetailKey !== entry?.key) this.focus.scrollTop = 0;
     this._renderedDetailKey = entry?.key;
     const esc=escapeMediaHtml;
-    if (entry && (!entry.summary || !mediaCast(entry.item).length || entry.kind==='unknown' || entry.item.streaming===undefined)) void this.loadMetadata(entry);
+    if (entry && (!entry.summary || !mediaCast(entry.item).length || entry.kind==='unknown' || entry.item.streaming===undefined || entry.item.trailer===undefined)) void this.loadMetadata(entry);
     if (!entry) { this.focus.innerHTML=`<p class="library-empty">${esc(this.label('Wähle einen Titel aus.','Choose a title.'))}</p>`; return; }
     const item=entry.item;
+    const trailerUrl=/^https:\/\/www\.youtube\.com\/watch\?v=[A-Za-z0-9_-]{11}$/.test(item.trailer?.url||'')?item.trailer.url:'';
     const genres=mediaNames(item.genres || item.genre).join(', ');
     const runtime=mediaText(item.runtime);
     const metadata=[entry.year,genres,runtime?`${runtime}${/^\d+$/.test(runtime)?' min':''}`:'',entry.rating?`★ ${entry.rating}`:''].filter(Boolean).join(' · ');
@@ -606,7 +643,9 @@ class MediaLibraryView {
               <h1>${esc(entry.title)}</h1>
               <p class="library-metadata">${esc(metadata)}</p>
               <p class="library-status library-status-${entry.stage}">${esc(this.status(entry))}</p>
-              ${actionMarkup}
+              <div class="library-actions">${actionMarkup}
+              ${trailerUrl?`<a class="library-trailer" href="${esc(trailerUrl)}" target="_blank" rel="noopener noreferrer"><ha-icon icon="mdi:movie-play-outline" aria-hidden="true"></ha-icon>${esc(this.label('Trailer ansehen','Watch trailer'))}</a>`:''}</div>
+              ${entry.stage==='ready'&&entry.kind==='tv'?`<p class="library-episode-status">${esc(seriesEpisodeLabel(entry,this.label.bind(this)))}</p>`:''}
               <p class="library-action-message" role="alert">${esc(this.messages.get(entry.key) || '')}</p>
             </div>
           </div>
@@ -664,6 +703,519 @@ class MediaLibraryView {
     finally { this.busy.delete(entry.key);this.refresh(); }
   }
 }
+
+// ---- cinema-library.js ----
+
+const esc=escapeMediaHtml;
+const identity=item=>`${item.media_type}:${item.tmdb_id}`;
+const entryIdentity=entry=>`${entry.kind}:${entry.ids.tmdb}`;
+// Preserve loaded images, focus and native controls during live HA updates.
+function patchCinemaDOM(target, markup) {
+  const template=document.createElement('template');template.innerHTML=markup;
+  const patch=(parent,nextParent)=>{
+    const desired=[...nextParent.childNodes];
+    desired.forEach((next,index)=>{
+      let current=parent.childNodes[index];
+      if(!current){parent.append(next.cloneNode(true));return;}
+      if(current.nodeType!==next.nodeType||current.nodeName!==next.nodeName||
+         (current.dataset?.selectKey&&next.dataset?.selectKey&&current.dataset.selectKey!==next.dataset.selectKey)) {
+        current.replaceWith(next.cloneNode(true));return;
+      }
+      if(current.nodeType===Node.TEXT_NODE){if(current.data!==next.data)current.data=next.data;return;}
+      if(!(current instanceof Element))return;
+      for(const attr of [...current.attributes])if(!next.hasAttribute(attr.name)&&!(attr.name==='style'&&current.classList.contains('cinema-hero-backdrop')))current.removeAttribute(attr.name);
+      for(const attr of next.attributes)if(current.getAttribute(attr.name)!==attr.value)current.setAttribute(attr.name,attr.value);
+      patch(current,next);
+      if(current instanceof HTMLInputElement&&current.checked!==next.checked)current.checked=next.checked;
+      if(current instanceof HTMLSelectElement&&current.value!==next.value)current.value=next.value;
+    });
+    while(parent.childNodes.length>desired.length)parent.lastChild.remove();
+  };
+  patch(target,template.content);
+}
+const timestamp=value=>{
+  if(typeof value==='number')return value<1e12?value*1000:value;
+  return /^\d+$/.test(String(value||''))?timestamp(Number(value)):Date.parse(value)||0;
+};
+
+function curatedCinemaEntries(entries,{selection='recent',kind='all',genre='',unseen=true,collectionKeys=[]}={}) {
+  return entries.filter(entry=>entry.stage==='ready' && (kind==='all'||entry.kind===kind) &&
+    (!genre||mediaNames(entry.item.genres||entry.item.genre).includes(genre)) && (!unseen||hasUnwatchedMedia(entry)) &&
+    (selection==='unwatched'?hasUnwatchedMedia(entry):selection==='started'?entry.item.in_progress===true:
+      selection.startsWith('collection:')?entry.refs.some(ref=>collectionKeys.includes(ref.item.library_key)):true))
+    .sort((a,b)=>timestamp(b.item.added||b.item.added_at)-timestamp(a.item.added||a.item.added_at)||a.title.localeCompare(b.title));
+}
+
+class CinemaLibraryView extends MediaLibraryView {
+  constructor(card) {
+    super(card);
+    this.selection=card._cinemaSelection||'recent';this.kind='all';this.genre='';this.unseen=true;
+    this.period='week';this.upcomingMode='tracked';this.discovery={trending:[],personal:[],upcoming:[],errors:{},account:{}};
+    this.collections=[];this.collectionKeys=[];this.railLimits={};this.detailKey=card._initialLibrarySelection?.selectedKey;
+    this.collectionVersion=0;this.discoveryVersion=0;this.alive=true;
+  }
+
+  mount() {
+    const content=this.card.querySelector('.card-content');
+    this.card.querySelectorAll('.section, .media-details-panel').forEach(el=>el.remove());
+    this.card.content.hidden=true;this.card.classList.add('mediarr-cinema');
+    this.shell=document.createElement('div');this.shell.className='cinema-shell';
+    this.shell.innerHTML=`<header class="cinema-toolbar"><span class="cinema-brand"><ha-icon icon="mdi:movie-open-outline"></ha-icon><strong>Mediarr</strong></span><label class="cinema-search-label"><span class="sr-only">${esc(this.label('Filme und Serien suchen','Search movies and series'))}</span><ha-icon icon="mdi:magnify" aria-hidden="true"></ha-icon><input class="mediarr-search" type="search" maxlength="128" placeholder="${esc(this.label('Filme und Serien suchen …','Search movies and series …'))}"></label><button class="cinema-download-shortcut" type="button" aria-label="${esc(this.label('Laufende Downloads','Active downloads'))}"><ha-icon icon="mdi:download-outline"></ha-icon><span></span></button></header><main class="cinema-body"><p class="cinema-library-status" role="status"></p><section class="cinema-detail" hidden><button type="button" class="cinema-back">← ${esc(this.label('Zurück zur Auswahl','Back to selection'))}</button><div class="library-focus"></div></section><div class="cinema-home"></div><section class="cinema-search-results" hidden><p class="mediarr-search-status" role="status"></p><p class="library-catalog-status" role="status"></p><div class="library-results"></div><button class="library-load-more" type="button">${esc(this.label('Weitere Treffer','More results'))}</button></section></main>`;
+    content.append(this.shell);this.input=this.shell.querySelector('input');this.body=this.shell.querySelector('.cinema-body');
+    this.home=this.shell.querySelector('.cinema-home');this.focus=this.shell.querySelector('.library-focus');
+    this.results=this.shell.querySelector('.library-results');this.searchStatus=this.shell.querySelector('.library-catalog-status');
+    this.moreButton=this.shell.querySelector('.library-load-more');
+    this.input.oninput=()=>{if(this.detailKey)this.back(false);this.scheduleSearch();};
+    this.shell.querySelector('.cinema-back').onclick=()=>this.back();
+    this.shell.querySelector('.cinema-download-shortcut').onclick=()=>{this.input.value='';this.back(false);this.scheduleSearch();this.home.querySelector('.cinema-downloads')?.scrollIntoView({behavior:'smooth',block:'start'});};
+    this.refresh();this.loadLibrary();this.loadDiscovery();this.loadCollections();
+    this.libraryTimer=setInterval(()=>{if(document.visibilityState==='visible'&&this.card.isConnected)this.loadLibrary(true);},60000);
+  }
+
+  async ws(type,data={}) {
+    if(typeof this.card._hass?.callWS!=='function')throw {code:'unknown_command'};
+    let timer;
+    try{return await Promise.race([this.card._hass.callWS({type,...data}),new Promise((_,reject)=>timer=setTimeout(()=>reject({code:'metadata_unavailable'}),30000))]);}
+    finally{clearTimeout(timer);}
+  }
+
+  async loadDiscovery() {
+    const version=++this.discoveryVersion;this.discoveryLoading=true;
+    try {
+      const data=await this.ws('mediarr/cinema',{language:this.card._hass?.language||'en',region:this.card.config.streaming_region||'DE',period:this.period});
+      if(!this.alive||version!==this.discoveryVersion)return;
+      this.discovery={trending:[],personal:[],upcoming:[],errors:{},account:{},...data};this.discoveryError=null;
+    }catch(error){if(version===this.discoveryVersion)this.discoveryError=error?.code||'metadata_unavailable';}
+    finally{if(this.alive&&version===this.discoveryVersion){this.discoveryLoading=false;this.refresh();}}
+  }
+
+  async loadCollections(id) {
+    const version=++this.collectionVersion;this.collectionLoading=true;this.render();
+    try {
+      const data=await this.ws('mediarr/collections',id?{collection_id:id}:{});
+      if(!this.alive||version!==this.collectionVersion)return;
+      if(id)this.collectionKeys=data.keys||[];else this.collections=data.collections||[];
+      this.collectionError=null;
+    }catch(error){if(version===this.collectionVersion)this.collectionError=error?.code||'library_unavailable';}
+    finally{if(this.alive&&version===this.collectionVersion){this.collectionLoading=false;this.render();}}
+  }
+
+  refresh() {
+    const extra=[...this.catalog,...this.discovery.trending,...this.discovery.personal,...this.discovery.upcoming];
+    this.entries=mediaEntriesForCard(this.card,extra);
+    this.render();
+  }
+
+  status(entry) {
+    if(entry.stage==='ready')return this.label('In deiner Mediathek','In your library');
+    if(entry.stage==='waiting'&&!entry.optimistic&&!mediaDownload(entry))return this.label('Vorgemerkt · ','Tracked · ')+super.status(entry);
+    if(entry.stage==='discover')return this.label('Neu entdecken','Discover');
+    return super.status(entry);
+  }
+
+  sourceEntries(name) {
+    const identities=new Set(this.discovery[name].map(identity));
+    const entries=this.entries.filter(entry=>identities.has(entryIdentity(entry)));
+    // Keep the upstream ordering. Existing library/queue data supplies status.
+    const order=new Map(this.discovery[name].map((item,index)=>[identity(item),index]));
+    return entries.sort((a,b)=>order.get(entryIdentity(a))-order.get(entryIdentity(b)));
+  }
+
+  poster(entry) {
+    return `<button class="cinema-poster" type="button" data-select-key="${esc(entry.key)}" aria-label="${esc(entry.title)}"><span class="cinema-poster-art">${entry.poster?`<img src="${esc(entry.poster)}" alt="" loading="lazy">`:'<ha-icon icon="mdi:movie-open-outline"></ha-icon>'}<span class="cinema-poster-status cinema-status-${entry.stage}" title="${esc(this.status(entry))}">${entry.stage==='ready'?'✓':entry.stage==='waiting'?'◷':'+'}</span>${downloadBadge(entry,this.label.bind(this))}</span><strong>${esc(entry.title)}</strong><small>${esc(entry.year||this.label(entry.kind==='tv'?'Serie':'Film',entry.kind==='tv'?'Series':'Movie'))}</small>${entry.stage==='ready'&&entry.kind==='tv'?`<span class="cinema-episode-status">${esc(seriesEpisodeLabel(entry,this.label.bind(this)))}</span>`:''}</button>`;
+  }
+
+  rail(name,entries,empty='') {
+    const limit=this.railLimits[name]||24;
+    return `<div class="cinema-rail" data-rail="${name}" role="region" aria-label="${esc(name)}">${entries.length?entries.slice(0,limit).map(entry=>this.poster(entry)).join(''):`<p class="cinema-empty">${esc(empty||this.label('Keine passenden Titel.','No matching titles.'))}</p>`}${entries.length>limit?`<button class="cinema-rail-more" type="button" data-more="${name}">${esc(this.label('Mehr anzeigen','Show more'))}</button>`:''}</div>`;
+  }
+
+  render() {
+    if(!this.shell)return;
+    const railScroll=new Map([...this.home.querySelectorAll('[data-rail]')].map(el=>[el.dataset.rail,el.scrollLeft]));
+    const activeKey=this.home.querySelector('button:focus')?.dataset.selectKey;
+    const state=this.card._fullLibraryState;
+    this.shell.querySelector('.cinema-library-status').textContent=state.loading?this.label('Mediathek wird geladen …','Loading library …'):state.error==='unknown_command'?this.label('Für die vollständige Mediathek die Mediarr-Integration aktualisieren.','Update the Mediarr integration for the full library.'):state.error?this.label('Nicht alle Quellen erreichbar. Die Auswahl kann unvollständig sein.','Some sources are unavailable. The selection may be incomplete.'):'';
+    const downloads=this.entries.filter(entry=>mediaDownload(entry));
+    this.shell.querySelector('.cinema-download-shortcut span').textContent=downloads.length||'';
+    this.shell.querySelector('.cinema-detail').hidden=!this.detailKey;
+    this.shell.querySelector('.cinema-search-results').hidden=!!this.detailKey||!this.input.value.trim();
+    this.home.hidden=!!this.detailKey||!!this.input.value.trim();
+    if(this.detailKey) {
+      const entry=this.entries.find(entry=>entry.key===this.detailKey);
+      const signature=JSON.stringify([entry,this.metadataMessage(entry||{}),this.messages.get(entry?.key),this.busy.has(entry?.key)]);
+      if(this.detailSignature===signature)return;
+      this.detailSignature=signature;
+      this.selectedKey=this.detailKey;super.renderDetails(entry);
+      this.focus.querySelector('.library-play')?.remove();
+      if(entry?.stage==='ready'&&entry.refs.some(ref=>ref.provider==='plex'&&ref.item.library_key)) {
+        const play=document.createElement('button');play.type='button';play.className='library-request cinema-detail-play';play.innerHTML=`<ha-icon icon="mdi:play" aria-hidden="true"></ha-icon>${esc(this.label('Abspielen','Play'))}`;
+        play.onclick=()=>this.play(entry);this.focus.querySelector('.library-actions').prepend(play);
+      }
+      const trailer=this.focus.querySelector('.library-trailer');
+      if(trailer)trailer.onclick=event=>{event.preventDefault();this.showTrailer(entry,trailer.href,event.currentTarget);};
+      this.bindImages(this.focus);return;
+    }
+    if(this.input.value.trim()){this.renderSearch();return;}
+    const own=curatedCinemaEntries(this.entries,{selection:this.selection,kind:this.kind,genre:this.genre,unseen:this.unseen,collectionKeys:this.collectionKeys});
+    const hero=own.find(entry=>entry.key===this.heroKey)||own[0]||this.sourceEntries('trending')[0];
+    this.heroKey=hero?.key;
+    const genres=[...new Set(this.entries.filter(entry=>entry.stage==='ready').flatMap(entry=>mediaNames(entry.item.genres||entry.item.genre)))].sort();
+    const trending=this.sourceEntries('trending').length?this.sourceEntries('trending'):this.entries.filter(entry=>entry.stage==='discover'&&entry.refs.some(ref=>ref.provider==='tmdb'&&!ref.entityKey.includes('upcoming'))).slice(0,20);
+    const personal=this.sourceEntries('personal').filter(entry=>entry.stage==='discover');
+    const upcoming=this.upcomingMode==='all'?this.sourceEntries('upcoming'):this.entries.filter(entry=>entry.stage==='waiting'&&!mediaDownload(entry));
+    const options=[['recent',this.label('Zuletzt hinzugefügt','Recently added')],['unwatched',this.label('Noch nicht gesehen','Unwatched')],['started',this.label('Angefangen','Started')]];
+    const homeMarkup=`${hero?this.heroMarkup(hero):`<section class="cinema-hero cinema-hero-empty"><div class="cinema-hero-copy"><h1>${esc(this.label('Dein nächster Filmabend','Your next movie night'))}</h1><p>${esc(this.label('Durchsuche Filme und Serien oder lade deine Plex-Mediathek.','Search movies and series or load your Plex library.'))}</p><button type="button" class="cinema-reload">${esc(this.label('Mediathek laden','Load library'))}</button></div></section>`}
+      <section class="cinema-library-section"><div class="cinema-section-heading"><h2>${esc(this.label('Aus deiner Mediathek','From your library'))}</h2><div class="cinema-filters"><label><span class="sr-only">${esc(this.label('Auswahl','Selection'))}</span><select class="cinema-selection">${options.map(([key,title])=>`<option value="${key}" ${this.selection===key?'selected':''}>${esc(title)}</option>`).join('')}${this.collections.length?`<optgroup label="Plex">${this.collections.map(c=>`<option value="collection:${esc(c.id)}" ${this.selection==='collection:'+c.id?'selected':''}>${esc(c.title)}</option>`).join('')}</optgroup>`:''}</select></label><label><span class="sr-only">${esc(this.label('Medientyp','Media type'))}</span><select class="cinema-kind">${[['all',this.label('Filme & Serien','Movies & series')],['movie',this.label('Filme','Movies')],['tv',this.label('Serien','Series')]].map(([key,title])=>`<option value="${key}" ${this.kind===key?'selected':''}>${esc(title)}</option>`).join('')}</select></label><label><span class="sr-only">Genre</span><select class="cinema-genre"><option value="">Genre</option>${genres.map(g=>`<option value="${esc(g)}" ${this.genre===g?'selected':''}>${esc(g)}</option>`).join('')}</select></label><label class="cinema-unseen"><input type="checkbox" ${this.unseen||this.selection==='unwatched'?'checked':''} ${this.selection==='unwatched'?'disabled':''}>${esc(this.label('Ungesehen','Unwatched'))}</label></div></div>${this.selection.startsWith('collection:')&&this.collectionLoading?`<p role="status">${esc(this.label('Sammlung wird geladen …','Loading collection …'))}</p>`:this.selection.startsWith('collection:')&&this.collectionError?`<p role="status">${esc(this.label('Plex-Sammlung nicht erreichbar.','Plex collection unavailable.'))}</p>`:''}${this.rail('library',own)}</section>
+      <div class="cinema-discovery"><section><div class="cinema-section-heading"><h2>Trending</h2><label><span class="sr-only">${esc(this.label('Zeitraum','Period'))}</span><select class="cinema-period"><option value="week" ${this.period==='week'?'selected':''}>${esc(this.label('Diese Woche','This week'))}</option><option value="day" ${this.period==='day'?'selected':''}>${esc(this.label('Heute','Today'))}</option></select></label></div>${this.rail('trending',trending,this.discoveryLoading?this.label('Trending wird geladen …','Loading trending …'):this.label('Trending momentan nicht verfügbar.','Trending is currently unavailable.'))}</section><section><div class="cinema-section-heading"><h2>${esc(this.label('Für deinen Geschmack','Picked for you'))}</h2><button type="button" class="cinema-account-settings">${esc(this.discovery.account.connected?'TMDB ✓':this.label('TMDB-Konto','TMDB account'))}</button></div>${personal.length?this.rail('personal',personal):this.accountMarkup()}</section></div>
+      <section class="cinema-upcoming"><div class="cinema-section-heading"><h2>${esc(this.label('Demnächst','Coming soon'))}</h2><label><span class="sr-only">${esc(this.label('Kommende Titel','Upcoming titles'))}</span><select class="cinema-upcoming-mode"><option value="tracked" ${this.upcomingMode==='tracked'?'selected':''}>${esc(this.label('Deine vorgemerkten Titel','Your tracked titles'))}</option><option value="all" ${this.upcomingMode==='all'?'selected':''}>${esc(this.label('Kommende Veröffentlichungen','Upcoming releases'))}</option></select></label></div><div class="cinema-upcoming-rail">${upcoming.slice(0,12).map(entry=>`<button type="button" class="cinema-upcoming-card" data-select-key="${esc(entry.key)}"><span>${entry.banner||entry.poster?`<img src="${esc(entry.banner||entry.poster)}" alt="" loading="lazy">`:'<ha-icon icon="mdi:movie-open-outline"></ha-icon>'}</span><strong>${esc(entry.title)}</strong><small>${esc(this.releaseLabel(entry))}</small></button>`).join('')||`<p class="cinema-empty">${esc(this.label('Keine kommenden Titel in dieser Auswahl.','No upcoming titles in this selection.'))}</p>`}</div></section>
+      <section class="cinema-downloads"><div class="cinema-section-heading"><h2>${esc(this.label('Wird gerade geladen','Downloading'))}</h2><button type="button" class="cinema-reload">${esc(this.label('Aktualisieren','Refresh'))}</button></div><div class="cinema-download-grid">${downloads.map(entry=>`<button class="cinema-download-item" type="button" data-select-key="${esc(entry.key)}">${entry.poster?`<img src="${esc(entry.poster)}" alt="" loading="lazy">`:'<ha-icon icon="mdi:movie-open-outline"></ha-icon>'}<span><strong>${esc(entry.title)}</strong>${downloadBadge(entry,this.label.bind(this))}</span></button>`).join('')||`<p class="cinema-empty">${esc(this.label('Gerade keine aktiven Downloads.','No active downloads.'))}</p>`}</div></section>`;
+    const signature=homeMarkup+(hero?.banner||'');
+    if(this.homeSignature===signature)return;
+    this.homeSignature=signature;patchCinemaDOM(this.home,homeMarkup);
+    this.bindHome(hero);
+    for(const el of this.home.querySelectorAll('[data-rail]'))el.scrollLeft=railScroll.get(el.dataset.rail)||0;
+    if(activeKey)[...this.home.querySelectorAll('[data-select-key]')].find(el=>el.dataset.selectKey===activeKey)?.focus({preventScroll:true});
+    this.bindImages(this.home);
+    // Manager lists may have IDs but no cover; enrich only a bounded visible set.
+    for(const entry of upcoming.slice(0,12).filter(entry=>!entry.poster))void this.loadMetadata(entry);
+    if(hero?.banner){const bg=this.home.querySelector('.cinema-hero-backdrop');if(bg)bg.style.backgroundImage=`url(${JSON.stringify(hero.banner)})`;}
+    if(hero && (!hero.banner || hero.banner===hero.poster || hero.item.trailer===undefined))void this.loadMetadata(hero);
+  }
+
+  heroMarkup(entry) {
+    const canPlay=entry.stage==='ready'&&entry.refs.some(ref=>ref.provider==='plex'&&ref.item.library_key);
+    const canRequest=entry.stage==='discover'&&this.requestService(entry);
+    const action=canPlay?this.label('Abspielen','Play'):canRequest?this.label('Hinzufügen','Add'):this.label('Details','Details');
+    return `<section class="cinema-hero"><div class="cinema-hero-backdrop"></div><div class="cinema-hero-copy"><h1>${esc(entry.title)}</h1><p class="cinema-hero-meta">${esc([entry.year,mediaNames(entry.item.genres).slice(0,2).join(' · '),entry.item.runtime?`${entry.item.runtime} min`:null,entry.rating?`★ ${entry.rating}`:null].filter(Boolean).join(' · '))}</p><span class="cinema-availability cinema-availability-${entry.stage}">${esc(this.status(entry))}</span><p class="cinema-hero-synopsis">${esc(entry.summary||this.label('Öffne den Film für Handlung und Besetzung.','Open this title for synopsis and cast.'))}</p><div class="cinema-hero-actions"><button type="button" class="cinema-primary" data-hero-action="${canPlay?'play':canRequest?'request':'details'}">${canPlay?'<ha-icon icon="mdi:play" aria-hidden="true"></ha-icon>':''}${esc(action)}</button>${entry.item.trailer?.url?`<button type="button" class="cinema-hero-trailer"><ha-icon icon="mdi:movie-play-outline" aria-hidden="true"></ha-icon>${esc(this.label('Trailer','Trailer'))}</button>`:''}${canPlay||canRequest?`<button type="button" data-select-key="${esc(entry.key)}">${esc(this.label('Details','Details'))}</button>`:''}</div></div></section>`;
+  }
+
+  accountMarkup() {
+    const errors=this.discovery.errors||{};
+    const text=this.accountMessage||(!this.discovery.account.connected?this.label('Verbinde dein TMDB-Konto für persönliche Empfehlungen.','Connect your TMDB account for personal recommendations.'):errors.personal?this.label('TMDB-Empfehlungen sind momentan nicht verfügbar.','TMDB recommendations are currently unavailable.'):this.label('Noch keine neuen Kontoempfehlungen. Bewertungen in TMDB helfen bei der Auswahl.','No new account recommendations yet. Ratings in TMDB help guide suggestions.'));
+    return `<div class="cinema-account"><ha-icon icon="mdi:account-star-outline"></ha-icon><p role="status">${esc(text)}</p>${this.accountUrl?`<a href="${esc(this.accountUrl)}" target="_blank" rel="noopener noreferrer">${esc(this.label('TMDB-Freigabe öffnen','Open TMDB authorization'))}</a><button type="button" data-account="finish">${esc(this.label('Ich habe bestätigt','I approved it'))}</button>`:!this.discovery.account.connected?`<button type="button" data-account="start">${esc(this.label('TMDB-Konto verbinden','Connect TMDB account'))}</button>`:''}</div>`;
+  }
+
+  releaseLabel(entry) {
+    const raw=this.discovery.upcoming.find(item=>identity(item)===entryIdentity(entry));
+    const value=entry.item.release_date||entry.item.first_air_date||entry.item.digitalRelease||raw?.release_date;
+    const time=timestamp(value);
+    const kind=entry.item.release_kind;
+    const caption=kind==='cinema'?this.label('Kinostart: ','Cinema release: '):kind==='digital'?this.label('Digital: ','Digital release: '):kind==='physical'?this.label('Disc: ','Disc release: '):kind==='episode'?this.label('Nächste Folge: ','Next episode: '):this.label('Veröffentlichung: ','Release: ');
+    return time>Date.now()?`${caption}${new Date(time).toLocaleDateString(this.card._hass?.language||'en')}`:this.label('Wartet auf Verfügbarkeit','Awaiting availability');
+  }
+
+  bindHome(hero) {
+    this.home.querySelectorAll('[data-select-key]').forEach(button=>button.onclick=()=>this.openDetails(button.dataset.selectKey,button));
+    const primary=this.home.querySelector('.cinema-primary');
+    if(primary)primary.onclick=()=>{
+      const action=this.home.querySelector('.cinema-primary').dataset.heroAction;
+      if(action==='play')this.play(hero);
+      else if(action==='request'){this.openDetails(hero.key);this.request(hero);}
+      else this.openDetails(hero.key);
+    };
+    const trailer=this.home.querySelector('.cinema-hero-trailer');
+    if(trailer)trailer.onclick=event=>this.showTrailer(hero,hero.item.trailer?.url,event.currentTarget);
+    this.home.querySelector('.cinema-selection').onchange=event=>{this.selection=event.target.value;this.card._cinemaSelection=this.selection;this.heroKey=null;this.collectionKeys=[];this.render();if(this.selection.startsWith('collection:'))this.loadCollections(this.selection.slice(11));};
+    this.home.querySelector('.cinema-kind').onchange=event=>{this.kind=event.target.value;this.heroKey=null;this.render();};
+    this.home.querySelector('.cinema-genre').onchange=event=>{this.genre=event.target.value;this.heroKey=null;this.render();};
+    this.home.querySelector('.cinema-unseen input').onchange=event=>{this.unseen=event.target.checked;this.heroKey=null;this.render();};
+    this.home.querySelector('.cinema-period').onchange=event=>{this.period=event.target.value;this.loadDiscovery();};
+    this.home.querySelector('.cinema-upcoming-mode').onchange=event=>{this.upcomingMode=event.target.value;this.render();};
+    this.home.querySelectorAll('.cinema-reload').forEach(button=>button.onclick=()=>this.loadLibrary(true));
+    this.home.querySelectorAll('[data-more]').forEach(button=>button.onclick=()=>{this.railLimits[button.dataset.more]=(this.railLimits[button.dataset.more]||24)+24;this.render();});
+    this.home.querySelectorAll('[data-account]').forEach(button=>button.onclick=()=>this.accountAction(button.dataset.account));
+    this.home.querySelector('.cinema-account-settings').onclick=()=>{if(this.discovery.account.connected){this.accountMessage=this.label('Das TMDB-Konto ist verbunden.','TMDB account is connected.');this.showAccount=true;this.home.querySelector('.cinema-account-settings').outerHTML=`<button class="cinema-disconnect" type="button">${esc(this.label('TMDB trennen','Disconnect TMDB'))}</button>`;this.home.querySelector('.cinema-disconnect').onclick=()=>this.accountAction('disconnect');}else this.accountAction('start');};
+  }
+
+  async accountAction(action) {
+    try {
+      const data=await this.ws('mediarr/tmdb_account',{action});
+      if(!this.alive)return;
+      this.accountUrl=data.authorization_url&&/^https:\/\/www\.themoviedb\.org\/auth\/access\?/.test(data.authorization_url)?data.authorization_url:null;
+      this.discovery.account=data;this.accountMessage=null;
+      if(action==='finish'||action==='disconnect')this.loadDiscovery();
+    }catch(error){if(['tmdb_account_auth','tmdb_account_expired'].includes(error?.code))this.accountUrl=null;this.accountMessage=error?.code==='tmdb_read_token_required'?this.label('In den Mediarr-TMDB-Optionen den API Read Access Token hinterlegen.','Set the API Read Access Token in the Mediarr TMDB options.'):error?.code==='unknown_command'?this.label('Für die Kontoverbindung die Mediarr-Integration aktualisieren.','Update Mediarr integration to connect your account.'):this.label('TMDB-Freigabe noch nicht abgeschlossen oder nicht erreichbar.','TMDB authorization is not complete or is unavailable.');}
+    finally{if(this.alive)this.render();}
+  }
+
+  async play(entry) {
+    if(this.playerDialog)return;
+    const ref=entry.refs.find(ref=>ref.provider==='plex'&&ref.item.library_key);
+    if(!ref)return;
+    const dialog=this.playerDialog=document.createElement('dialog');dialog.className='cinema-player-dialog';
+    dialog.innerHTML=`<h2>${esc(this.label('Auf welchem Gerät?','Choose a player'))}</h2><div class="cinema-player-list" role="status">${esc(this.label('Plex-Player werden geladen …','Loading Plex players …'))}</div><button class="cinema-player-refresh" type="button">${esc(this.label('Liste aktualisieren','Refresh players'))}</button><button class="cinema-player-close" type="button">${esc(this.label('Schließen','Close'))}</button>`;
+    this.shell.append(dialog);dialog.showModal();
+    const close=()=>{dialog.close();dialog.remove();this.playerDialog=null;};
+    dialog.querySelector('.cinema-player-close').onclick=close;
+    dialog.addEventListener('cancel',event=>{event.preventDefault();event.stopPropagation();close();});
+    dialog.querySelector('.cinema-player-refresh').onclick=()=>this.loadPlayers(dialog,ref);
+    await this.loadPlayers(dialog,ref);
+  }
+
+  async loadPlayers(dialog,ref) {
+    const refresh=dialog.querySelector('.cinema-player-refresh');refresh.disabled=true;
+    try {
+      const data=await this.ws('mediarr/players');if(!dialog.isConnected)return;
+      const list=dialog.querySelector('.cinema-player-list');
+      list.innerHTML=data.players?.length?data.players.map(player=>`<button type="button" data-player="${esc(player.entity_id)}" ${player.available?'':'disabled'}>${esc(player.name)}${!player.available?` · ${esc(player.reason==='disabled'?this.label('In HA deaktiviert','Disabled in HA'):player.reason==='not_loaded'?this.label('Nicht geladen','Not loaded'):this.label('Nicht erreichbar','Unavailable'))}`:''}</button>`).join(''):`<p>${esc(this.label('Kein Plex-Player verfügbar. Öffne Plex auf dem Zielgerät und richte die offizielle Plex-Integration in Home Assistant ein.','No Plex player available. Open Plex on your device and configure the official Plex integration in Home Assistant.'))}</p>`;
+      if(data.players?.length&&!data.players.some(player=>player.available)){const hint=document.createElement('p');hint.textContent=this.label('Öffne Plex auf dem Zielgerät, erlaube dort die Fernsteuerung und aktualisiere nach einigen Sekunden die Liste. Deaktivierte Player in HA unter Einstellungen → Geräte & Dienste → Entitäten aktivieren.','Open Plex on the target device, allow remote control and refresh this list after a few seconds. Enable disabled players under HA Settings → Devices & services → Entities.');list.append(hint);}
+      list.querySelectorAll('[data-player]').forEach(button=>button.onclick=async()=>{
+        button.disabled=true;
+        try {
+          await this.ws('mediarr/play',{entity_id:button.dataset.player,library_key:ref.item.library_key});
+          if(dialog.isConnected){list.textContent=this.label('Wiedergabe angefordert.','Playback requested.');}
+        }catch{if(dialog.isConnected){button.disabled=false;const message=document.createElement('p');message.textContent=this.label('Wiedergabe konnte nicht gestartet werden. Prüfe Plex und das Zielgerät.','Could not start playback. Check Plex and the selected device.');list.append(message);}}
+      });
+    }catch{if(dialog.isConnected)dialog.querySelector('.cinema-player-list').textContent=this.label('Plex-Player nicht erreichbar. Prüfe die Mediarr-Integration.','Plex players unavailable. Check the Mediarr integration.');}
+    finally{if(dialog.isConnected)refresh.disabled=false;}
+  }
+
+  showTrailer(entry,url,opener) {
+    const match=/^https:\/\/www\.youtube\.com\/watch\?v=([A-Za-z0-9_-]{11})$/.exec(url);
+    if(!match)return;
+    this.closeTrailer();this.trailerOpener=opener;
+    const window=this.trailerWindow=document.createElement('section');
+    window.className='cinema-trailer-window';window.setAttribute('role','dialog');
+    window.setAttribute('aria-label',this.label('Trailer','Trailer')+' · '+entry.title);
+    window.innerHTML=`<header><strong>${esc(entry.title)}</strong><button class="cinema-trailer-close" type="button" aria-label="${esc(this.label('Trailer schließen','Close trailer'))}">✕</button></header><iframe title="${esc(this.label('Trailer zu ','Trailer for ')+entry.title)}" src="https://www.youtube-nocookie.com/embed/${match[1]}?autoplay=1&playsinline=1&rel=0" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe><a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(this.label('Falls das Video hier nicht abspielt: Auf YouTube öffnen','If the video cannot play here: Open on YouTube'))}</a>`;
+    window.querySelector('button').onclick=()=>this.closeTrailer();
+    this.trailerKeyHandler=event=>{if(event.key==='Escape'){event.preventDefault();event.stopImmediatePropagation();this.closeTrailer();}};
+    this.shell.addEventListener('keydown',this.trailerKeyHandler,true);
+    this.shell.append(window);window.querySelector('button').focus({preventScroll:true});
+  }
+
+  closeTrailer() {
+    if(!this.trailerWindow)return;
+    this.trailerWindow.querySelector('iframe')?.remove();
+    this.trailerWindow.remove();this.trailerWindow=null;
+    this.shell.removeEventListener('keydown',this.trailerKeyHandler,true);
+    this.trailerKeyHandler=null;
+    if(this.trailerOpener?.isConnected)this.trailerOpener.focus({preventScroll:true});
+    this.trailerOpener=null;
+  }
+
+  renderSearch() {
+    const query=this.input.value.trim().toLocaleLowerCase();
+    const ids=new Set(this.catalog.map(identity));
+    const visible=this.entries.filter(entry=>ids.has(entryIdentity(entry))||`${entry.title} ${entry.year} ${entry.summary}`.toLocaleLowerCase().includes(query));
+    this.shell.querySelector('.mediarr-search-status').textContent=`${visible.length} ${this.label('Treffer · Deine Mediathek und neue Titel','matches · Your library and new titles')}`;
+    this.searchStatus.textContent=this.searching?this.label('Suche läuft …','Searching …'):this.searchError?this.label('Katalogsuche nicht verfügbar. Treffer aus deinen Daten werden angezeigt.','Catalog search unavailable. Showing matches from your data.'):query.length<2?this.label('Ab zwei Zeichen auch neue Titel finden.','Type at least two characters to find new titles.'):'';
+    const resultsMarkup=visible.slice(0,this.localLimit).map(entry=>`<button type="button" class="cinema-search-result" data-select-key="${esc(entry.key)}"><span class="cinema-result-poster">${entry.poster?`<img src="${esc(entry.poster)}" alt="">`:'<ha-icon icon="mdi:movie-open-outline"></ha-icon>'}${downloadBadge(entry,this.label.bind(this))}</span><span class="cinema-result-copy"><strong>${esc(entry.title)}</strong><small>${esc([entry.year,entry.kind==='tv'?this.label('Serie','Series'):this.label('Film','Movie'),entry.rating?`★ ${entry.rating}`:''].filter(Boolean).join(' · '))}</small><span>${esc(entry.summary)}</span></span><span class="cinema-availability cinema-availability-${entry.stage}">${esc(this.status(entry))}</span></button>`).join('')||`<p class="cinema-empty">${esc(this.label('Keine passenden Titel gefunden.','No matching titles found.'))}</p>`;
+    if(this.resultsMarkup!==resultsMarkup){patchCinemaDOM(this.results,resultsMarkup);this.resultsMarkup=resultsMarkup;}
+    this.results.querySelectorAll('[data-select-key]').forEach(button=>button.onclick=()=>this.openDetails(button.dataset.selectKey,button));
+    this.moreButton.hidden=visible.length<=this.localLimit && this.searchPage>=this.totalPages;
+    this.moreButton.disabled=this.searching;
+    this.moreButton.onclick=()=>{if(visible.length>this.localLimit){this.localLimit+=60;this.renderSearch();}else this.searchCatalog(this.searchPage+1);};
+    this.bindImages(this.results);
+  }
+
+  openDetails(key,button) {
+    this.returnSurface=this.scrollSurface();this.previousScroll=this.returnSurface.scrollTop;this.returnKey=key;this.detailKey=key;this.render();this.scrollSurface().scrollTop=0;
+    this.shell.querySelector('.cinema-back').focus({preventScroll:true});
+  }
+
+  back(restore=true) {
+    this.detailKey=null;this.render();
+    if(restore){(this.returnSurface||this.scrollSurface()).scrollTop=this.previousScroll||0;[...this.shell.querySelectorAll('[data-select-key]')].find(el=>el.dataset.selectKey===this.returnKey)?.focus({preventScroll:true});}
+  }
+
+  scrollSurface() {
+    let node=this.body;
+    while(node instanceof HTMLElement) {
+      if(/auto|scroll/.test(getComputedStyle(node).overflowY))return node;
+      node=node.parentElement||node.getRootNode()?.host;
+    }
+    return document.scrollingElement;
+  }
+
+  bindImages(root) {root.querySelectorAll('img').forEach(img=>img.onerror=()=>{img.onerror=null;img.hidden=true;});}
+  destroy() {this.closeTrailer();this.alive=false;++this.discoveryVersion;++this.collectionVersion;if(this.playerDialog){this.playerDialog.close();this.playerDialog.remove();this.playerDialog=null;}super.destroy();this.card.classList.remove('mediarr-cinema');}
+}
+
+// ---- cinema-styles.js ----
+const cinemaStyles = `
+  .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+  .mediarr-cinema { max-width:none; color:#f4f6fa; background:#090d12; }
+  .mediarr-cinema.mediarr-page { padding:0; height:auto; min-height:calc(100dvh - var(--header-height,56px)); }
+  .mediarr-cinema.mediarr-page .cinema-shell { height:auto; }
+  .mediarr-cinema.mediarr-page .cinema-body { overflow:visible; flex:none; }
+  .mediarr-cinema ha-card { background:#090d12; color:#f4f6fa; border:0; border-radius:0; }
+  .mediarr-cinema .card-content { padding:0; }
+  .cinema-shell { display:flex; flex-direction:column; height:100%; min-height:0; font-family:var(--ha-font-family-body,Roboto,sans-serif); }
+  .cinema-toolbar { display:flex; align-items:center; gap:24px; padding:14px 28px; flex-shrink:0; background:#090d12; border-bottom:1px solid #ffffff0d; z-index:3; }
+  .cinema-brand { display:flex; align-items:center; gap:10px; color:#2bd6e4; font-size:1.4rem; white-space:nowrap; }
+  .cinema-brand ha-icon { --mdc-icon-size:30px; }
+  .cinema-search-label { display:flex; align-items:center; gap:10px; margin-left:auto; width:min(54%,650px); border:1px solid #ffffff32; background:#ffffff08; border-radius:9px; padding:0 12px; color:#a8b8c5; }
+  .cinema-search-label .mediarr-search { border:0; background:transparent; padding:10px 0; border-radius:0; color:#f4f6fa; min-width:0; }
+  .cinema-search-label:focus-within { outline:2px solid #2bd6e4; outline-offset:2px; }
+  .cinema-search-label .mediarr-search:focus { outline:none; }
+  .cinema-download-shortcut { position:relative; padding:8px; border:0; background:transparent; color:#cbd6df; cursor:pointer; }
+  .cinema-download-shortcut span:not(:empty) { position:absolute; top:0; right:0; min-width:15px; height:15px; border-radius:20px; padding:1px; font-size:.65rem; background:#2bd6e4; color:#08131b; }
+  .cinema-body { min-height:0; flex:1; overflow-y:auto; overscroll-behavior-y:contain; scrollbar-width:thin; scrollbar-color:#3c4b57 #090d12; scroll-padding-top:16px; }
+  .cinema-library-status { margin:0; padding:10px 28px; background:#11222c; color:#bddbe4; font-size:.85rem; }
+  .cinema-library-status:empty { display:none; }
+  .cinema-home { padding-bottom:32px; }
+  .cinema-hero { position:relative; min-height:420px; display:flex; align-items:center; isolation:isolate; overflow:hidden; background:radial-gradient(ellipse at 80% 20%,#183446,#090d12 70%); }
+  .cinema-hero-backdrop { position:absolute; inset:0; z-index:-1; background-position:70% 28%; background-size:cover; }
+  .cinema-hero-backdrop::after { content:''; position:absolute; inset:0; background:linear-gradient(90deg,#090d12 0%,#090d12d9 23%,#090d1270 48%,transparent 80%),linear-gradient(0deg,#090d12 0%,#090d1240 35%,transparent 75%); }
+  .cinema-hero-copy { padding:44px 40px 58px; width:min(54%,650px); box-sizing:border-box; }
+  .cinema-hero h1 { font-size:clamp(2rem,3.6vw,3.6rem); letter-spacing:.04em; line-height:1.15; margin:0 0 14px; text-wrap:balance; text-shadow:0 3px 24px #000; }
+  .cinema-hero-meta { color:#bfcbd5; font-size:.85rem; line-height:1.6; margin:0 0 14px; }
+  .cinema-availability { display:inline-block; padding:5px 9px; border:1px solid #597283; border-radius:7px; color:#bfd5e5; font-size:.75rem; line-height:1.4; }
+  .cinema-availability-ready { border-color:#3e8159; color:#a5e9b8; background:#14371e80; }
+  .cinema-availability-waiting { border-color:#877443; color:#eed89b; background:#30281380; }
+  .cinema-hero-synopsis { margin:16px 0 22px; font-size:.95rem; line-height:1.6; color:#e0e5eb; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+  .cinema-hero-actions { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+  .mediarr-cinema button { font-family:inherit; cursor:pointer; }
+  .cinema-hero-actions button, .cinema-account button, .cinema-account a, .cinema-reload { padding:9px 18px; color:#f0f4f8; border:1px solid #798a99; border-radius:7px; background:#111920a0; font-size:.85rem; }
+  .cinema-hero-actions .cinema-primary { background:#2bd6e4; color:#07161b; border-color:#2bd6e4; font-weight:650; }
+  .mediarr-cinema button:disabled { cursor:default; opacity:.55; }
+  .mediarr-cinema button:focus-visible, .mediarr-cinema select:focus-visible, .cinema-account a:focus-visible { outline:2px solid #57e5f3; outline-offset:3px; }
+  .cinema-home > section:not(.cinema-hero), .cinema-discovery { margin:22px 28px 32px; }
+  .cinema-section-heading { display:flex; align-items:center; flex-wrap:wrap; gap:12px; margin:0 0 18px; }
+  .cinema-section-heading h2 { font-size:clamp(1.1rem,1.6vw,1.5rem); margin:0; color:#f1f4f7; line-height:1.3; }
+  .cinema-filters { display:flex; align-items:center; flex-wrap:wrap; gap:9px; margin-left:auto; }
+  .mediarr-cinema select { background:#10181f; border:1px solid #566774; color:#ecf3f8; padding:7px 10px; border-radius:7px; font:inherit; font-size:.8rem; max-width:220px; }
+  .mediarr-cinema select option, .mediarr-cinema select optgroup { background:#10181f; color:#ecf3f8; }
+  .cinema-unseen { display:flex; gap:6px; align-items:center; border:1px solid #566774; padding:6px 9px; border-radius:7px; color:#d1e4ec; font-size:.8rem; cursor:pointer; }
+  .cinema-unseen input { accent-color:#2bd6e4; }
+  .cinema-episode-status { color:#6ce6ed; line-height:1.5; font-size:.75rem; }
+  .library-trailer { display:inline-block; color:#6ce6ed; border:1px solid #34586b; border-radius:7px; padding:8px 12px; margin:8px 0; text-decoration:none; }
+  .library-actions { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+  .cinema-trailer-window { position:fixed; right:20px; bottom:20px; width:min(480px,calc(100vw - 24px)); z-index:1000; background:#101923; color:#f1f7fb; border:1px solid #3f5e70; border-radius:12px; box-shadow:0 14px 70px #000b; overflow:hidden; }
+  .cinema-trailer-window header { display:flex; align-items:center; gap:12px; padding:8px 12px; }
+  .cinema-trailer-window strong { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .cinema-trailer-close { background:transparent; border:0; color:#eff8fc; padding:8px; cursor:pointer; }
+  .cinema-trailer-window iframe { display:block; width:100%; aspect-ratio:16/9; border:0; background:#000; }
+  .cinema-trailer-window > a { display:block; padding:10px 12px; font-size:.75rem; color:#81e4ed; }
+  @media (max-width:700px) { .cinema-trailer-window { right:12px; bottom:max(12px,env(safe-area-inset-bottom)); } }
+  .library-episode-status { color:#6ce6ed; line-height:1.6; }
+  .cinema-unseen:has(input:disabled) { opacity:.45; cursor:default; }
+  .cinema-rail { display:grid; grid-auto-flow:column; grid-auto-columns:calc((100% - 5 * 14px) / 6); gap:14px; overflow-x:auto; padding:3px 3px 12px; scroll-snap-type:x proximity; scrollbar-width:thin; scrollbar-color:#344957 transparent; align-items:start; }
+  .cinema-poster { min-width:0; border:0; background:transparent; color:#eef3f8; padding:0; text-align:left; scroll-snap-align:start; }
+  .cinema-poster-art { position:relative; display:grid; place-items:center; aspect-ratio:2/3; background:linear-gradient(140deg,#21394a,#101923); border-radius:9px; overflow:hidden; box-shadow:0 0 0 1px #ffffff0c; }
+  .cinema-poster-art > img { width:100%; height:100%; object-fit:cover; }
+  .cinema-poster:hover .cinema-poster-art { box-shadow:0 0 0 2px #2bd6e4; }
+  .cinema-poster > strong { display:block; margin-top:9px; font-size:.83rem; font-weight:550; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .cinema-poster > small { display:block; margin-top:3px; color:#a9b5bf; font-size:.72rem; }
+  .cinema-poster-status { position:absolute; top:7px; right:7px; display:grid; place-items:center; height:21px; width:21px; border-radius:30px; font-size:.85rem; color:#eafaff; background:#173141df; }
+  .cinema-status-ready { color:#abefbd; background:#185030e8; }
+  .cinema-status-waiting { color:#ffe0a3; background:#564421e8; }
+  .cinema-empty { margin:0; padding:28px 8px; color:#aab9c5; font-size:.9rem; line-height:1.6; min-width:230px; grid-column:1/-1; }
+  .cinema-rail-more { align-self:center; border:1px solid #435a6d; border-radius:8px; padding:12px; background:#12232e; color:#6ce6ed; }
+  .cinema-discovery { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:30px; }
+  .cinema-discovery > section { min-width:0; }
+  .cinema-discovery > section + section { border-left:1px solid #ffffff20; padding-left:30px; }
+  .cinema-discovery .cinema-rail { grid-auto-columns:calc((100% - 2 * 12px) / 3); gap:12px; }
+  .cinema-account-settings,.cinema-disconnect { background:transparent; color:#a8c4d3; border:0; padding:4px; font-size:.75rem; margin-left:auto; }
+  .cinema-account { min-height:230px; display:flex; flex-direction:column; align-items:flex-start; justify-content:center; gap:10px; padding:20px; color:#a9c0cd; border-radius:10px; background:linear-gradient(125deg,#172934,#0c141c); }
+  .cinema-account p { line-height:1.6; margin:0; font-size:.9rem; }
+  .cinema-account ha-icon { color:#41ccd9; --mdc-icon-size:32px; }
+  .cinema-account a { text-decoration:none; }
+  .cinema-upcoming-rail { display:grid; grid-auto-flow:column; grid-auto-columns:calc((100% - 3 * 16px) / 4); gap:16px; overflow-x:auto; scrollbar-width:thin; scrollbar-color:#344957 transparent; padding:3px 3px 12px; }
+  .cinema-upcoming-card { min-width:0; border:0; padding:0; text-align:left; background:transparent; color:#eaf1f7; }
+  .cinema-upcoming-card > span { display:grid; place-items:center; aspect-ratio:16/9; border-radius:9px; background:#162735; overflow:hidden; }
+  .cinema-upcoming-card img { width:100%; height:100%; object-fit:cover; }
+  .cinema-upcoming-card strong,.cinema-upcoming-card small { display:block; margin-top:7px; font-size:.85rem; }
+  .cinema-upcoming-card small { color:#a4bdca; font-size:.75rem; }
+  .cinema-download-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:24px; }
+  .cinema-download-item { display:flex; align-items:center; gap:16px; padding:0; border:0; background:transparent; text-align:left; color:#ecf4f9; }
+  .cinema-download-item > img { width:62px; height:90px; object-fit:cover; border-radius:7px; }
+  .cinema-download-item > span { flex:1; min-width:0; }
+  .cinema-download-item .media-download-badge { position:static; background:transparent; padding:10px 0; font-size:.8rem; }
+  .cinema-download-item .media-download-track { height:5px; }
+  .cinema-section-heading .cinema-reload { margin-left:auto; padding:5px 10px; font-size:.75rem; }
+  .cinema-detail { padding:20px 30px 36px; }
+  .cinema-back { color:#d7e6f0; background:transparent; border:0; padding:8px 0; margin-bottom:8px; font-size:.9rem; }
+  .mediarr-cinema .library-focus { position:static; overflow:visible; height:auto; padding:0; scrollbar-gutter:auto; }
+  .mediarr-cinema .library-detail { background:#090d12; }
+  .mediarr-cinema .library-backdrop::after { background:linear-gradient(90deg,#090d12 0%,transparent 35%),linear-gradient(0deg,#090d12 0%,#090d1240 60%,transparent); }
+  .mediarr-cinema .library-title-row { padding-top:80px; }
+  .mediarr-cinema .library-detail-body { max-width:1100px; }
+  .cinema-search-results { padding:12px 30px 40px; }
+  .mediarr-cinema .cinema-search-results .library-results { display:grid; gap:0; overflow:visible; padding:0; scrollbar-gutter:auto; }
+  .cinema-search-result { display:grid; grid-template-columns:90px minmax(0,1fr) auto; align-items:center; gap:20px; border:0; border-bottom:1px solid #ffffff1c; background:transparent; color:#ecf3f8; text-align:left; padding:16px 0; }
+  .cinema-search-result:hover { background:#ffffff04; }
+  .cinema-result-poster { position:relative; display:grid; place-items:center; width:90px; aspect-ratio:2/3; background:#162735; border-radius:7px; overflow:hidden; }
+  .cinema-result-poster img { width:100%; height:100%; object-fit:cover; }
+  .cinema-result-copy { display:grid; gap:8px; min-width:0; }
+  .cinema-result-copy strong { font-size:1.2rem; }
+  .cinema-result-copy small { color:#b7c9d5; }
+  .cinema-result-copy > span { color:#bac8d4; font-size:.9rem; line-height:1.5; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+  .cinema-home[hidden],.cinema-detail[hidden],.cinema-search-results[hidden] { display:none; }
+  .cinema-player-dialog { width:min(460px,calc(100vw - 48px)); box-sizing:border-box; border:1px solid #405b6b; border-radius:12px; padding:24px; color:#f0f7fc; background:#0d1821; }
+  .cinema-player-dialog::backdrop { background:#000b; }
+  .cinema-player-dialog h2 { margin:0 0 20px; font-size:1.2rem; }
+  .cinema-player-list { display:grid; gap:12px; line-height:1.6; }
+  .cinema-player-dialog button { padding:10px 14px; background:#122935; border:1px solid #34586b; border-radius:7px; color:#d2f2fa; }
+  .cinema-player-close { margin-top:20px; }
+  .cinema-player-refresh { margin-top:20px; margin-right:12px; }
+  /* Text actions share the compact trailer proportions, including native buttons. */
+  .mediarr-cinema .library-actions > button,
+  .mediarr-cinema .library-actions > .library-trailer,
+  .mediarr-cinema .cinema-hero-actions > button,
+  .mediarr-cinema .cinema-account button,
+  .mediarr-cinema .cinema-account a,
+  .mediarr-cinema .cinema-reload,
+  .mediarr-cinema .library-metadata-retry,
+  .mediarr-cinema .cinema-player-refresh,
+  .mediarr-cinema .cinema-player-close {
+    box-sizing:border-box; display:inline-flex; align-items:center; justify-content:center;
+    min-height:42px; padding:8px 14px; border-width:1px; border-style:solid;
+    border-radius:7px; font-family:inherit; font-size:.9rem; line-height:1.4;
+    text-align:center; text-decoration:none; vertical-align:middle;
+  }
+  .mediarr-cinema .library-actions > button,
+  .mediarr-cinema .library-actions > .library-trailer { margin:0; }
+  .library-trailer, .cinema-hero-actions > button, .library-actions > button { gap:8px; }
+  .library-actions ha-icon, .cinema-hero-actions ha-icon { --mdc-icon-size:20px; flex-shrink:0; }
+  @media (max-width:1050px) {
+    .cinema-section-heading { align-items:flex-start; }
+    .cinema-filters { margin-left:0; }
+    .cinema-rail { grid-auto-columns:calc((100% - 4 * 12px) / 5); gap:12px; }
+    .cinema-hero-copy { width:65%; padding-left:28px; }
+  }
+  @media (max-width:700px) {
+    .mediarr-cinema.mediarr-page { height:auto; min-height:calc(100dvh - var(--header-height,56px)); }
+    .mediarr-cinema .cinema-shell { height:auto; }
+    .mediarr-cinema .cinema-body { overflow:visible; }
+    .cinema-toolbar { gap:12px; padding:10px 12px; position:sticky; top:0; }
+    .mediarr-page .cinema-toolbar { top:var(--header-height,56px); }
+    .cinema-brand { font-size:1.05rem; gap:5px; }
+    .cinema-brand ha-icon { --mdc-icon-size:23px; }
+    .cinema-search-label { width:auto; flex:1; padding:0 8px; min-width:0; }
+    .cinema-search-label .mediarr-search { font-size:.8rem; }
+    .cinema-search-label > ha-icon { display:none; }
+    .cinema-download-shortcut { padding:4px; }
+    .cinema-hero { min-height:390px; align-items:flex-end; }
+    .cinema-hero-copy { width:100%; padding:160px 18px 30px; }
+    .cinema-hero-backdrop { background-position:65% top; }
+    .cinema-hero-backdrop::after { background:linear-gradient(0deg,#090d12 0%,#090d12eb 30%,#090d1260 70%,#090d1220); }
+    .cinema-hero h1 { font-size:2rem; }
+    .cinema-hero-meta { font-size:.75rem; }
+    .cinema-hero-synopsis { font-size:.85rem; -webkit-line-clamp:2; }
+    .cinema-home > section:not(.cinema-hero),.cinema-discovery { margin:20px 14px 28px; }
+    .cinema-filters { gap:7px; }
+    .mediarr-cinema select { font-size:.72rem; max-width:180px; padding:6px 7px; }
+    .cinema-unseen { font-size:.72rem; padding:5px 7px; }
+    .cinema-rail { grid-auto-columns:calc((100% - 24px) / 2.65); gap:12px; }
+    .cinema-discovery { grid-template-columns:minmax(0,1fr); gap:28px; }
+    .cinema-discovery > section + section { border:0; padding:0; }
+    .cinema-discovery .cinema-rail { grid-auto-columns:calc((100% - 24px) / 2.65); }
+    .cinema-upcoming-rail { grid-auto-columns:75%; }
+    .cinema-download-grid { grid-template-columns:minmax(0,1fr); gap:18px; }
+    .cinema-detail,.cinema-search-results { padding:10px 14px 28px; }
+    .cinema-search-result { grid-template-columns:66px minmax(0,1fr); gap:12px; }
+    .cinema-result-poster { width:66px; grid-row:1/3; }
+    .cinema-result-copy strong { font-size:1rem; }
+    .cinema-result-copy small { font-size:.72rem; }
+    .cinema-result-copy > span { font-size:.78rem; }
+    .cinema-search-result > .cinema-availability { grid-column:2; justify-self:start; font-size:.65rem; }
+    .mediarr-cinema .library-title-row { padding-top:20px; }
+  }
+  @media (prefers-reduced-motion:reduce) { .mediarr-cinema * { scroll-behavior:auto!important; transition:none!important; } }
+`;
 
 // ---- base-section.js ----
 // base-section.js
@@ -3607,7 +4159,7 @@ function deriveVisibleSections(config) {
 }
 
 
-const MEDIARR_BUILD = '20261101-library';
+const MEDIARR_BUILD = '0.6.0-dev.5';
 console.log(`[mediarr-card] build ${MEDIARR_BUILD} loaded`);
 
 class MediarrCard extends HTMLElement {
@@ -3645,7 +4197,7 @@ class MediarrCard extends HTMLElement {
       host.style.setProperty(name, theme.getPropertyValue(name));
     }
     const style = document.createElement('style');
-    style.textContent = styles;
+    style.textContent = styles + cinemaStyles;
     const dialog = document.createElement('dialog');
     dialog.className = 'mediarr-overlay-dialog';
     dialog.setAttribute('aria-label', 'Mediarr');
@@ -3695,7 +4247,8 @@ class MediarrCard extends HTMLElement {
       event.preventDefault();
       const cancel = expanded.querySelector('.mediarr-modal-overlay .mediarr-btn-cancel');
       const clients = expanded.querySelector('.client-modal:not(.hidden)');
-      if (cancel) cancel.click();
+      if (expanded._libraryView?.trailerWindow) expanded._libraryView.closeTrailer();
+      else if (cancel) cancel.click();
       else if (clients) clients.classList.add('hidden');
       else requestClose();
     });
@@ -3740,7 +4293,7 @@ class MediarrCard extends HTMLElement {
   _arrangeExpandedView() {
     this.classList.add('mediarr-expanded');
     this.classList.toggle('mediarr-page', !this._isExpandedView);
-    this._libraryView = new MediaLibraryView(this);
+    this._libraryView = this.config.library_layout === 'classic' ? new MediaLibraryView(this) : new CinemaLibraryView(this);
     this._libraryView.mount();
   }
 
@@ -3879,7 +4432,7 @@ class MediarrCard extends HTMLElement {
       return;
     }
     const preferredSections = deriveVisibleSections(this.config);
-    const orderedSections = preferredSections.filter((sectionKey) =>
+    const orderedSections = (this._isExpandedView || this.config.view === 'library') ? [] : preferredSections.filter((sectionKey) =>
       hasSectionEntities(this.config, sectionKey)
     );
   
@@ -4006,7 +4559,7 @@ class MediarrCard extends HTMLElement {
     
     // Add styles
     const style = document.createElement('style');
-    style.textContent = styles;
+    style.textContent = styles + cinemaStyles;
     this.appendChild(style);
 
     // Initialize click handlers
@@ -4076,6 +4629,13 @@ class MediarrCard extends HTMLElement {
       return;
     }
 
+    // The unified library owns its rendering. Legacy provider renderers assume
+    // legacy-only lists and payload formats and must not run in this view.
+    if (this._libraryView) {
+      this._libraryView.refresh();
+      return;
+    }
+
     if (this.config.media_player_entity) {
       this._updateNowPlaying(hass.states[this.config.media_player_entity]);
     }
@@ -4105,17 +4665,19 @@ class MediarrCard extends HTMLElement {
 
   setConfig(config) {
     const previousView = this.config?.view;
+    const previousLayout = this.config?.library_layout;
     const normalizedVisibleSections = deriveVisibleSections(config);
     const hasEntity = SECTION_ORDER.some((sectionKey) => hasSectionEntities(config, sectionKey));
   
-    if (!hasEntity && config.view !== 'library') {
-      throw new Error('Please define at least one media entity');
+    if (!hasEntity && config.view === 'legacy') {
+      throw new Error('Legacy view requires a media entity. Use view: library for the complete Mediarr backend library.');
     }
     
     // Set defaults for the new options
     this.config = {
-      view: 'compact',
+      view: hasEntity ? 'compact' : 'library',
       compact_items: 4,
+      library_layout: 'cinema',
       max_items: 10,            // Default max items if not specified
       days_to_check: 60,        // Default days to check if not specified
       radarr_release_types: ['Digital', 'Theaters'], // Default to digital and theatrical, exclude physical
@@ -4138,13 +4700,13 @@ class MediarrCard extends HTMLElement {
     if (config.jellyfin_url && !config.jellyfin_url.endsWith('/')) {
       this._formattedJellyfinUrl = config.jellyfin_url + '/';
     }
-    if (this.content && !this._isExpandedView && previousView !== this.config.view) {
+    if (this.content && !this._isExpandedView && (previousView !== this.config.view || previousLayout !== this.config.library_layout)) {
       this._closeMediaOverlay();
       this._compactView = null;
       this._libraryView?.destroy();
       this.content = null;
       this._libraryView = null;
-      this.classList.remove('mediarr-compact','mediarr-expanded','mediarr-page');
+      this.classList.remove('mediarr-compact','mediarr-expanded','mediarr-page','mediarr-cinema');
       this.innerHTML = '';
       if (this._hass) this.hass = this._hass;
     }
@@ -4448,6 +5010,7 @@ class MediarrCardEditor extends HTMLElement {
         .global-field input, .global-field select { width: 100%; box-sizing: border-box; padding: 8px; border: 1px solid var(--divider-color); border-radius: 6px; background: var(--card-background-color); color: var(--primary-text-color); }
       </style>
       <div class="editor-root">
+        <div class="editor-subtitle">Mediarr · Build ${MEDIARR_BUILD}</div>
         <div class="editor-card">
           <div class="editor-title">Data Sources</div>
           <div class="editor-subtitle">Only active Mediarr sensors are shown here.</div>
@@ -4490,6 +5053,10 @@ class MediarrCardEditor extends HTMLElement {
                 <option value="library" ${this._config.view === 'library' ? 'selected' : ''}>Full-page media library</option>
                 <option value="legacy" ${this._config.view === 'legacy' ? 'selected' : ''}>Legacy source sections</option>
               </select>
+            </div>
+            <div class="global-field">
+              <label class="field-label">Large view design</label>
+              <select data-library-layout><option value="cinema" ${this._config.library_layout!=='classic'?'selected':''}>Cinema</option><option value="classic" ${this._config.library_layout==='classic'?'selected':''}>Classic list and details</option></select>
             </div>
             <div class="global-field">
               <label class="field-label" for="mediarr-compact-items">Compact Posters</label>
@@ -4555,6 +5122,7 @@ class MediarrCardEditor extends HTMLElement {
     });
 
     this.querySelector('[data-view-mode]')?.addEventListener('change', event => this._updateConfigValue('view', event.target.value));
+    this.querySelector('[data-library-layout]')?.addEventListener('change',event=>this._updateConfigValue('library_layout',event.target.value));
     this.querySelector('[data-streaming-region]')?.addEventListener('change',event=>{const region=event.target.value.trim().toUpperCase();if(/^[A-Z]{2}$/.test(region))this._updateConfigValue('streaming_region',region);});
 
     this.querySelectorAll('[data-number-key]').forEach((input) => {

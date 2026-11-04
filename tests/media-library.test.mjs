@@ -2,6 +2,28 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {collectMediaLibrary, mediaImage, mediaCast, mediaEntriesForCard, mediaKind, normalizeMediaItem, mergeCatalogEntries, mediaDownload} from '../media-library.js';
 const state = data => ({state:'1',attributes:{data}});
+test('legacy Plex episodes merge into the unique dated series regardless of source order',()=>{
+ for (const reverse of [false,true]) {
+  const sources=[['plex_full_entity','full'],['plex_entity','recent']];
+  const entries=collectMediaLibrary(Object.fromEntries(reverse?sources.reverse():sources),{states:{
+   full:state([{title:'Sternenstation',year:2024,media_type:'tv',tmdb_id:71,library_key:'0:9',watched:false}]),
+   recent:state([{title:'Sternenstation',number:'S02E03',episode:'Signal'}, {title:'Sternenstation',number:'S02E04',episode:'Antwort'}]),
+  }});
+  assert.equal(entries.length,1);assert.equal(entries[0].year,'2024');assert.equal(entries[0].refs.length,3);
+  assert.equal(entries[0].ids.tmdb,'71');assert.equal(entries[0].item.library_key,'0:9');
+ }
+});
+test('undated series stay separate when names refer to remakes or conflicting IDs',()=>{
+ for(const sameYear of [false,true]) {
+  const entries=collectMediaLibrary({plex_entity:'p'},{states:{p:state([
+   {title:'Same name',type:'show',year:2004,tmdb_id:1},
+   {title:'Same name',type:'show',year:sameYear?2004:2024,tmdb_id:2},
+   {title:'Same name',number:'S01E01'},
+   {title:'Same name',type:'show',tmdb_id:3},
+  ])}});
+  assert.equal(entries.length,4);
+ }
+});
 test('catalog results preserve owned/requested status and distinguish movie/TV ID collisions',()=>{
  const local=collectMediaLibrary({plex_entity:'p',radarr_entity:'r'},{states:{p:state([{title:'Owned',type:'movie',tmdb_id:7,watched:true}]),r:state([{title:'Requested',tmdb_id:8}])}});
  const merged=mergeCatalogEntries(local,[{title:'Owned',media_type:'movie',tmdb_id:7},{title:'New series',media_type:'tv',tmdb_id:7},{title:'Requested',media_type:'movie',tmdb_id:8}]);
