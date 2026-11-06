@@ -1,0 +1,49 @@
+name: Scoped work item
+description: Specify a bounded SDD-Light change
+body:
+  - type: dropdown
+    id: size
+    attributes:
+      label: Size
+      description: S is a focused fix; M adds a spec/plan/tasks; L also needs research, contracts, migration, risks, and rollback.
+      options:
+        - S
+        - M
+        - L
+    validations:
+      required: true
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal and behavior
+      description: State the user-visible outcome and context.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Use observable, testable outcomes.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and out of scope
+      description: Bound the implementation and name exclusions.
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification and untested boundaries
+      description: List expected commands/results and honest limits.
+    validations:
+      required: true
+  - type: textarea
+    id: large_work
+    attributes:
+      label: Additional L-sized evidence
+      description: For L work, include research, API contract, migration, risks, and rollback. Otherwise enter N/A.
+    validations:
+      required: true

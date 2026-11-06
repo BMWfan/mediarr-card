@@ -119,3 +119,15 @@ test('four empty Immaculaterr lists do not generate phantom titles or suppress o
   const entries=collectMediaLibrary(config,{states:{t:state([{title:'Film A',type:'movie',tmdb_id:1001,overview:'Synopsis'}]),m1:state([]),s1:state([]),m2:state([]),s2:state([])}});
   assert.equal(entries.length,1);assert.equal(entries[0].title,'Film A');
 });
+
+test('partial and missing full-library provider groups keep available entries safe', () => {
+  const card={config:{plex_entity:'p'},_hass:{states:{p:state([{title:'Sensor excerpt'}])}},_fullLibraryState:{groups:{plex:[{title:'Full catalog',media_type:'movie',tmdb_id:7}],radarr:null}}};
+  const entries=mediaEntriesForCard(card);
+  assert.deepEqual(entries.map(entry=>entry.title).sort(),['Full catalog','Sensor excerpt']);
+});
+
+test('an incomplete backend library still contributes its available groups', () => {
+  const card={config:{plex_entity:'p'},_hass:{states:{p:state([{title:'Sensor excerpt'}])}},_fullLibraryState:{groups:{plex:[{title:'Partial catalog',media_type:'movie',tmdb_id:8}],radarr:[],sonarr:[]},complete:false,errors:[{provider:'radarr'}]}};
+  const entries=mediaEntriesForCard(card);
+  assert.deepEqual(entries.map(entry=>entry.title).sort(),['Partial catalog','Sensor excerpt']);
+});

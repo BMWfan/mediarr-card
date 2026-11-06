@@ -96,3 +96,22 @@ bounded DOM rendering and progress updates on both large and compact posters.
 Production Plex/Radarr/Sonarr connectivity and personal TMDB account authorization
 are outside these browser tests. Backend tests exercise source transports with
 fixtures; real-HA command-registration/authentication is also smoke-tested locally.
+
+## Card/backend compatibility contract
+
+The full-library card contract pairs Mediarr Card 0.5.0 with
+`BMWfan/mediarr_sensor` 0.7.0 or newer. The backend exposes authenticated
+WebSocket commands `mediarr/library` (100-item pages with `groups`, `page`,
+`total_pages`, `complete`, and `errors`), `mediarr/search` (typed TMDB results
+with page metadata), and `mediarr/media_details`. Movie/TV request buttons use
+the advertised `mediarr.submit_movie_request` and
+`mediarr.submit_tv_request` services. Credentials stay in the integration.
+
+The card's Node contract tests use synthetic, contract-shaped responses; they
+do not import or run the backend repository. They verify command payloads,
+typed IDs, partial library results (`complete: false` and provider errors), and
+graceful handling when commands are unavailable. The UI marks incomplete
+libraries as potentially incomplete and falls back to sensor excerpts when a
+new command is missing. These tests are not a live cross-repository integration
+test and do not validate real provider connectivity; backend service and
+transport behavior is tested separately in `BMWfan/mediarr_sensor`.
