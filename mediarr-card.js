@@ -753,6 +753,7 @@ class CinemaLibraryView extends MediaLibraryView {
     this.period='week';this.upcomingMode='tracked';this.discovery={trending:[],personal:[],upcoming:[],errors:{},account:{}};
     this.collections=[];this.collectionKeys=[];this.railLimits={};this.detailKey=card._initialLibrarySelection?.selectedKey;
     this.collectionVersion=0;this.discoveryVersion=0;this.alive=true;
+    this.playbackPlayers=[];this.playbackBusy=new Set();
   }
 
   mount() {
@@ -762,6 +763,9 @@ class CinemaLibraryView extends MediaLibraryView {
     this.shell=document.createElement('div');this.shell.className='cinema-shell';
     this.shell.innerHTML=`<header class="cinema-toolbar"><span class="cinema-brand"><ha-icon icon="mdi:movie-open-outline"></ha-icon><strong>Mediarr</strong></span><label class="cinema-search-label"><span class="sr-only">${esc(this.label('Filme und Serien suchen','Search movies and series'))}</span><ha-icon icon="mdi:magnify" aria-hidden="true"></ha-icon><input class="mediarr-search" type="search" maxlength="128" placeholder="${esc(this.label('Filme und Serien suchen …','Search movies and series …'))}"></label><button class="cinema-download-shortcut" type="button" aria-label="${esc(this.label('Laufende Downloads','Active downloads'))}"><ha-icon icon="mdi:download-outline"></ha-icon><span></span></button></header><main class="cinema-body"><p class="cinema-library-status" role="status"></p><section class="cinema-detail" hidden><button type="button" class="cinema-back">← ${esc(this.label('Zurück zur Auswahl','Back to selection'))}</button><div class="library-focus"></div></section><div class="cinema-home"></div><section class="cinema-search-results" hidden><p class="mediarr-search-status" role="status"></p><p class="library-catalog-status" role="status"></p><div class="library-results"></div><button class="library-load-more" type="button">${esc(this.label('Weitere Treffer','More results'))}</button></section></main>`;
     content.append(this.shell);this.input=this.shell.querySelector('input');this.body=this.shell.querySelector('.cinema-body');
+    this.nowPlaying=document.createElement('section');this.nowPlaying.className='cinema-now-playing';this.nowPlaying.hidden=true;
+    this.nowPlaying.setAttribute('aria-label',this.label('Aktuelle Wiedergabe','Now playing'));
+    this.body.before(this.nowPlaying);
     this.home=this.shell.querySelector('.cinema-home');this.focus=this.shell.querySelector('.library-focus');
     this.results=this.shell.querySelector('.library-results');this.searchStatus=this.shell.querySelector('.library-catalog-status');
     this.moreButton=this.shell.querySelector('.library-load-more');
@@ -769,6 +773,8 @@ class CinemaLibraryView extends MediaLibraryView {
     this.shell.querySelector('.cinema-back').onclick=()=>this.back();
     this.shell.querySelector('.cinema-download-shortcut').onclick=()=>{this.input.value='';this.back(false);this.scheduleSearch();this.home.querySelector('.cinema-downloads')?.scrollIntoView({behavior:'smooth',block:'start'});};
     this.refresh();this.loadLibrary();this.loadDiscovery();this.loadCollections();
+    this.loadPlayback();
+    this.playbackTimer=setInterval(()=>{if(document.visibilityState==='visible'&&this.card.isConnected)this.loadPlayback();},15000);
     this.libraryTimer=setInterval(()=>{if(document.visibilityState==='visible'&&this.card.isConnected)this.loadLibrary(true);},60000);
   }
 
@@ -803,7 +809,52 @@ class CinemaLibraryView extends MediaLibraryView {
   refresh() {
     const extra=[...this.catalog,...this.discovery.trending,...this.discovery.personal,...this.discovery.upcoming];
     this.entries=mediaEntriesForCard(this.card,extra);
+    this.renderPlayback();
     this.render();
+  }
+
+  async loadPlayback() {
+    if(this.playbackLoading)return;
+    this.playbackLoading=true;
+    try {
+      const data=await this.ws('mediarr/players');if(!this.alive)return;
+      this.playbackPlayers=data.players||[];this.playbackStale=false;
+    }catch{this.playbackStale=true;}
+    finally{this.playbackLoading=false;if(this.alive)this.renderPlayback();}
+  }
+
+  renderPlayback() {
+    if(!this.nowPlaying)return;
+    const active=this.playbackPlayers.map(player=>{
+      const live=this.card._hass?.states?.[player.entity_id];
+      const attributes=live?.attributes;
+      return {...player,state:live?.state||player.state,title:attributes?.media_title||attributes?.media_series_title||player.title,
+        can_pause:attributes?Boolean(Number(attributes.supported_features)&1):player.can_pause,
+        can_resume:attributes?Boolean(Number(attributes.supported_features)&16384):player.can_resume};
+    }).filter(player=>player.reason!=='disabled'&&['playing','paused'].includes(player.state));
+    if(this.playbackExpected&&active.some(player=>player.entity_id===this.playbackExpected.entity&&player.state===this.playbackExpected.state)){
+      this.playbackExpected=null;this.playbackMessage='';
+    }
+    this.nowPlaying.hidden=!active.length;
+    const markup=active.map(player=>{
+      const paused=player.state==='paused',action=paused?'resume':'pause',canControl=paused?player.can_resume:player.can_pause;
+      return `<div class="cinema-playing-row"><ha-icon icon="mdi:cast-connected" aria-hidden="true"></ha-icon><span><strong>${esc(player.title||this.label('Plex-Wiedergabe','Plex playback'))}</strong><small>${esc((paused?this.label('Pausiert auf ','Paused on '):this.label('Läuft auf ','Playing on '))+player.name)}</small></span>${canControl?`<button type="button" data-playback-entity="${esc(player.entity_id)}" data-playback-action="${action}" aria-label="${esc((paused?this.label('Fortsetzen auf ','Resume on '):this.label('Pause auf ','Pause on '))+player.name)}" ${this.playbackStale||this.playbackBusy.has(player.entity_id)?'disabled':''}><ha-icon icon="${paused?'mdi:play':'mdi:pause'}" aria-hidden="true"></ha-icon></button>`:`<small>${esc(this.label('Fernsteuerung nicht verfügbar','Remote control unavailable'))}</small>`}</div>`;
+    }).join('')+`${this.playbackStale?`<p role="status">${esc(this.label('Wiedergabestatus momentan nicht aktuell.','Playback status is currently stale.'))}</p>`:''}${this.playbackMessage?`<p role="status">${esc(this.playbackMessage)}</p>`:''}`;
+    if(markup!==this.playbackMarkup){patchCinemaDOM(this.nowPlaying,markup);this.playbackMarkup=markup;}
+    this.nowPlaying.querySelectorAll('[data-playback-entity]').forEach(button=>button.onclick=()=>this.controlPlayback(button.dataset.playbackEntity,button.dataset.playbackAction));
+  }
+
+  async controlPlayback(entity,action) {
+    if(this.playbackBusy.has(entity))return;
+    this.playbackBusy.add(entity);this.playbackMessage='';this.renderPlayback();
+    try {
+      await this.ws('mediarr/playback_control',{entity_id:entity,action});
+      if(!this.alive)return;
+      this.playbackMessage=action==='pause'?this.label('Pause angefordert.','Pause requested.'):this.label('Fortsetzen angefordert.','Resume requested.');
+      this.playbackExpected={entity,state:action==='pause'?'paused':'playing'};
+      await this.loadPlayback();
+    }catch(error){if(this.alive)this.playbackMessage=error?.code==='unknown_command'?this.label('Für Pause/Fortsetzen die Mediarr-Integration aktualisieren.','Update Mediarr integration for pause/resume.'):this.label('Player hat die Steuerung nicht bestätigt.','The player did not confirm the command.');}
+    finally{this.playbackBusy.delete(entity);if(this.alive)this.renderPlayback();}
   }
 
   status(entry) {
@@ -964,7 +1015,7 @@ class CinemaLibraryView extends MediaLibraryView {
         button.disabled=true;
         try {
           await this.ws('mediarr/play',{entity_id:button.dataset.player,library_key:ref.item.library_key});
-          if(dialog.isConnected){list.textContent=this.label('Wiedergabe angefordert.','Playback requested.');}
+          if(dialog.isConnected){list.textContent=this.label('Wiedergabe angefordert.','Playback requested.');void this.loadPlayback();}
         }catch{if(dialog.isConnected){button.disabled=false;const message=document.createElement('p');message.textContent=this.label('Wiedergabe konnte nicht gestartet werden. Prüfe Plex und das Zielgerät.','Could not start playback. Check Plex and the selected device.');list.append(message);}}
       });
     }catch{if(dialog.isConnected)dialog.querySelector('.cinema-player-list').textContent=this.label('Plex-Player nicht erreichbar. Prüfe die Mediarr-Integration.','Plex players unavailable. Check the Mediarr integration.');}
@@ -1030,7 +1081,7 @@ class CinemaLibraryView extends MediaLibraryView {
   }
 
   bindImages(root) {root.querySelectorAll('img').forEach(img=>img.onerror=()=>{img.onerror=null;img.hidden=true;});}
-  destroy() {this.closeTrailer();this.alive=false;++this.discoveryVersion;++this.collectionVersion;if(this.playerDialog){this.playerDialog.close();this.playerDialog.remove();this.playerDialog=null;}super.destroy();this.card.classList.remove('mediarr-cinema');}
+  destroy() {clearInterval(this.playbackTimer);this.closeTrailer();this.alive=false;++this.discoveryVersion;++this.collectionVersion;if(this.playerDialog){this.playerDialog.close();this.playerDialog.remove();this.playerDialog=null;}super.destroy();this.card.classList.remove('mediarr-cinema');}
 }
 
 // ---- cinema-styles.js ----
@@ -1151,6 +1202,17 @@ const cinemaStyles = `
   .cinema-player-dialog button { padding:10px 14px; background:#122935; border:1px solid #34586b; border-radius:7px; color:#d2f2fa; }
   .cinema-player-close { margin-top:20px; }
   .cinema-player-refresh { margin-top:20px; margin-right:12px; }
+  .cinema-now-playing { display:grid; gap:8px; background:#12232c; padding:10px 28px; border-bottom:1px solid #34505e; }
+  .cinema-now-playing[hidden] { display:none; }
+  .cinema-playing-row { display:flex; align-items:center; gap:12px; min-width:0; }
+  .cinema-playing-row > span { flex:1; min-width:0; }
+  .cinema-playing-row strong,.cinema-playing-row small { display:block; overflow-wrap:anywhere; }
+  .cinema-playing-row strong { font-size:.9rem; }
+  .cinema-playing-row small,.cinema-now-playing p { font-size:.75rem; color:#b4cbd7; margin:3px 0; }
+  .cinema-playing-row > ha-icon { color:#6ce6ed; }
+  .cinema-playing-row button { display:grid; place-items:center; width:42px; height:42px; flex-shrink:0; border:1px solid #436578; border-radius:7px; color:#6ce6ed; background:#101b24; }
+  .cinema-playing-row ha-icon { --mdc-icon-size:20px; }
+  @media (max-width:700px) { .cinema-now-playing { padding:10px 12px; } }
   /* Text actions share the compact trailer proportions, including native buttons. */
   .mediarr-cinema .library-actions > button,
   .mediarr-cinema .library-actions > .library-trailer,

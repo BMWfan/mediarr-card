@@ -35,15 +35,16 @@ try {
      item('Zeitbruch',7,{watched:false,added:1740000000,library_key:'0:7'}),
    ],radarr:[item('Nordpfad',11,{release_date:'2030-12-18',poster:'',banner:''}),item('Downloadfilm',12,{download_status:'downloading',download_progress:68})],sonarr:[item('Downloadserie',13,{media_type:'tv',download_status:'paused',download_progress:24})]};
    const discovery={trending:[item('Trendingfilm',21),item('Sternenreise',1),item('Nordpfad',11),item('Trendingserie',22,{media_type:'tv'})],upcoming:[item('Orbital',24,{release_date:'2030-11-01'}),item('Baldserie',25,{media_type:'tv',release_date:'2031-01-12'})]};
-   window.__cinemaCalls=[];window.__cinemaRequests=[];window.__cinemaAccount=false;window.__cinemaPlayersReady=false;
+   window.__cinemaCalls=[];window.__cinemaRequests=[];window.__cinemaAccount=false;window.__cinemaPlayersReady=false;window.__cinemaPlaybackState='idle';window.__cinemaSecondActive=false;
    const config={type:'custom:mediarr-card',view:'library',plex_entity:'sensor.cinema_plex',radarr_entity:'sensor.cinema_radarr',sonarr_entity:'sensor.cinema_sonarr'};
    const hass={...actual,language:'de',states:{...actual.states,'sensor.cinema_plex':{state:'2',attributes:{data:[{title:'Sternenstation',number:'S02E03',poster:art},{title:'Sternenstation',number:'S02E04',poster:art}]}}},services:{...actual.services,mediarr:{submit_movie_request:{},submit_tv_request:{}}},
      callService:async(domain,service,data)=>window.__cinemaRequests.push({domain,service,data}),
      callWS:async msg=>{
        window.__cinemaCalls.push(msg);
        if(msg.type==='mediarr/library')return {groups,page:1,total_pages:1,complete:true};
-       if(msg.type==='mediarr/players')return {players:[{entity_id:'media_player.plex_fixture',name:'Plex Test TV',available:window.__cinemaPlayersReady,reason:window.__cinemaPlayersReady?'available':'unavailable'},{entity_id:'media_player.disabled_fixture',name:'Disabled Plex',available:false,reason:'disabled'}]};
-       if(msg.type==='mediarr/play'){window.__lastCinemaPlayback=msg;return {accepted:true};}
+       if(msg.type==='mediarr/players')return {players:[{entity_id:'media_player.plex_fixture',name:'Plex Test TV',available:window.__cinemaPlayersReady,reason:window.__cinemaPlayersReady?'available':'unavailable',state:window.__cinemaPlaybackState,title:'Sternenreise',can_pause:true,can_resume:true},{entity_id:'media_player.disabled_fixture',name:'Disabled Plex',available:false,reason:'disabled'},...(window.__cinemaSecondActive?[{entity_id:'media_player.office_fixture',name:'Büro',available:true,reason:'available',state:'playing',title:'Anderer Film',can_pause:false,can_resume:false}]:[])]};
+       if(msg.type==='mediarr/play'){window.__lastCinemaPlayback=msg;window.__cinemaPlaybackState='playing';return {accepted:true};}
+       if(msg.type==='mediarr/playback_control'){if(window.__cinemaControlFails)throw {code:'playback_unavailable'};window.__lastCinemaControl=msg;window.__cinemaPlaybackState=msg.action==='pause'?'paused':'playing';return {accepted:true};}
        if(msg.type==='mediarr/cinema')return {...discovery,personal:window.__cinemaAccount?[item('Persönlicher Tipp',23),item('Nordlicht',2),item('Nordpfad',11)]:[],account:{connected:window.__cinemaAccount,can_connect:true},errors:{}};
        if(msg.type==='mediarr/collections')return msg.collection_id?{keys:['0:2']}:{collections:[{id:'0:42',title:'Meine Thriller',smart:true}]};
        if(msg.type==='mediarr/tmdb_account'){
@@ -77,6 +78,30 @@ try {
  assert.equal((await page.evaluate(()=>window.__lastCinemaPlayback)).library_key,'0:1');
  await source.locator('.cinema-player-close').click();
  passed.push('playback chooses an available HA Plex player and preserves the exact library item');
+ await source.locator('[data-playback-action=pause]').waitFor();
+ assert.ok((await source.locator('.cinema-now-playing').textContent()).includes('Läuft auf Plex Test TV'));
+ await source.locator('[data-playback-action=pause]').click();
+ await source.locator('[data-playback-action=resume]').waitFor();
+ assert.equal((await page.evaluate(()=>window.__lastCinemaControl)).entity_id,'media_player.plex_fixture');
+ assert.ok((await source.locator('.cinema-now-playing').textContent()).includes('Pausiert auf'));
+ await page.evaluate(()=>window.__cinemaControlFails=true);
+ await source.locator('[data-playback-action=resume]').click();
+ await source.locator('.cinema-now-playing [role=status]').filter({hasText:'Player hat'}).waitFor();
+ assert.equal(await source.locator('[data-playback-action=resume]').count(),1,'failed resume does not invent a playing state');
+ await page.evaluate(()=>{window.__cinemaControlFails=false;window.__cinemaSecondActive=true;});
+ await source.locator('[data-playback-action=resume]').click();
+ await source.locator('[data-playback-action=pause]').waitFor();
+ assert.equal(await source.locator('.cinema-playing-row').count(),2);
+ assert.equal(await source.locator('.cinema-playing-row').filter({hasText:'Büro'}).locator('button').count(),0,'unsupported controls must not be offered');
+ await source.locator('.cinema-now-playing').screenshot({path:path.join(runtime,'cinema-now-playing.png')});
+ await source.evaluate(el=>{window.__cinemaHass.states['media_player.plex_fixture']={state:'paused',attributes:{media_title:'Sternenreise',supported_features:16385}};el.hass={...window.__cinemaHass};});
+ assert.ok((await source.locator('.cinema-playing-row').filter({hasText:'Sternenreise'}).textContent()).includes('Pausiert auf'),'live HA state updates the bar without waiting for a poll');
+ await source.evaluate(el=>{window.__cinemaHass.states['media_player.plex_fixture'].state='idle';el.hass={...window.__cinemaHass};});
+ assert.equal(await source.locator('.cinema-playing-row').count(),1,'a stopped device is removed immediately');
+ await page.evaluate(()=>delete window.__cinemaHass.states['media_player.plex_fixture']);
+ await source.evaluate(async el=>{window.__cinemaPlaybackState='idle';window.__cinemaSecondActive=false;await el._libraryView.loadPlayback();});
+ assert.equal(await source.locator('.cinema-now-playing').isHidden(),true);
+ passed.push('now-playing lists each active device and title, confirms pause/resume state and handles rejected controls');
  await source.locator('.cinema-unseen input').uncheck();
  await source.locator('.cinema-selection').selectOption('unwatched');
  assert.equal(await source.locator('.cinema-unseen input').isChecked(),true);

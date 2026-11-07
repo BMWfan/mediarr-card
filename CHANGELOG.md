@@ -2,7 +2,7 @@
 
 All notable changes to this fork are documented in this file.
 
-## 0.6.0-dev.5 (2026-11-04)
+## 0.6.0-dev.5 (2026-11-07)
 
 - Match Play/Add and the other Cinema text actions to the compact Trailer button:
   shared minimum height, font size, padding, borders and corners. Remove the
@@ -11,6 +11,9 @@ All notable changes to this fork are documented in this file.
   in details and the hero, with consistent icon sizing and label spacing.
 - Add a matching `mdi:play` icon to Play in details and the hero, keeping it
   visually distinct from the trailer's clapperboard.
+- Show a current-playback row per active Plex device, including title and target.
+  Pause/resume controls follow reported HA state and device capabilities; commands
+  are authorized in sensor 0.8.0-dev.4 and failures do not fabricate state changes.
 
 ## 0.6.0-dev.4 (2026-11-04)
 

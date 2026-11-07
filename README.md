@@ -6,7 +6,7 @@ A visual overview card for Home Assistant that combines media servers, media man
 
 ## Cinema developer version
 
-Pair **card 0.6.0-dev.5** with **sensor integration 0.8.0-dev.3**. These are HACS
+Pair **card 0.6.0-dev.5** with **sensor integration 0.8.0-dev.4**. These are HACS
 prereleases: enable beta versions and select the versions explicitly. Main and
 stable releases are unchanged until user approval. Update the sensor first and
 restart Home Assistant, then update the card and reload the frontend.
@@ -31,6 +31,12 @@ floating in-page player after a click, with fullscreen support and an external f
 cover artwork, with a TMDB metadata fallback when no cover is supplied.
 
 Cinema preserves loaded poster nodes and unchanged details during HA live updates. The player dialog can refresh the current HA list and explains disabled/unavailable clients; refresh does not wake devices. Open Plex on the target device and allow remote control before retrying.
+
+The current-playback strip shows the title and target for each active Plex player.
+Pause and resume are offered only when supported. HA state updates drive the icon
+and status; an accepted command alone does not mark a device paused or playing.
+The authorized player list refreshes every 15 seconds while visible, with live HA
+state used between refreshes. Offline/idle devices are not shown as active.
 
 **Personal recommendations:** in the Mediarr integration's TMDB options, keep your
 existing API key and optionally add your **TMDB API Read Access Token** (from your

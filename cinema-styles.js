@@ -115,6 +115,17 @@ export const cinemaStyles = `
   .cinema-player-dialog button { padding:10px 14px; background:#122935; border:1px solid #34586b; border-radius:7px; color:#d2f2fa; }
   .cinema-player-close { margin-top:20px; }
   .cinema-player-refresh { margin-top:20px; margin-right:12px; }
+  .cinema-now-playing { display:grid; gap:8px; background:#12232c; padding:10px 28px; border-bottom:1px solid #34505e; }
+  .cinema-now-playing[hidden] { display:none; }
+  .cinema-playing-row { display:flex; align-items:center; gap:12px; min-width:0; }
+  .cinema-playing-row > span { flex:1; min-width:0; }
+  .cinema-playing-row strong,.cinema-playing-row small { display:block; overflow-wrap:anywhere; }
+  .cinema-playing-row strong { font-size:.9rem; }
+  .cinema-playing-row small,.cinema-now-playing p { font-size:.75rem; color:#b4cbd7; margin:3px 0; }
+  .cinema-playing-row > ha-icon { color:#6ce6ed; }
+  .cinema-playing-row button { display:grid; place-items:center; width:42px; height:42px; flex-shrink:0; border:1px solid #436578; border-radius:7px; color:#6ce6ed; background:#101b24; }
+  .cinema-playing-row ha-icon { --mdc-icon-size:20px; }
+  @media (max-width:700px) { .cinema-now-playing { padding:10px 12px; } }
   /* Text actions share the compact trailer proportions, including native buttons. */
   .mediarr-cinema .library-actions > button,
   .mediarr-cinema .library-actions > .library-trailer,
