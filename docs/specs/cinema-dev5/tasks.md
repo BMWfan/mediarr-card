@@ -6,6 +6,6 @@
 - [x] Add a synthetic dev.3 regression to the existing HA browser suite.
 - [x] Document owner-run installation, acceptance checks and rollback.
 - [x] Record available automated verification, browser blocker and technical AI review.
-- [ ] Open separate Draft PR linked to existing issues.
+- [x] Open separate Draft PR #30 linked to #20, #27 and #21.
 
 Merge/release/deployment are excluded and require explicit owner approval.
