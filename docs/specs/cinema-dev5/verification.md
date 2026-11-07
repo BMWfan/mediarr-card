@@ -32,9 +32,17 @@ Attempted `CHROMIUM_PATH=/usr/bin/chromium bash dev/setup.sh`: build and locked
 Playwright dependency installation succeeded. Pull/extraction of the pinned HA
 image failed with `failed to register layer ... no space left on device`.
 The managed Docker daemon is reachable and reports no installed images or
-containers after the failure. Thus fresh HA configuration/browser tests, including
-the added dev.3 regression, remain pending CI/environment capacity. No browser
-PASS is claimed for this branch. New regression verifies the dev.3 player shape,
+containers after the failure. This local limitation was subsequently covered by
+a successful hosted CI run for PR #30 head `d5a5766396406cb794a22f57de6c821a077ae740`:
+https://github.com/BMWfan/mediarr-card/actions/runs/42403962488
+
+The run passed HA startup/configuration validation, 26 model tests and 65 browser
+checks (18 legacy, 14 library, 4 metadata, 8 catalog, 6 full-library, 3 provider
+configuration, 12 Cinema). Logs explicitly confirm the added dev.3 regression.
+The upload step warned that no files were found, so screenshots/result artifacts
+are unavailable for this run; the job logs are the verification evidence. Artifact
+collection remains an inherited CI limitation, outside this documentation/test
+preparation. No local browser PASS is claimed. The new regression verifies the dev.3 player shape,
 live-state display, unknown pause command upgrade message, unchanged state and
 successful play request. It mocks backend responses, not a running dev.3 backend.
 
@@ -45,8 +53,9 @@ end-to-end operation with the installed sensor dev.3 remain owner test items.
 
 ## Review recommendation
 
-**Approve with risks** for documentation/test preparation; keep Draft pending
-fresh browser CI. The published artifact is unchanged. Full pause/resume
+**Approve with risks** for documentation/test preparation: hosted browser CI
+passed, including the new regression. Keep Draft for owner review and instance
+testing. Screenshot artifacts were not uploaded; see the log evidence above. The published artifact is unchanged. Full pause/resume
 compatibility with sensor dev.3 is explicitly unsupported, and the guide explains
 the existing upgrade prompt. The inherited automatic release workflow remains a
 separate known risk tracked by #21/#24; no workflow dispatch or main push was made.
