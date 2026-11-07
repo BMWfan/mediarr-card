@@ -213,6 +213,29 @@ try {
  assert.equal(await overlay.locator('.cinema-trailer-window').count(),0);
  await overlay.locator('.mediarr-overlay-close').click();
  passed.push('HA scrolls the full-page card while the compact-card overlay retains its own scroll surface');
+ // Sensor v0.8.0-dev.3 returns identity/availability only and has no control command.
+ await source.evaluate(async el=>{
+   const modern=window.__cinemaHass.callWS;
+   window.__cinemaHass.callWS=async msg=>{
+     if(msg.type==='mediarr/players')return {players:[{entity_id:'media_player.plex_fixture',name:'Plex Test TV',available:true,reason:'available'}]};
+     if(msg.type==='mediarr/playback_control')throw {code:'unknown_command'};
+     return modern(msg);
+   };
+   window.__cinemaHass.states['media_player.plex_fixture']={state:'playing',attributes:{media_title:'Sternenreise',supported_features:16385}};
+   el.setConfig(window.__cinemaConfig);el.hass={...window.__cinemaHass};
+   await el._libraryView.loadPlayback();
+ });
+ await source.locator('.cinema-hero h1').waitFor();
+ assert.ok((await source.locator('.cinema-now-playing').textContent()).includes('Sternenreise'));
+ await source.locator('[data-playback-action=pause]').click();
+ await source.locator('.cinema-now-playing [role=status]').filter({hasText:'Integration aktualisieren'}).waitFor();
+ assert.equal(await source.locator('[data-playback-action=resume]').count(),0,'dev.3 rejection cannot invent paused state');
+ await source.locator('.cinema-primary').click();
+ await source.locator('[data-player="media_player.plex_fixture"]').click();
+ await source.locator('.cinema-player-list').filter({hasText:'Wiedergabe angefordert'}).waitFor();
+ assert.match((await page.evaluate(()=>window.__lastCinemaPlayback)).library_key,/^0:\d+$/);
+ await source.locator('.cinema-player-close').click();
+ passed.push('sensor dev.3 player shape supports Cinema/play and missing pause command explains upgrade without fabricating state');
  assert.deepEqual(errors,[]);
  console.log(`PASS: ${passed.length} cinema checks\n${passed.join('\n')}`);
 } finally {await browser.close();}

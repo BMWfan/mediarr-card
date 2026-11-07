@@ -6,7 +6,10 @@ A visual overview card for Home Assistant that combines media servers, media man
 
 ## Cinema developer version
 
-Pair **card 0.6.0-dev.5** with **sensor integration 0.8.0-dev.4**. These are HACS
+Test **card 0.6.0-dev.5** with **sensor integration 0.8.0-dev.3** for Cinema,
+collections and starting Plex playback. Pause/resume requires sensor **0.8.0-dev.4**;
+it is unavailable with dev.3. See the [existing-instance testing guide](docs/cinema-prerelease-testing.md)
+for exact HACS versions, limitations and rollback. These are HACS
 prereleases: enable beta versions and select the versions explicitly. Main and
 stable releases are unchanged until user approval. Update the sensor first and
 restart Home Assistant, then update the card and reload the frontend.
