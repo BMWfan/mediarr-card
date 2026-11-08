@@ -28,3 +28,7 @@ mediarr-card.[0-9]*.js
 
 # Disposable Home Assistant development instance
 dev/.runtime/
+
+# Python release-policy test bytecode
+__pycache__/
+*.py[cod]

@@ -6,6 +6,8 @@ A visual overview card for Home Assistant that combines media servers, media man
 
 ## Cinema developer version
 
+See the [existing-instance testing and compatibility guide](docs/cinema-prerelease-testing.md) for exact HACS selections, required backend versions and rollback.
+
 The current candidate also includes the legacy security fixes from PR #15.
 Release workflows no longer publish on main pushes. A manual dispatch requires
 an explicit approved release type and exact version confirmation; developer
@@ -25,6 +27,7 @@ Play requires an available authorized Plex player. Refresh/retry controls remain
 usable for recovery, and commands still handle outages occurring after a check.
 
 Pair **card 0.6.0-dev.7** with **sensor integration 0.8.0-dev.6**. These are HACS
+
 prereleases: enable beta versions and select the versions explicitly. Main and
 stable releases are unchanged until user approval. Update the sensor first and
 restart Home Assistant, then update the card and reload the frontend.
