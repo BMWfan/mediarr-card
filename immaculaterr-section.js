@@ -29,7 +29,7 @@ export class ImmaculaterrSection extends BaseSection {
           <div class="section-header">
             <div class="section-header-content">
               <ha-icon class="section-toggle-icon" icon="mdi:chevron-down"></ha-icon>
-              <div class="section-label">${this.t(cardInstance, section.titleKey, section.title)}</div>
+              <div class="section-label">${this._escapeHtml(this.t(cardInstance, section.titleKey, section.title))}</div>
             </div>
           </div>
           <div class="section-content">
@@ -236,19 +236,7 @@ export class ImmaculaterrSection extends BaseSection {
       <button
         class="request-button ${isRequested ? 'status-approved' : ''}"
         ${canRequest ? '' : 'disabled'}
-        onclick="this.dispatchEvent(new CustomEvent('immaculaterr-action', {
-          bubbles: true,
-          detail: {
-            title: '${this._escapeHtml(item.title || '')}',
-            media_type: '${item.media_type}',
-            library_section_key: '${this._escapeHtml(item.library_section_key || '')}',
-            suggestion_id: ${item.id},
-            action: 'approve',
-            apply: true,
-            sectionKey: '${activeSectionKey}',
-            index: ${cardInstance.selectedIndex}
-          }
-        }))">
+        data-mediarr-action="approve">
         <ha-icon icon="${isRequested ? 'mdi:check-circle-outline' : 'mdi:download-outline'}"></ha-icon>
         ${requestLabel}
       </button>
@@ -257,19 +245,7 @@ export class ImmaculaterrSection extends BaseSection {
     const rejectButton = `
       <button
         class="request-button request-button-secondary"
-        onclick="this.dispatchEvent(new CustomEvent('immaculaterr-action', {
-          bubbles: true,
-          detail: {
-            title: '${this._escapeHtml(item.title || '')}',
-            media_type: '${item.media_type}',
-            library_section_key: '${this._escapeHtml(item.library_section_key || '')}',
-            suggestion_id: ${item.id},
-            action: 'reject',
-            apply: true,
-            sectionKey: '${activeSectionKey}',
-            index: ${cardInstance.selectedIndex}
-          }
-        }))">
+        data-mediarr-action="reject">
         <ha-icon icon="mdi:thumb-down-outline"></ha-icon>
         ${this.t(cardInstance, 'not_interested', 'Not interested')}
       </button>
@@ -296,5 +272,13 @@ export class ImmaculaterrSection extends BaseSection {
       </div>
       ${noteMarkup}
     `;
+    cardInstance.info.querySelectorAll('[data-mediarr-action]').forEach(button => {
+      button.addEventListener('click', () => button.dispatchEvent(new CustomEvent('immaculaterr-action', {
+        bubbles: true,
+        detail: { title: item.title || '', media_type: item.media_type, library_section_key: item.library_section_key,
+          suggestion_id: item.id, action: button.dataset.mediarrAction, apply: true,
+          sectionKey: activeSectionKey, index: cardInstance.selectedIndex }
+      })));
+    });
   }
 }

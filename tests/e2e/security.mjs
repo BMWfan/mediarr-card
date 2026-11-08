@@ -1,0 +1,63 @@
+import {chromium} from '../../dev/node_modules/playwright/index.mjs';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+import assert from 'node:assert/strict';
+const root=fileURLToPath(new URL('../../',import.meta.url));
+const runtime=process.env.HA_DEV_RUNTIME_DIR||path.join(root,'dev/.runtime');
+const base=`http://127.0.0.1:${process.env.HA_DEV_PORT||8124}`;
+const auth=JSON.parse(await fs.readFile(path.join(runtime,'local-auth.json'),'utf8'));
+const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||undefined,args:['--no-sandbox','--disable-dev-shm-usage','--no-proxy-server']});
+try{
+ const page=await browser.newPage({viewport:{width:1280,height:900}});
+ const errors=[];page.on('pageerror',error=>errors.push(error.message));
+ await page.addInitScript(({auth,base})=>{if(location.origin===base)localStorage.setItem('hassTokens',JSON.stringify({hassUrl:base,clientId:base+'/',...auth,expires:Date.now()+auth.expires_in*1000}));},{auth,base});
+ await page.goto(base+'/mediarr-test/test');
+ const source=page.locator('mediarr-card');await source.waitFor();
+ await page.locator('#ha-launch-screen').waitFor({state:'detached'});
+ await source.evaluate(el=>{const hass=el._hass;el.setConfig({type:'custom:mediarr-card',view:'legacy',plex_entity:'sensor.plex_mediarr_dev'});el.hass=hass;});
+ const checks=await source.evaluate(async card=>{
+  const title=`O'Neil "><img data-injected src=x onerror="window.__injected=true">`;
+  const events=[];const capture=event=>{events.push(event.detail);event.stopImmediatePropagation();};
+  card.addEventListener('seer-request',capture,true);card.addEventListener('immaculaterr-action',capture,true);
+  const item={title,type:'movie',media_type:'movie',tmdb_id:42,id:42,year:2026,library_section_key:'1',overview:title,approval_required_from_observatory:true};
+  const results=[];
+  for(const name of ['tmdb','trakt','seer','immaculaterr']){
+   const section=card.sections[name];section.existingRequests=[];
+   await section.updateInfo(card,item,name==='seer'?'seer_trending':undefined);
+   const safe=!card.info.querySelector('[onclick],[data-injected]')&&!window.__injected;
+   const button=card.info.querySelector('[data-mediarr-request],[data-mediarr-action="approve"]');
+   if(!button)throw new Error('Missing action for '+name);
+   button.click();results.push(safe&&events.at(-1)?.title===title);
+  }
+  card.config.plex_url='https://plex.invalid';card.config.plex_token='synthetic-only';
+  const originalClients=card._getPlexClients;card._getPlexClients=async()=>[{clientId:title,name:title,product:title,version:title}];
+  await card._showClientSelector({title:'Synthetic film'});
+  results.push(card.querySelector('.client-item-name')?.textContent===title&&!card.querySelector('.client-list [data-injected]'));
+  card.querySelector('.client-modal').classList.add('hidden');card._getPlexClients=originalClients;
+  card._updateNowPlaying({state:'playing',attributes:{media_title:title,media_position:200,media_duration:100}});
+  const bounded=card.progressBar.style.width==='100%';card._updateNowPlaying({state:'playing',attributes:{}});
+  results.push(bounded&&card.progressBar.style.width==='0%');
+  const label=card.sections.plex.generateTemplate({...card.config,plex_label:title},card);
+  const fragment=document.createElement('div');fragment.innerHTML=label;
+  results.push(!fragment.querySelector('[data-injected]'));
+  const background=document.createElement('div');background.style.backgroundImage='url("/local/old.png")';card.append(background);
+  const OriginalImage=window.Image;
+  window.Image=class {set src(value){queueMicrotask(()=>this.onerror?.());}};
+  card._bgVersion=77;const old=background.style.backgroundImage;
+  card.sections.plex._crossFade(background,'/local/failed.png',1,77,card);
+  await new Promise(resolve=>setTimeout(resolve,10));
+  results.push(background.style.backgroundImage===old&&background._activeLayer==='a');
+  window.Image=OriginalImage;background._layerB?.remove();background.remove();
+  const list=document.createElement('div');list.className='radarr-list';card.append(list);
+  card.config.radarr_release_types=['Theatres',null,{}];
+  card.sections.radarr.update(card,{attributes:{data:[null,{title:'Theatrical',release:'Theaters - 2026-01-01'},{title:'Malformed',release:{}}]}});
+  results.push(list.textContent.includes('Theatrical')&&!list.textContent.includes('Malformed'));
+  card.sections.radarr.updateInfo(card,{title:'Malformed',release:{},runtime:'<img data-injected>'});
+  results.push(!card.info.querySelector('[data-injected]'));
+  list.remove();card.removeEventListener('seer-request',capture,true);card.removeEventListener('immaculaterr-action',capture,true);
+  return results;
+ });
+ assert.ok(checks.every(Boolean),JSON.stringify(checks));assert.deepEqual(errors,[]);
+ console.log(`PASS: ${checks.length} legacy security checks (literal event payloads, label escaping, failed image retention, malformed Radarr data)`);
+}finally{await browser.close();}

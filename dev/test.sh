@@ -12,3 +12,5 @@ node "$DEV_DIR/../tests/e2e/catalog.mjs"
 node "$DEV_DIR/../tests/e2e/full-library.mjs"
 node "$DEV_DIR/../tests/e2e/provider-config.mjs"
 node "$DEV_DIR/../tests/e2e/cinema.mjs"
+
+node "$DEV_DIR/../tests/e2e/security.mjs"
