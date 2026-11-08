@@ -29,7 +29,7 @@ export class SeerSection extends BaseSection {
     if (!sectionConfig) return;
 
     const maxItems = cardInstance.config.seer_max_items || cardInstance.config.max_items || 10;
-    const items = (entity.attributes.data || []).slice(0, maxItems);
+    const items = (Array.isArray(entity?.attributes?.data) ? entity.attributes.data : []).filter(Boolean).slice(0, maxItems);
 
     const listElement = cardInstance.querySelector(`[data-list="${sectionConfig.key}"]`);
     if (!listElement) return;
@@ -59,7 +59,7 @@ export class SeerSection extends BaseSection {
           <div class="section-header">
             <div class="section-header-content">
               <ha-icon class="section-toggle-icon" icon="mdi:chevron-down"></ha-icon>
-              <div class="section-label">${this.t(cardInstance, section.titleKey, section.title)}</div>
+              <div class="section-label">${this._escapeHtml(this.t(cardInstance, section.titleKey, section.title))}</div>
             </div>
           </div>
           <div class="section-content">
@@ -91,7 +91,7 @@ export class SeerSection extends BaseSection {
     if (!this.existingRequests) {
       const seerEntity = cardInstance.config.seer_entity;
       if (seerEntity && cardInstance._hass.states[seerEntity]) {
-        this.existingRequests = cardInstance._hass.states[seerEntity].attributes.data || [];
+        this.existingRequests = cardInstance._hass.states[seerEntity]?.attributes?.data || [];
       } else {
         this.existingRequests = [];
       }
@@ -145,17 +145,7 @@ export class SeerSection extends BaseSection {
       } else {
         actionButton = `
           <div class="request-button-container">
-            <button class="request-button" onclick="this.dispatchEvent(new CustomEvent('seer-request', {
-              bubbles: true,
-              detail: {
-                title: '${title.replace(/'/g, "\\'")}',
-                year: '${year}',
-                type: '${type}',
-                tmdb_id: ${tmdbId},
-                poster: '${(item.poster || '').replace(/'/g, "\\'")}',
-                overview: '${overview.replace(/'/g, "\\'")}'
-              }
-            }))">
+            <button class="request-button" data-mediarr-request="true">
               <ha-icon icon="mdi:plus-circle-outline"></ha-icon>
               ${this.t(cardInstance, 'request', 'Request')}
             </button>
@@ -169,14 +159,7 @@ export class SeerSection extends BaseSection {
       cardInstance.info.innerHTML = `
         <div class="title">${this._escapeHtml(title)}</div>
         <div class="details">
-          <span class="status ${statusInfo.class}" onclick="this.dispatchEvent(new CustomEvent('change-status', {
-            bubbles: true,
-            detail: {
-              title: '${title.replace(/'/g, "\\'")}',
-              type: '${item.media_type || 'movie'}',
-              request_id: ${item.request_id || 0}
-            }
-          }))">
+          <span class="status ${statusInfo.class}" data-mediarr-status="true">
             <ha-icon icon="${statusInfo.icon}"></ha-icon>
             ${statusInfo.text}
           </span>
@@ -193,6 +176,17 @@ export class SeerSection extends BaseSection {
         </div>
       `;
     }
+    cardInstance.info.querySelectorAll('[data-mediarr-request]').forEach(button => {
+      button.addEventListener('click', () => button.dispatchEvent(new CustomEvent('seer-request', {
+        bubbles: true, detail: { title: item.title || item.name || '', year: item.year || '', type: this._determineMediaType(item, sectionKey),
+          tmdb_id: item.tmdb_id || item.tmdbId || item.ids?.tmdb || item.id || 0, poster: item.poster || '', overview: item.overview || '' }
+      })));
+    });
+    cardInstance.info.querySelectorAll('[data-mediarr-status]').forEach(button => {
+      button.addEventListener('click', () => button.dispatchEvent(new CustomEvent('change-status', {
+        bubbles: true, detail: { title, type: item.media_type || 'movie', request_id: item.request_id || 0 }
+      })));
+    });
   }
 
   _determineMediaType(item, sectionKey) {
@@ -326,7 +320,7 @@ export class SeerSection extends BaseSection {
             });
 
           if (typeof cardInstance.selectedIndex !== 'undefined' && cardInstance.selectedType) {
-            const selectedItems = cardInstance._hass.states[cardInstance.config.seer_entity].attributes.data || [];
+            const selectedItems = cardInstance._hass.states[cardInstance.config.seer_entity]?.attributes?.data || [];
             this.updateInfo(cardInstance, selectedItems[cardInstance.selectedIndex], cardInstance.selectedType);
           }
           this._showToast(cardInstance, this.t(cardInstance, 'confirm', 'Confirm'), 'success');
@@ -341,6 +335,7 @@ export class SeerSection extends BaseSection {
     if (!cardInstance._seerRequestHandlerAdded) {
       cardInstance.addEventListener('seer-request', async (e) => {
         const { title, year, type, tmdb_id } = e.detail;
+        const requestButton = e.target?.closest?.('[data-mediarr-request]');
 
         try {
           const parsedTmdbId = parseInt(tmdb_id, 10);
@@ -358,18 +353,18 @@ export class SeerSection extends BaseSection {
           }
 
           const existingRequest = this.existingRequests.find(request =>
-            request.title.toLowerCase() === title.toLowerCase() &&
+            String(request?.title || '').toLowerCase() === String(title || '').toLowerCase() &&
             (!year || request.year == year)
           );
 
-          if (existingRequest && type.toUpperCase() === 'MOVIE') {
+          if (existingRequest && String(type).toUpperCase() === 'MOVIE') {
             this._showToast(cardInstance, `"${title}" ${this.t(cardInstance, 'already_requested', 'has already been requested.')}`, 'info');
             return;
           }
 
           let action, data;
 
-          if (type.toUpperCase() === 'TV SHOW') {
+          if (['TV', 'TV SHOW', 'SERIES'].includes(String(type).toUpperCase())) {
             const season = await this._openSeasonModal(title, cardInstance);
             if (season === null) return;
             data = { name: title, season };
@@ -384,7 +379,7 @@ export class SeerSection extends BaseSection {
           await window.document.querySelector('home-assistant')
             ?.hass.callService('mediarr', action.split('.')[1], data);
 
-          const button = cardInstance.querySelector('.request-button');
+          const button = requestButton;
           if (button) {
             button.innerHTML = `
               <ha-icon icon="mdi:check-circle-outline"></ha-icon>
@@ -399,7 +394,7 @@ export class SeerSection extends BaseSection {
 
         } catch (error) {
           console.error('Error sending media request:', error);
-          const button = cardInstance.querySelector('.request-button');
+          const button = requestButton;
           if (button) {
             button.innerHTML = `
               <ha-icon icon="mdi:alert-circle"></ha-icon>

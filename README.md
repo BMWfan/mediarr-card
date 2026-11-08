@@ -4,7 +4,84 @@
 
 A visual overview card for Home Assistant that combines media servers, media managers, and discovery/request sources in one Lovelace card.
 
-## Complete media page (0.5.0 + Mediarr integration 0.7.0)
+## Cinema developer version
+
+See the [existing-instance testing and compatibility guide](docs/cinema-prerelease-testing.md) for exact HACS selections, required backend versions and rollback.
+
+The current candidate also includes the legacy security fixes from PR #15.
+Release workflows no longer publish on main pushes. A manual dispatch requires
+an explicit approved release type and exact version confirmation; developer
+versions cannot become stable/latest. No release workflow was dispatched by
+these tests. Runtime screenshots are uploaded only through an explicit file list.
+
+Request fix in 0.6.0-dev.6: known IDs are preserved for sensor and catalog titles,
+TV requests use a native season dialog, and unconfirmed service calls time out
+after 30 seconds. Check Seerr before retrying a timed-out request; it may still
+have been accepted remotely. Nothing is marked requested solely on timeout.
+
+Tool actions stay disabled until their connection has been checked. Seerr's
+read-only service API checks its actual default non-4K Radarr/Sonarr target,
+profile and root folder; no test title is added. Checks repeat every 30 seconds
+with a short shared backend cache. Requests require the updated sensor version.
+Play requires an available authorized Plex player. Refresh/retry controls remain
+usable for recovery, and commands still handle outages occurring after a check.
+
+Pair **card 0.6.0-dev.7** with **sensor integration 0.8.0-dev.6**. These are HACS
+
+prereleases: enable beta versions and select the versions explicitly. Main and
+stable releases are unchanged until user approval. Update the sensor first and
+restart Home Assistant, then update the card and reload the frontend.
+
+Use the panel YAML below with `view: library`. The large page now has one search,
+a cinematic highlight, selectable recent/unwatched/started/Plex-collection rails,
+trending, personal TMDB recommendations, upcoming titles and actual queue progress.
+There are no additional Mediarr navigation menus. Opening a poster shows full
+details; the back button retains query, filters and position. The compact card
+still opens the same cinema page. `library_layout: classic` retains the old layout.
+
+The full-page card grows with its content and uses Home Assistant's scroll surface.
+The fullscreen overlay opened from the compact card retains its own scroll area.
+For series, Unwatched counts available unplayed episodes after the furthest
+played/partially played episode; older gaps and specials do not revive the show.
+One poster displays counts and ranges such as `3 new episodes · S04 E06–E08`.
+Never-started series show all regular unwatched episodes. Status uses the configured
+Plex account, not an automatically selected HA user's Plex profile. Missing episode
+status is labelled, and older backends retain the old aggregate watched fallback.
+Details offer an official TMDB-sourced YouTube trailer when present, opening an
+floating in-page player after a click, with fullscreen support and an external fallback. Closing stops playback. Waiting titles use public manager
+cover artwork, with a TMDB metadata fallback when no cover is supplied.
+
+Cinema preserves loaded poster nodes and unchanged details during HA live updates. The player dialog can refresh the current HA list and explains disabled/unavailable clients; refresh does not wake devices. Open Plex on the target device and allow remote control before retrying.
+
+The current-playback strip shows the title and target for each active Plex player.
+Pause and resume are offered only when supported. HA state updates drive the icon
+and status; an accepted command alone does not mark a device paused or playing.
+The authorized player list refreshes every 15 seconds while visible, with live HA
+state used between refreshes. Offline/idle devices are not shown as active.
+
+**Personal recommendations:** in the Mediarr integration's TMDB options, keep your
+existing API key and optionally add your **TMDB API Read Access Token** (from your
+TMDB API settings). In the cinema page choose **TMDB-Konto verbinden**, open TMDB's
+authorization page, approve it and choose **Ich habe bestätigt**. No TMDB password
+or long-lived account credential is put in Lovelace YAML. Each HA user has their
+own connection; account tokens stay in private HA storage. Recommendations are
+returned by TMDB's account API, with known owned/tracked titles hidden. We do not
+recreate Netflix/Immaculaterr or import Netflix/Prime histories. Until connected,
+the page displays a connection prompt instead of invented personal suggestions.
+
+**Plex playback:** use an online Plex media-player entity from HA's official Plex
+integration. The card lets you choose a permitted player and delegates the exact
+server/item URI to HA. Open Plex on your TV so it is detected. An Android TV entity
+alone does not provide a Plex playback client. Missing/offline players and rejected
+playback are shown explicitly; no direct server token is needed in the card.
+
+Plex movie/show artwork, added dates and in-progress state come from the backend.
+Smart collections are read on demand; no Kometa installation is required. Release
+dates are labelled as cinema/digital/disc/episode when known and do not guarantee
+download availability. Tests and screenshots use synthetic media and mock external
+responses; real production server/account approval still needs your test.
+
+## Stable / classic media page (0.5.0 + Mediarr integration 0.7.0)
 
 Keep `view: compact` for the dashboard overview and its fullscreen opening button.
 Choose **Full-page media library** in the card editor, or use `view: library` on
@@ -21,9 +98,18 @@ views:
         streaming_region: DE
 ```
 
+Since 0.5.1-dev.1, a card with only `type: custom:mediarr-card` defaults to the library
+when no sensor entities are configured. On 0.5.0, explicitly include
+`view: library`; omitting it without sensors causes a configuration error.
+
+Developer versions are GitHub prereleases and can be selected in HACS after
+enabling beta/prerelease versions for this repository. The card editor shows
+the loaded build so a stale frontend resource can be identified. Main/stable
+updates require the user's explicit approval after testing a developer version.
+
 The backend needs Plex configured in Mediarr (manual credentials or its supported
 Home Assistant Plex connection). The full library reads all movie/show sections,
-not just recently-added sensors. **Meine Bibliothek** includes watched titles;
+not just recently-added sensors. In the classic layout, **Meine Bibliothek** includes watched titles;
 **Vorhang auf** focuses on available, unwatched titles. Radarr/Sonarr configuration
 provides complete managed lists and queue progress, refreshed about once a minute
 while the large view is open. Partial/unavailable sources are explicitly labelled.
@@ -45,8 +131,9 @@ Details show streaming offers for `streaming_region` (default `DE`), separating
 subscriptions from rentals and purchases. Availability data comes from
 JustWatch via TMDB and may change; links allow checking the current offer.
 This feature does not connect personal Netflix/Prime accounts or import histories.
-Netflix/Prime exports, TMDB account authorization and preference-feedback storage
-are not implemented in this release.
+Netflix/Prime exports and preference-feedback storage are not implemented.
+Personal TMDB account authorization is available in the Cinema developer versions
+described above, not in the older stable releases.
 
 ## Fork Notes
 

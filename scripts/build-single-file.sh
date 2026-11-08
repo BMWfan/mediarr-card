@@ -8,6 +8,8 @@ OUTPUT_FILE="$ROOT_DIR/mediarr-card.js"
 MODULES=(
   "media-metadata.js"
   "media-library.js"
+  "cinema-library.js"
+  "cinema-styles.js"
   "base-section.js"
   "plex-section.js"
   "jellyfin-section.js"
