@@ -61,3 +61,33 @@ the existing upgrade prompt. The inherited automatic release workflow remains a
 separate known risk tracked by #21/#24; no workflow dispatch or main push was made.
 No secrets, runtime credentials, generated artifacts, deployment or Copilot
 assignments are included. Owner approval is still required for merge/publication.
+
+## Superseding readiness review — 2026-11-08
+
+Current recommended pairing: card **v0.6.0-dev.7**, sensor **v0.8.0-dev.6**.
+The existing-instance guide supersedes its old dev.5/dev.3 installation steps.
+The older recorded release/hash and old CI limitations above are historical;
+no old tag was moved or republished.
+
+- Both new release API records confirm published developer prereleases. The card
+  tag/source bundle and backend manifest were verified against exact branch bytes.
+- Current PR #20 source head `1265a0af7325a08138547b9b34f4b04b6b5e0dea`
+  passed CI: https://github.com/BMWfan/mediarr-card/actions/runs/42503450216 .
+  It now uploads `homeassistant-test-results` (1,848,498 bytes); the previous
+  hidden-artifact limitation is resolved in the parent PR using an explicit
+  whitelist. No credential/storage directory is included.
+- Local `CHROMIUM_PATH=/usr/bin/chromium bash dev/test.sh` on the updated stacked
+  documentation branch passed: 6 release-policy tests, 26 model checks and
+  76 browser checks (including 13 Cinema and 10 legacy security checks).
+- The updated dev.3 simulation preserves its old player shape and unknown pause
+  API, and also returns unknown for readiness checks. Playback errors do not
+  fabricate state; request actions remain disabled with an integration-update
+  explanation. This is not a recommendation to use dev.3 with the new card.
+- The runtime bundle and version files are identical to PR #20. This diff only
+  updates documentation, the compatibility regression and Python test-bytecode
+  ignores. No runtime, release or CI workflow change originates in this PR.
+- `git diff --check` and relative documentation-link validation passed.
+
+Technical review: ready for owner review with the stated production/HACS/device
+coverage gaps. No production instance, physical Plex client or real media manager
+was changed. Owner testing and explicit main/stable approval remain pending.

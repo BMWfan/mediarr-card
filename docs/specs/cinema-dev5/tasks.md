@@ -9,3 +9,12 @@
 - [x] Open separate Draft PR #30 linked to #20, #27 and #21.
 
 Merge/release/deployment are excluded and require explicit owner approval.
+
+## Current-candidate review
+
+- [x] Update the guide to dev.7/dev.6 while preserving immutable old versions.
+- [x] Refresh the stack on PR #20 and resolve README conflicts.
+- [x] Verify dev.3 has no readiness API and keeps request actions disabled.
+- [x] Run the full current synthetic HA suite and record current artifact evidence.
+- [x] Confirm no runtime bundle or version-file change in this review diff.
+- [ ] Owner test in the existing HA instance and explicit merge decision.

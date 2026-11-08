@@ -275,7 +275,7 @@ try {
  assert.match((await page.evaluate(()=>window.__lastCinemaPlayback)).library_key,/^0:\d+$/);
  await source.locator('.cinema-player-close').click();
  await source.locator('.mediarr-search').fill('Sensor');
- await source.locator('.cinema-search-result').filter({hasText:'Sensor Film'}).click();
+ await source.locator('.cinema-search-result').filter({hasText:'Sensor Zeit'}).click();
  assert.equal(await source.locator('.library-request').isDisabled(),true,'old backend without readiness API cannot enable new request actions');
  assert.ok((await source.locator('.library-actions').textContent()).includes('Integration aktualisieren'));
  passed.push('sensor dev.3 player shape supports Cinema/play and missing pause command explains upgrade without fabricating state');

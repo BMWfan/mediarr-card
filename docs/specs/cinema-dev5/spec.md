@@ -17,3 +17,12 @@ the pending governance documents' suggested Copilot implementation role.
 
 Out of scope: frontend/backend runtime changes, release-workflow hardening
 tracked in #21/#24, changes to PR #20, tags/releases and production access.
+
+## Current review amendment — 2026-11-08
+
+The all-PR readiness review updates the test guide to card dev.7 / backend dev.6
+and retains the historical dev.3 regression with accurate unsupported-readiness
+behavior. Runtime/security/release-workflow changes are inherited from the updated
+PR #20 base, not implemented by this documentation/test diff. Old versions and
+tags remain immutable. Owner installation, physical playback and main approval
+remain unperformed.
