@@ -55,7 +55,7 @@ export class CinemaLibraryView extends MediaLibraryView {
     this.card.querySelectorAll('.section, .media-details-panel').forEach(el=>el.remove());
     this.card.content.hidden=true;this.card.classList.add('mediarr-cinema');
     this.shell=document.createElement('div');this.shell.className='cinema-shell';
-    this.shell.innerHTML=`<header class="cinema-toolbar"><span class="cinema-brand"><ha-icon icon="mdi:movie-open-outline"></ha-icon><strong>Mediarr</strong></span><label class="cinema-search-label"><span class="sr-only">${esc(this.label('Filme und Serien suchen','Search movies and series'))}</span><ha-icon icon="mdi:magnify" aria-hidden="true"></ha-icon><input class="mediarr-search" type="search" maxlength="128" placeholder="${esc(this.label('Filme und Serien suchen …','Search movies and series …'))}"></label><button class="cinema-download-shortcut" type="button" aria-label="${esc(this.label('Laufende Downloads','Active downloads'))}"><ha-icon icon="mdi:download-outline"></ha-icon><span></span></button></header><main class="cinema-body"><p class="cinema-library-status" role="status"></p><section class="cinema-detail" hidden><button type="button" class="cinema-back">← ${esc(this.label('Zurück zur Auswahl','Back to selection'))}</button><div class="library-focus"></div></section><div class="cinema-home"></div><section class="cinema-search-results" hidden><p class="mediarr-search-status" role="status"></p><p class="library-catalog-status" role="status"></p><div class="library-results"></div><button class="library-load-more" type="button">${esc(this.label('Weitere Treffer','More results'))}</button></section></main>`;
+    this.shell.innerHTML=`<header class="cinema-toolbar"><span class="cinema-brand"><ha-icon icon="mdi:movie-open-outline"></ha-icon><strong>Mediarr</strong></span><label class="cinema-search-label"><span class="sr-only">${esc(this.label('Filme und Serien suchen','Search movies and series'))}</span><ha-icon icon="mdi:magnify" aria-hidden="true"></ha-icon><input class="mediarr-search" type="search" maxlength="128" placeholder="${esc(this.label('Filme und Serien suchen …','Search movies and series …'))}"></label><button class="cinema-refresh-connections" type="button" aria-label="${esc(this.label('Verbindungen prüfen','Check connections'))}" title="${esc(this.label('Verbindungen prüfen','Check connections'))}"><ha-icon icon="mdi:refresh" aria-hidden="true"></ha-icon></button><button class="cinema-download-shortcut" type="button" aria-label="${esc(this.label('Laufende Downloads','Active downloads'))}"><ha-icon icon="mdi:download-outline"></ha-icon><span></span></button></header><main class="cinema-body"><p class="cinema-library-status" role="status"></p><section class="cinema-detail" hidden><button type="button" class="cinema-back">← ${esc(this.label('Zurück zur Auswahl','Back to selection'))}</button><div class="library-focus"></div></section><div class="cinema-home"></div><section class="cinema-search-results" hidden><p class="mediarr-search-status" role="status"></p><p class="library-catalog-status" role="status"></p><div class="library-results"></div><button class="library-load-more" type="button">${esc(this.label('Weitere Treffer','More results'))}</button></section></main>`;
     content.append(this.shell);this.input=this.shell.querySelector('input');this.body=this.shell.querySelector('.cinema-body');
     this.nowPlaying=document.createElement('section');this.nowPlaying.className='cinema-now-playing';this.nowPlaying.hidden=true;
     this.nowPlaying.setAttribute('aria-label',this.label('Aktuelle Wiedergabe','Now playing'));
@@ -65,8 +65,10 @@ export class CinemaLibraryView extends MediaLibraryView {
     this.moreButton=this.shell.querySelector('.library-load-more');
     this.input.oninput=()=>{if(this.detailKey)this.back(false);this.scheduleSearch();};
     this.shell.querySelector('.cinema-back').onclick=()=>this.back();
+    this.shell.querySelector('.cinema-refresh-connections').onclick=async event=>{const button=event.currentTarget;button.disabled=true;await Promise.allSettled([this.loadRequestCapabilities(),this.loadPlayback(),this.loadDiscovery()]);if(button.isConnected)button.disabled=false;};
     this.shell.querySelector('.cinema-download-shortcut').onclick=()=>{this.input.value='';this.back(false);this.scheduleSearch();this.home.querySelector('.cinema-downloads')?.scrollIntoView({behavior:'smooth',block:'start'});};
     this.refresh();this.loadLibrary();this.loadDiscovery();this.loadCollections();
+    this.startRequestChecks();
     this.loadPlayback();
     this.playbackTimer=setInterval(()=>{if(document.visibilityState==='visible'&&this.card.isConnected)this.loadPlayback();},15000);
     this.libraryTimer=setInterval(()=>{if(document.visibilityState==='visible'&&this.card.isConnected)this.loadLibrary(true);},60000);
@@ -107,6 +109,10 @@ export class CinemaLibraryView extends MediaLibraryView {
     this.render();
   }
 
+  hasAvailablePlayer() {
+    return this.playbackPlayers.some(player=>{const state=this.card._hass?.states?.[player.entity_id]?.state;return player.reason!=='disabled'&&(state?!['unavailable','unknown'].includes(state):player.available);});
+  }
+
   async loadPlayback() {
     if(this.playbackLoading)return;
     this.playbackLoading=true;
@@ -114,7 +120,7 @@ export class CinemaLibraryView extends MediaLibraryView {
       const data=await this.ws('mediarr/players');if(!this.alive)return;
       this.playbackPlayers=data.players||[];this.playbackStale=false;
     }catch{this.playbackStale=true;}
-    finally{this.playbackLoading=false;if(this.alive)this.renderPlayback();}
+    finally{this.playbackLoading=false;if(this.alive){this.renderPlayback();this.render();}}
   }
 
   renderPlayback() {
@@ -188,13 +194,14 @@ export class CinemaLibraryView extends MediaLibraryView {
     this.home.hidden=!!this.detailKey||!!this.input.value.trim();
     if(this.detailKey) {
       const entry=this.entries.find(entry=>entry.key===this.detailKey);
-      const signature=JSON.stringify([entry,this.metadataMessage(entry||{}),this.messages.get(entry?.key),this.busy.has(entry?.key)]);
+      const signature=JSON.stringify([entry,this.metadataMessage(entry||{}),this.messages.get(entry?.key),this.busy.has(entry?.key),this.requestCapabilities,this.requestCheckError,this.hasAvailablePlayer()]);
       if(this.detailSignature===signature)return;
       this.detailSignature=signature;
       this.selectedKey=this.detailKey;super.renderDetails(entry);
       this.focus.querySelector('.library-play')?.remove();
       if(entry?.stage==='ready'&&entry.refs.some(ref=>ref.provider==='plex'&&ref.item.library_key)) {
         const play=document.createElement('button');play.type='button';play.className='library-request cinema-detail-play';play.innerHTML=`<ha-icon icon="mdi:play" aria-hidden="true"></ha-icon>${esc(this.label('Abspielen','Play'))}`;
+        play.disabled=!this.hasAvailablePlayer();play.title=play.disabled?this.label('Kein erreichbarer Plex-Player.','No reachable Plex player.'):'';
         play.onclick=()=>this.play(entry);this.focus.querySelector('.library-actions').prepend(play);
       }
       const trailer=this.focus.querySelector('.library-trailer');
@@ -230,15 +237,16 @@ export class CinemaLibraryView extends MediaLibraryView {
 
   heroMarkup(entry) {
     const canPlay=entry.stage==='ready'&&entry.refs.some(ref=>ref.provider==='plex'&&ref.item.library_key);
-    const canRequest=entry.stage==='discover'&&this.requestService(entry);
+    const canRequest=entry.stage==='discover';
+    const requestAllowed=this.requestService(entry);
     const action=canPlay?this.label('Abspielen','Play'):canRequest?this.label('Hinzufügen','Add'):this.label('Details','Details');
-    return `<section class="cinema-hero"><div class="cinema-hero-backdrop"></div><div class="cinema-hero-copy"><h1>${esc(entry.title)}</h1><p class="cinema-hero-meta">${esc([entry.year,mediaNames(entry.item.genres).slice(0,2).join(' · '),entry.item.runtime?`${entry.item.runtime} min`:null,entry.rating?`★ ${entry.rating}`:null].filter(Boolean).join(' · '))}</p><span class="cinema-availability cinema-availability-${entry.stage}">${esc(this.status(entry))}</span><p class="cinema-hero-synopsis">${esc(entry.summary||this.label('Öffne den Film für Handlung und Besetzung.','Open this title for synopsis and cast.'))}</p><div class="cinema-hero-actions"><button type="button" class="cinema-primary" data-hero-action="${canPlay?'play':canRequest?'request':'details'}">${canPlay?'<ha-icon icon="mdi:play" aria-hidden="true"></ha-icon>':''}${esc(action)}</button>${entry.item.trailer?.url?`<button type="button" class="cinema-hero-trailer"><ha-icon icon="mdi:movie-play-outline" aria-hidden="true"></ha-icon>${esc(this.label('Trailer','Trailer'))}</button>`:''}${canPlay||canRequest?`<button type="button" data-select-key="${esc(entry.key)}">${esc(this.label('Details','Details'))}</button>`:''}</div></div></section>`;
+    return `<section class="cinema-hero"><div class="cinema-hero-backdrop"></div><div class="cinema-hero-copy"><h1>${esc(entry.title)}</h1><p class="cinema-hero-meta">${esc([entry.year,mediaNames(entry.item.genres).slice(0,2).join(' · '),entry.item.runtime?`${entry.item.runtime} min`:null,entry.rating?`★ ${entry.rating}`:null].filter(Boolean).join(' · '))}</p><span class="cinema-availability cinema-availability-${entry.stage}">${esc(this.status(entry))}</span><p class="cinema-hero-synopsis">${esc(entry.summary||this.label('Öffne den Film für Handlung und Besetzung.','Open this title for synopsis and cast.'))}</p><div class="cinema-hero-actions"><button type="button" class="cinema-primary" ${canPlay&&!this.hasAvailablePlayer()?`disabled title="${esc(this.label('Kein erreichbarer Plex-Player.','No reachable Plex player.'))}"`:canRequest&&!requestAllowed?`disabled title="${esc(this.requestUnavailableMessage(entry))}"`:""} data-hero-action="${canPlay?'play':canRequest?'request':'details'}">${canPlay?'<ha-icon icon="mdi:play" aria-hidden="true"></ha-icon>':''}${esc(action)}</button>${entry.item.trailer?.url?`<button type="button" class="cinema-hero-trailer"><ha-icon icon="mdi:movie-play-outline" aria-hidden="true"></ha-icon>${esc(this.label('Trailer','Trailer'))}</button>`:''}${canPlay||canRequest?`<button type="button" data-select-key="${esc(entry.key)}">${esc(this.label('Details','Details'))}</button>`:''}</div></div></section>`;
   }
 
   accountMarkup() {
     const errors=this.discovery.errors||{};
     const text=this.accountMessage||(!this.discovery.account.connected?this.label('Verbinde dein TMDB-Konto für persönliche Empfehlungen.','Connect your TMDB account for personal recommendations.'):errors.personal?this.label('TMDB-Empfehlungen sind momentan nicht verfügbar.','TMDB recommendations are currently unavailable.'):this.label('Noch keine neuen Kontoempfehlungen. Bewertungen in TMDB helfen bei der Auswahl.','No new account recommendations yet. Ratings in TMDB help guide suggestions.'));
-    return `<div class="cinema-account"><ha-icon icon="mdi:account-star-outline"></ha-icon><p role="status">${esc(text)}</p>${this.accountUrl?`<a href="${esc(this.accountUrl)}" target="_blank" rel="noopener noreferrer">${esc(this.label('TMDB-Freigabe öffnen','Open TMDB authorization'))}</a><button type="button" data-account="finish">${esc(this.label('Ich habe bestätigt','I approved it'))}</button>`:!this.discovery.account.connected?`<button type="button" data-account="start">${esc(this.label('TMDB-Konto verbinden','Connect TMDB account'))}</button>`:''}</div>`;
+    return `<div class="cinema-account"><ha-icon icon="mdi:account-star-outline"></ha-icon><p role="status">${esc(text)}</p>${this.accountUrl?`<a href="${esc(this.accountUrl)}" target="_blank" rel="noopener noreferrer">${esc(this.label('TMDB-Freigabe öffnen','Open TMDB authorization'))}</a><button type="button" data-account="finish">${esc(this.label('Ich habe bestätigt','I approved it'))}</button>`:!this.discovery.account.connected?`<button type="button" data-account="start" ${!this.discovery.account.can_connect||this.requestCapabilities?.tmdb_account?.available!==true||this.discoveryLoading||this.discoveryError?'disabled':''}>${esc(this.label('TMDB-Konto verbinden','Connect TMDB account'))}</button>`:''}</div>`;
   }
 
   releaseLabel(entry) {

@@ -368,6 +368,32 @@ export class MediaLibraryView {
   }
 
   label(de,en) { return this.card._mediaLabel(de,en); }
+  startRequestChecks() {
+    this.loadRequestCapabilities();
+    this.requestCheckTimer=setInterval(()=>{if(document.visibilityState==='visible'&&this.card.isConnected)this.loadRequestCapabilities();},30000);
+  }
+  async loadRequestCapabilities() {
+    if(this.checkingRequests)return;
+    this.checkingRequests=true;
+    let timer;
+    try {
+      this.requestCapabilities=await Promise.race([this.card._hass.callWS({type:'mediarr/request_capabilities'}),new Promise((_,reject)=>timer=setTimeout(()=>reject({code:'timeout'}),20000))]);
+      this.requestCheckError=null;
+    }catch(error){this.requestCapabilities=null;this.requestCheckError=error?.code||'unavailable';}
+    finally{clearTimeout(timer);this.checkingRequests=false;if(this.card.isConnected){this.refresh();const confirm=this.shell?.querySelector('.library-season-dialog [data-confirm]');if(confirm&&this.seasonEntry){confirm.disabled=!this.requestService(this.seasonEntry);confirm.title=confirm.disabled?this.requestUnavailableMessage(this.seasonEntry):'';}}}
+  }
+  requestUnavailableMessage(entry) {
+    if(this.requestCheckError==='unknown_command')return this.label('Für die Verbindungsprüfung die Mediarr-Integration aktualisieren.','Update Mediarr integration to check connections.');
+    const state=this.requestCapabilities?.[entry.kind];
+    const reason=state?.reason;
+    if(entry.refs.some(ref=>ref.provider==='immaculaterr'&&ref.item.id!=null&&ref.item.library_section_key&&ref.item.approval_required_from_observatory!==false)&&this.card._hass?.services?.mediarr?.process_immaculaterr_suggestion&&this.requestCapabilities?.immaculaterr?.available!==true)return this.label('Immaculaterr-Verbindung nicht verfügbar oder noch nicht geprüft.','Immaculaterr connection unavailable or not checked yet.');
+    if(!state&&!this.requestCheckError)return this.label('Verbindung wird geprüft …','Checking connection …');
+    if(reason?.startsWith('radarr_'))return this.label('Radarr nicht erreichbar oder in Seerr nicht korrekt eingerichtet.','Radarr is unreachable or not configured correctly in Seerr.');
+    if(reason?.startsWith('sonarr_'))return this.label('Sonarr nicht erreichbar oder in Seerr nicht korrekt eingerichtet.','Sonarr is unreachable or not configured correctly in Seerr.');
+    if(reason==='seer_auth')return this.label('Seerr hat den API-Zugang abgewiesen.','Seerr rejected the API credential.');
+    if(reason==='seer_not_configured')return this.label('Für Hinzufügen Seerr in Mediarr einrichten.','Configure Seerr in Mediarr to add titles.');
+    return this.label('Anfrageverbindung momentan nicht verfügbar.','Request connection is currently unavailable.');
+  }
   stageLabel(stage) {
     return ({all:this.label('Alle Titel','All titles'),library:this.label('Meine Bibliothek','My library'),discover:this.label('Dein nächster Filmabend','Your next movie night'),waiting:this.label('Deine Merkliste','Your watchlist'),ready:this.label('Vorhang auf','Ready to watch')})[stage];
   }
@@ -405,6 +431,7 @@ export class MediaLibraryView {
     this.input.oninput = () => this.scheduleSearch();
     this.refresh();
     this.loadLibrary();
+    this.startRequestChecks();
     this.libraryTimer=setInterval(()=>{if(document.visibilityState==='visible'&&this.card.isConnected)this.loadLibrary(true);},60000);
   }
 
@@ -437,7 +464,7 @@ export class MediaLibraryView {
     }
   }
 
-  destroy() {clearTimeout(this.searchTimer);clearInterval(this.libraryTimer);++this.searchVersion;}
+  destroy() {this.seasonCancel?.();clearInterval(this.requestCheckTimer);clearTimeout(this.searchTimer);clearInterval(this.libraryTimer);++this.searchVersion;}
 
   scheduleSearch() {
     clearTimeout(this.searchTimer);
@@ -580,7 +607,7 @@ export class MediaLibraryView {
     const playable = entry.refs.find(ref=>ref.provider==='plex' && ref.item.key && this.card.config.plex_url && this.card.config.plex_token);
     const actionMarkup = playable ? `<button type="button" class="library-play library-request">${esc(this.label('Abspielen', 'Play'))}</button>` : entry.stage === 'discover' ? `
       <button type="button" class="library-request" ${!actionable || busy ? 'disabled' : ''}>${esc(busy ? this.label('Wird hinzugefügt …', 'Adding …') : this.label('+ Zur Merkliste', '+ Add to watchlist'))}</button>
-      ${!actionable ? `<small>${esc(this.label('Hinzufügen derzeit nicht verfügbar.', 'Adding is currently unavailable.'))}</small>` : ''}` : '';
+      ${!actionable ? `<small role="status">${esc(this.requestUnavailableMessage(entry))}</small>` : ''}` : '';
     this.focus.innerHTML = `
       <article class="media-details-panel library-detail">
         <div class="library-hero">
@@ -623,9 +650,9 @@ export class MediaLibraryView {
     if (!['movie','tv'].includes(entry.kind)) return null;
     const services=this.card._hass?.services?.mediarr || {};
     const suggestion=entry.refs.find(ref=>ref.provider==='immaculaterr' && ref.item.id != null && ref.item.library_section_key && ref.item.approval_required_from_observatory !== false);
-    if(suggestion && services.process_immaculaterr_suggestion) return {name:'process_immaculaterr_suggestion',suggestion};
+    if(suggestion && services.process_immaculaterr_suggestion)return this.requestCapabilities?.immaculaterr?.available===true?{name:'process_immaculaterr_suggestion',suggestion}:null;
     const name=entry.kind==='tv'?'submit_tv_request':'submit_movie_request';
-    return services[name]?{name}:null;
+    return services[name]&&this.requestCapabilities?.[entry.kind]?.available===true?{name}:null;
   }
 
   async request(entry) {
@@ -635,19 +662,43 @@ export class MediaLibraryView {
     this.busy.add(entry.key);this.messages.delete(entry.key);this.render();
     try {
       let data={name:entry.title};
-      if(entry.catalog && entry.ids.tmdb) data.tmdb_id=Number(entry.ids.tmdb);
+      const tmdbId=Number(entry.ids.tmdb);
+      if(Number.isSafeInteger(tmdbId)&&tmdbId>0)data.tmdb_id=tmdbId;
       if(service.suggestion) {
         const item=service.suggestion.item;
         data={media_type:item.media_type,library_section_key:item.library_section_key,suggestion_id:item.id,action:'approve',apply:true};
       } else if(entry.kind==='tv') {
-        const season=await this.card.sections.seer._openSeasonModal(entry.title,this.card);
+        const season=await this.selectRequestSeason(entry);
         if(season===null) return;
         data.season=season;
       }
-      await this.card._hass.callService('mediarr',service.name,data);
+      if(!this.requestService(entry)){this.messages.set(entry.key,this.requestUnavailableMessage(entry));return;}
+      let timer;
+      try {
+        await Promise.race([
+          this.card._hass.callService('mediarr',service.name,data),
+          new Promise((_,reject)=>{timer=setTimeout(()=>reject({code:'request_timeout',message:this.label('Keine Bestätigung erhalten. Prüfe den Status in Seerr, bevor du erneut anfragst.','No confirmation received. Check Seerr before requesting again.')}),30000);}),
+        ]);
+      } finally {clearTimeout(timer);}
       this.pending.add(entry.key);
       if(entry.catalog) this.card._catalogRequests.set(entry.key,{...entry.item,tmdb_id:Number(entry.ids.tmdb),media_type:entry.kind});
     } catch(error) { this.messages.set(entry.key,error?.message||this.label('Hinzufügen fehlgeschlagen.','Could not add title.')); }
     finally { this.busy.delete(entry.key);this.refresh(); }
+  }
+
+  selectRequestSeason(entry) {
+    return new Promise(resolve=>{
+      const dialog=document.createElement('dialog');dialog.className='library-season-dialog';
+      this.seasonEntry=entry;
+      dialog.setAttribute('aria-label',this.label('Staffeln auswählen','Select seasons'));
+      dialog.innerHTML=`<h2>${escapeMediaHtml(this.label('Staffeln auswählen','Select seasons'))}</h2><p>${escapeMediaHtml(entry.title)}</p><label>${escapeMediaHtml(this.label('Staffeln','Seasons'))}<select><option value="first">${escapeMediaHtml(this.label('Erste Staffel','First season'))}</option><option value="latest">${escapeMediaHtml(this.label('Neueste Staffel','Latest season'))}</option><option value="all" selected>${escapeMediaHtml(this.label('Alle Staffeln','All seasons'))}</option></select></label><div class="library-season-actions"><button type="button" data-confirm>${escapeMediaHtml(this.label('Hinzufügen','Add'))}</button><button type="button" data-cancel>${escapeMediaHtml(this.label('Abbrechen','Cancel'))}</button></div>`;
+      let finished=false;
+      const close=value=>{if(finished)return;finished=true;dialog.close();dialog.remove();this.seasonCancel=null;this.seasonEntry=null;resolve(value);};
+      this.seasonCancel=()=>close(null);
+      dialog.querySelector('[data-confirm]').onclick=()=>close(dialog.querySelector('select').value);
+      dialog.querySelector('[data-cancel]').onclick=()=>close(null);
+      dialog.addEventListener('cancel',event=>{event.preventDefault();event.stopPropagation();close(null);});
+      this.shell.append(dialog);dialog.showModal();
+    });
   }
 }

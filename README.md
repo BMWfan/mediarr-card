@@ -6,10 +6,28 @@ A visual overview card for Home Assistant that combines media servers, media man
 
 ## Cinema developer version
 
-Test **card 0.6.0-dev.5** with **sensor integration 0.8.0-dev.3** for Cinema,
-collections and starting Plex playback. Pause/resume requires sensor **0.8.0-dev.4**;
-it is unavailable with dev.3. See the [existing-instance testing guide](docs/cinema-prerelease-testing.md)
-for exact HACS versions, limitations and rollback. These are HACS
+See the [existing-instance testing and compatibility guide](docs/cinema-prerelease-testing.md) for exact HACS selections, required backend versions and rollback.
+
+The current candidate also includes the legacy security fixes from PR #15.
+Release workflows no longer publish on main pushes. A manual dispatch requires
+an explicit approved release type and exact version confirmation; developer
+versions cannot become stable/latest. No release workflow was dispatched by
+these tests. Runtime screenshots are uploaded only through an explicit file list.
+
+Request fix in 0.6.0-dev.6: known IDs are preserved for sensor and catalog titles,
+TV requests use a native season dialog, and unconfirmed service calls time out
+after 30 seconds. Check Seerr before retrying a timed-out request; it may still
+have been accepted remotely. Nothing is marked requested solely on timeout.
+
+Tool actions stay disabled until their connection has been checked. Seerr's
+read-only service API checks its actual default non-4K Radarr/Sonarr target,
+profile and root folder; no test title is added. Checks repeat every 30 seconds
+with a short shared backend cache. Requests require the updated sensor version.
+Play requires an available authorized Plex player. Refresh/retry controls remain
+usable for recovery, and commands still handle outages occurring after a check.
+
+Pair **card 0.6.0-dev.7** with **sensor integration 0.8.0-dev.6**. These are HACS
+
 prereleases: enable beta versions and select the versions explicitly. Main and
 stable releases are unchanged until user approval. Update the sensor first and
 restart Home Assistant, then update the card and reload the frontend.

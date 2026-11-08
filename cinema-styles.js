@@ -1,4 +1,12 @@
 export const cinemaStyles = `
+  .cinema-refresh-connections { display:grid; place-items:center; flex-shrink:0; width:36px; height:42px; padding:4px; background:transparent; border:0; border-radius:7px; color:#8ee6f0; }
+  .library-season-dialog { box-sizing:border-box; width:min(440px,calc(100vw - 32px)); max-height:calc(100dvh - 32px); overflow:auto; padding:24px; border:1px solid #405b6b; border-radius:12px; background:#0d1821; color:#f0f7fc; }
+  .library-season-dialog::backdrop { background:#000b; }
+  .library-season-dialog h2 { margin:0 0 12px; font-size:1.2rem; }
+  .library-season-dialog label { display:grid; gap:8px; }
+  .library-season-dialog select { padding:10px; color:#eef7fa; background:#122935; border:1px solid #34586b; border-radius:7px; }
+  .library-season-actions { display:flex; flex-wrap:wrap; gap:12px; margin-top:20px; }
+  .library-season-actions button { min-height:42px; padding:8px 14px; font:inherit; border:1px solid #34586b; border-radius:7px; color:#6ce6ed; background:#122935; cursor:pointer; }
   .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
   .mediarr-cinema { max-width:none; color:#f4f6fa; background:#090d12; }
   .mediarr-cinema.mediarr-page { padding:0; height:auto; min-height:calc(100dvh - var(--header-height,56px)); }

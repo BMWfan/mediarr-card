@@ -34,6 +34,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
+          include-hidden-files: true
           name: homeassistant-test-results
           path: |
             dev/.runtime/dashboard.png

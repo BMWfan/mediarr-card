@@ -420,6 +420,32 @@ class MediaLibraryView {
   }
 
   label(de,en) { return this.card._mediaLabel(de,en); }
+  startRequestChecks() {
+    this.loadRequestCapabilities();
+    this.requestCheckTimer=setInterval(()=>{if(document.visibilityState==='visible'&&this.card.isConnected)this.loadRequestCapabilities();},30000);
+  }
+  async loadRequestCapabilities() {
+    if(this.checkingRequests)return;
+    this.checkingRequests=true;
+    let timer;
+    try {
+      this.requestCapabilities=await Promise.race([this.card._hass.callWS({type:'mediarr/request_capabilities'}),new Promise((_,reject)=>timer=setTimeout(()=>reject({code:'timeout'}),20000))]);
+      this.requestCheckError=null;
+    }catch(error){this.requestCapabilities=null;this.requestCheckError=error?.code||'unavailable';}
+    finally{clearTimeout(timer);this.checkingRequests=false;if(this.card.isConnected){this.refresh();const confirm=this.shell?.querySelector('.library-season-dialog [data-confirm]');if(confirm&&this.seasonEntry){confirm.disabled=!this.requestService(this.seasonEntry);confirm.title=confirm.disabled?this.requestUnavailableMessage(this.seasonEntry):'';}}}
+  }
+  requestUnavailableMessage(entry) {
+    if(this.requestCheckError==='unknown_command')return this.label('Für die Verbindungsprüfung die Mediarr-Integration aktualisieren.','Update Mediarr integration to check connections.');
+    const state=this.requestCapabilities?.[entry.kind];
+    const reason=state?.reason;
+    if(entry.refs.some(ref=>ref.provider==='immaculaterr'&&ref.item.id!=null&&ref.item.library_section_key&&ref.item.approval_required_from_observatory!==false)&&this.card._hass?.services?.mediarr?.process_immaculaterr_suggestion&&this.requestCapabilities?.immaculaterr?.available!==true)return this.label('Immaculaterr-Verbindung nicht verfügbar oder noch nicht geprüft.','Immaculaterr connection unavailable or not checked yet.');
+    if(!state&&!this.requestCheckError)return this.label('Verbindung wird geprüft …','Checking connection …');
+    if(reason?.startsWith('radarr_'))return this.label('Radarr nicht erreichbar oder in Seerr nicht korrekt eingerichtet.','Radarr is unreachable or not configured correctly in Seerr.');
+    if(reason?.startsWith('sonarr_'))return this.label('Sonarr nicht erreichbar oder in Seerr nicht korrekt eingerichtet.','Sonarr is unreachable or not configured correctly in Seerr.');
+    if(reason==='seer_auth')return this.label('Seerr hat den API-Zugang abgewiesen.','Seerr rejected the API credential.');
+    if(reason==='seer_not_configured')return this.label('Für Hinzufügen Seerr in Mediarr einrichten.','Configure Seerr in Mediarr to add titles.');
+    return this.label('Anfrageverbindung momentan nicht verfügbar.','Request connection is currently unavailable.');
+  }
   stageLabel(stage) {
     return ({all:this.label('Alle Titel','All titles'),library:this.label('Meine Bibliothek','My library'),discover:this.label('Dein nächster Filmabend','Your next movie night'),waiting:this.label('Deine Merkliste','Your watchlist'),ready:this.label('Vorhang auf','Ready to watch')})[stage];
   }
@@ -457,6 +483,7 @@ class MediaLibraryView {
     this.input.oninput = () => this.scheduleSearch();
     this.refresh();
     this.loadLibrary();
+    this.startRequestChecks();
     this.libraryTimer=setInterval(()=>{if(document.visibilityState==='visible'&&this.card.isConnected)this.loadLibrary(true);},60000);
   }
 
@@ -489,7 +516,7 @@ class MediaLibraryView {
     }
   }
 
-  destroy() {clearTimeout(this.searchTimer);clearInterval(this.libraryTimer);++this.searchVersion;}
+  destroy() {this.seasonCancel?.();clearInterval(this.requestCheckTimer);clearTimeout(this.searchTimer);clearInterval(this.libraryTimer);++this.searchVersion;}
 
   scheduleSearch() {
     clearTimeout(this.searchTimer);
@@ -632,7 +659,7 @@ class MediaLibraryView {
     const playable = entry.refs.find(ref=>ref.provider==='plex' && ref.item.key && this.card.config.plex_url && this.card.config.plex_token);
     const actionMarkup = playable ? `<button type="button" class="library-play library-request">${esc(this.label('Abspielen', 'Play'))}</button>` : entry.stage === 'discover' ? `
       <button type="button" class="library-request" ${!actionable || busy ? 'disabled' : ''}>${esc(busy ? this.label('Wird hinzugefügt …', 'Adding …') : this.label('+ Zur Merkliste', '+ Add to watchlist'))}</button>
-      ${!actionable ? `<small>${esc(this.label('Hinzufügen derzeit nicht verfügbar.', 'Adding is currently unavailable.'))}</small>` : ''}` : '';
+      ${!actionable ? `<small role="status">${esc(this.requestUnavailableMessage(entry))}</small>` : ''}` : '';
     this.focus.innerHTML = `
       <article class="media-details-panel library-detail">
         <div class="library-hero">
@@ -675,9 +702,9 @@ class MediaLibraryView {
     if (!['movie','tv'].includes(entry.kind)) return null;
     const services=this.card._hass?.services?.mediarr || {};
     const suggestion=entry.refs.find(ref=>ref.provider==='immaculaterr' && ref.item.id != null && ref.item.library_section_key && ref.item.approval_required_from_observatory !== false);
-    if(suggestion && services.process_immaculaterr_suggestion) return {name:'process_immaculaterr_suggestion',suggestion};
+    if(suggestion && services.process_immaculaterr_suggestion)return this.requestCapabilities?.immaculaterr?.available===true?{name:'process_immaculaterr_suggestion',suggestion}:null;
     const name=entry.kind==='tv'?'submit_tv_request':'submit_movie_request';
-    return services[name]?{name}:null;
+    return services[name]&&this.requestCapabilities?.[entry.kind]?.available===true?{name}:null;
   }
 
   async request(entry) {
@@ -687,20 +714,44 @@ class MediaLibraryView {
     this.busy.add(entry.key);this.messages.delete(entry.key);this.render();
     try {
       let data={name:entry.title};
-      if(entry.catalog && entry.ids.tmdb) data.tmdb_id=Number(entry.ids.tmdb);
+      const tmdbId=Number(entry.ids.tmdb);
+      if(Number.isSafeInteger(tmdbId)&&tmdbId>0)data.tmdb_id=tmdbId;
       if(service.suggestion) {
         const item=service.suggestion.item;
         data={media_type:item.media_type,library_section_key:item.library_section_key,suggestion_id:item.id,action:'approve',apply:true};
       } else if(entry.kind==='tv') {
-        const season=await this.card.sections.seer._openSeasonModal(entry.title,this.card);
+        const season=await this.selectRequestSeason(entry);
         if(season===null) return;
         data.season=season;
       }
-      await this.card._hass.callService('mediarr',service.name,data);
+      if(!this.requestService(entry)){this.messages.set(entry.key,this.requestUnavailableMessage(entry));return;}
+      let timer;
+      try {
+        await Promise.race([
+          this.card._hass.callService('mediarr',service.name,data),
+          new Promise((_,reject)=>{timer=setTimeout(()=>reject({code:'request_timeout',message:this.label('Keine Bestätigung erhalten. Prüfe den Status in Seerr, bevor du erneut anfragst.','No confirmation received. Check Seerr before requesting again.')}),30000);}),
+        ]);
+      } finally {clearTimeout(timer);}
       this.pending.add(entry.key);
       if(entry.catalog) this.card._catalogRequests.set(entry.key,{...entry.item,tmdb_id:Number(entry.ids.tmdb),media_type:entry.kind});
     } catch(error) { this.messages.set(entry.key,error?.message||this.label('Hinzufügen fehlgeschlagen.','Could not add title.')); }
     finally { this.busy.delete(entry.key);this.refresh(); }
+  }
+
+  selectRequestSeason(entry) {
+    return new Promise(resolve=>{
+      const dialog=document.createElement('dialog');dialog.className='library-season-dialog';
+      this.seasonEntry=entry;
+      dialog.setAttribute('aria-label',this.label('Staffeln auswählen','Select seasons'));
+      dialog.innerHTML=`<h2>${escapeMediaHtml(this.label('Staffeln auswählen','Select seasons'))}</h2><p>${escapeMediaHtml(entry.title)}</p><label>${escapeMediaHtml(this.label('Staffeln','Seasons'))}<select><option value="first">${escapeMediaHtml(this.label('Erste Staffel','First season'))}</option><option value="latest">${escapeMediaHtml(this.label('Neueste Staffel','Latest season'))}</option><option value="all" selected>${escapeMediaHtml(this.label('Alle Staffeln','All seasons'))}</option></select></label><div class="library-season-actions"><button type="button" data-confirm>${escapeMediaHtml(this.label('Hinzufügen','Add'))}</button><button type="button" data-cancel>${escapeMediaHtml(this.label('Abbrechen','Cancel'))}</button></div>`;
+      let finished=false;
+      const close=value=>{if(finished)return;finished=true;dialog.close();dialog.remove();this.seasonCancel=null;this.seasonEntry=null;resolve(value);};
+      this.seasonCancel=()=>close(null);
+      dialog.querySelector('[data-confirm]').onclick=()=>close(dialog.querySelector('select').value);
+      dialog.querySelector('[data-cancel]').onclick=()=>close(null);
+      dialog.addEventListener('cancel',event=>{event.preventDefault();event.stopPropagation();close(null);});
+      this.shell.append(dialog);dialog.showModal();
+    });
   }
 }
 
@@ -761,7 +812,7 @@ class CinemaLibraryView extends MediaLibraryView {
     this.card.querySelectorAll('.section, .media-details-panel').forEach(el=>el.remove());
     this.card.content.hidden=true;this.card.classList.add('mediarr-cinema');
     this.shell=document.createElement('div');this.shell.className='cinema-shell';
-    this.shell.innerHTML=`<header class="cinema-toolbar"><span class="cinema-brand"><ha-icon icon="mdi:movie-open-outline"></ha-icon><strong>Mediarr</strong></span><label class="cinema-search-label"><span class="sr-only">${esc(this.label('Filme und Serien suchen','Search movies and series'))}</span><ha-icon icon="mdi:magnify" aria-hidden="true"></ha-icon><input class="mediarr-search" type="search" maxlength="128" placeholder="${esc(this.label('Filme und Serien suchen …','Search movies and series …'))}"></label><button class="cinema-download-shortcut" type="button" aria-label="${esc(this.label('Laufende Downloads','Active downloads'))}"><ha-icon icon="mdi:download-outline"></ha-icon><span></span></button></header><main class="cinema-body"><p class="cinema-library-status" role="status"></p><section class="cinema-detail" hidden><button type="button" class="cinema-back">← ${esc(this.label('Zurück zur Auswahl','Back to selection'))}</button><div class="library-focus"></div></section><div class="cinema-home"></div><section class="cinema-search-results" hidden><p class="mediarr-search-status" role="status"></p><p class="library-catalog-status" role="status"></p><div class="library-results"></div><button class="library-load-more" type="button">${esc(this.label('Weitere Treffer','More results'))}</button></section></main>`;
+    this.shell.innerHTML=`<header class="cinema-toolbar"><span class="cinema-brand"><ha-icon icon="mdi:movie-open-outline"></ha-icon><strong>Mediarr</strong></span><label class="cinema-search-label"><span class="sr-only">${esc(this.label('Filme und Serien suchen','Search movies and series'))}</span><ha-icon icon="mdi:magnify" aria-hidden="true"></ha-icon><input class="mediarr-search" type="search" maxlength="128" placeholder="${esc(this.label('Filme und Serien suchen …','Search movies and series …'))}"></label><button class="cinema-refresh-connections" type="button" aria-label="${esc(this.label('Verbindungen prüfen','Check connections'))}" title="${esc(this.label('Verbindungen prüfen','Check connections'))}"><ha-icon icon="mdi:refresh" aria-hidden="true"></ha-icon></button><button class="cinema-download-shortcut" type="button" aria-label="${esc(this.label('Laufende Downloads','Active downloads'))}"><ha-icon icon="mdi:download-outline"></ha-icon><span></span></button></header><main class="cinema-body"><p class="cinema-library-status" role="status"></p><section class="cinema-detail" hidden><button type="button" class="cinema-back">← ${esc(this.label('Zurück zur Auswahl','Back to selection'))}</button><div class="library-focus"></div></section><div class="cinema-home"></div><section class="cinema-search-results" hidden><p class="mediarr-search-status" role="status"></p><p class="library-catalog-status" role="status"></p><div class="library-results"></div><button class="library-load-more" type="button">${esc(this.label('Weitere Treffer','More results'))}</button></section></main>`;
     content.append(this.shell);this.input=this.shell.querySelector('input');this.body=this.shell.querySelector('.cinema-body');
     this.nowPlaying=document.createElement('section');this.nowPlaying.className='cinema-now-playing';this.nowPlaying.hidden=true;
     this.nowPlaying.setAttribute('aria-label',this.label('Aktuelle Wiedergabe','Now playing'));
@@ -771,8 +822,10 @@ class CinemaLibraryView extends MediaLibraryView {
     this.moreButton=this.shell.querySelector('.library-load-more');
     this.input.oninput=()=>{if(this.detailKey)this.back(false);this.scheduleSearch();};
     this.shell.querySelector('.cinema-back').onclick=()=>this.back();
+    this.shell.querySelector('.cinema-refresh-connections').onclick=async event=>{const button=event.currentTarget;button.disabled=true;await Promise.allSettled([this.loadRequestCapabilities(),this.loadPlayback(),this.loadDiscovery()]);if(button.isConnected)button.disabled=false;};
     this.shell.querySelector('.cinema-download-shortcut').onclick=()=>{this.input.value='';this.back(false);this.scheduleSearch();this.home.querySelector('.cinema-downloads')?.scrollIntoView({behavior:'smooth',block:'start'});};
     this.refresh();this.loadLibrary();this.loadDiscovery();this.loadCollections();
+    this.startRequestChecks();
     this.loadPlayback();
     this.playbackTimer=setInterval(()=>{if(document.visibilityState==='visible'&&this.card.isConnected)this.loadPlayback();},15000);
     this.libraryTimer=setInterval(()=>{if(document.visibilityState==='visible'&&this.card.isConnected)this.loadLibrary(true);},60000);
@@ -813,6 +866,10 @@ class CinemaLibraryView extends MediaLibraryView {
     this.render();
   }
 
+  hasAvailablePlayer() {
+    return this.playbackPlayers.some(player=>{const state=this.card._hass?.states?.[player.entity_id]?.state;return player.reason!=='disabled'&&(state?!['unavailable','unknown'].includes(state):player.available);});
+  }
+
   async loadPlayback() {
     if(this.playbackLoading)return;
     this.playbackLoading=true;
@@ -820,7 +877,7 @@ class CinemaLibraryView extends MediaLibraryView {
       const data=await this.ws('mediarr/players');if(!this.alive)return;
       this.playbackPlayers=data.players||[];this.playbackStale=false;
     }catch{this.playbackStale=true;}
-    finally{this.playbackLoading=false;if(this.alive)this.renderPlayback();}
+    finally{this.playbackLoading=false;if(this.alive){this.renderPlayback();this.render();}}
   }
 
   renderPlayback() {
@@ -894,13 +951,14 @@ class CinemaLibraryView extends MediaLibraryView {
     this.home.hidden=!!this.detailKey||!!this.input.value.trim();
     if(this.detailKey) {
       const entry=this.entries.find(entry=>entry.key===this.detailKey);
-      const signature=JSON.stringify([entry,this.metadataMessage(entry||{}),this.messages.get(entry?.key),this.busy.has(entry?.key)]);
+      const signature=JSON.stringify([entry,this.metadataMessage(entry||{}),this.messages.get(entry?.key),this.busy.has(entry?.key),this.requestCapabilities,this.requestCheckError,this.hasAvailablePlayer()]);
       if(this.detailSignature===signature)return;
       this.detailSignature=signature;
       this.selectedKey=this.detailKey;super.renderDetails(entry);
       this.focus.querySelector('.library-play')?.remove();
       if(entry?.stage==='ready'&&entry.refs.some(ref=>ref.provider==='plex'&&ref.item.library_key)) {
         const play=document.createElement('button');play.type='button';play.className='library-request cinema-detail-play';play.innerHTML=`<ha-icon icon="mdi:play" aria-hidden="true"></ha-icon>${esc(this.label('Abspielen','Play'))}`;
+        play.disabled=!this.hasAvailablePlayer();play.title=play.disabled?this.label('Kein erreichbarer Plex-Player.','No reachable Plex player.'):'';
         play.onclick=()=>this.play(entry);this.focus.querySelector('.library-actions').prepend(play);
       }
       const trailer=this.focus.querySelector('.library-trailer');
@@ -936,15 +994,16 @@ class CinemaLibraryView extends MediaLibraryView {
 
   heroMarkup(entry) {
     const canPlay=entry.stage==='ready'&&entry.refs.some(ref=>ref.provider==='plex'&&ref.item.library_key);
-    const canRequest=entry.stage==='discover'&&this.requestService(entry);
+    const canRequest=entry.stage==='discover';
+    const requestAllowed=this.requestService(entry);
     const action=canPlay?this.label('Abspielen','Play'):canRequest?this.label('Hinzufügen','Add'):this.label('Details','Details');
-    return `<section class="cinema-hero"><div class="cinema-hero-backdrop"></div><div class="cinema-hero-copy"><h1>${esc(entry.title)}</h1><p class="cinema-hero-meta">${esc([entry.year,mediaNames(entry.item.genres).slice(0,2).join(' · '),entry.item.runtime?`${entry.item.runtime} min`:null,entry.rating?`★ ${entry.rating}`:null].filter(Boolean).join(' · '))}</p><span class="cinema-availability cinema-availability-${entry.stage}">${esc(this.status(entry))}</span><p class="cinema-hero-synopsis">${esc(entry.summary||this.label('Öffne den Film für Handlung und Besetzung.','Open this title for synopsis and cast.'))}</p><div class="cinema-hero-actions"><button type="button" class="cinema-primary" data-hero-action="${canPlay?'play':canRequest?'request':'details'}">${canPlay?'<ha-icon icon="mdi:play" aria-hidden="true"></ha-icon>':''}${esc(action)}</button>${entry.item.trailer?.url?`<button type="button" class="cinema-hero-trailer"><ha-icon icon="mdi:movie-play-outline" aria-hidden="true"></ha-icon>${esc(this.label('Trailer','Trailer'))}</button>`:''}${canPlay||canRequest?`<button type="button" data-select-key="${esc(entry.key)}">${esc(this.label('Details','Details'))}</button>`:''}</div></div></section>`;
+    return `<section class="cinema-hero"><div class="cinema-hero-backdrop"></div><div class="cinema-hero-copy"><h1>${esc(entry.title)}</h1><p class="cinema-hero-meta">${esc([entry.year,mediaNames(entry.item.genres).slice(0,2).join(' · '),entry.item.runtime?`${entry.item.runtime} min`:null,entry.rating?`★ ${entry.rating}`:null].filter(Boolean).join(' · '))}</p><span class="cinema-availability cinema-availability-${entry.stage}">${esc(this.status(entry))}</span><p class="cinema-hero-synopsis">${esc(entry.summary||this.label('Öffne den Film für Handlung und Besetzung.','Open this title for synopsis and cast.'))}</p><div class="cinema-hero-actions"><button type="button" class="cinema-primary" ${canPlay&&!this.hasAvailablePlayer()?`disabled title="${esc(this.label('Kein erreichbarer Plex-Player.','No reachable Plex player.'))}"`:canRequest&&!requestAllowed?`disabled title="${esc(this.requestUnavailableMessage(entry))}"`:""} data-hero-action="${canPlay?'play':canRequest?'request':'details'}">${canPlay?'<ha-icon icon="mdi:play" aria-hidden="true"></ha-icon>':''}${esc(action)}</button>${entry.item.trailer?.url?`<button type="button" class="cinema-hero-trailer"><ha-icon icon="mdi:movie-play-outline" aria-hidden="true"></ha-icon>${esc(this.label('Trailer','Trailer'))}</button>`:''}${canPlay||canRequest?`<button type="button" data-select-key="${esc(entry.key)}">${esc(this.label('Details','Details'))}</button>`:''}</div></div></section>`;
   }
 
   accountMarkup() {
     const errors=this.discovery.errors||{};
     const text=this.accountMessage||(!this.discovery.account.connected?this.label('Verbinde dein TMDB-Konto für persönliche Empfehlungen.','Connect your TMDB account for personal recommendations.'):errors.personal?this.label('TMDB-Empfehlungen sind momentan nicht verfügbar.','TMDB recommendations are currently unavailable.'):this.label('Noch keine neuen Kontoempfehlungen. Bewertungen in TMDB helfen bei der Auswahl.','No new account recommendations yet. Ratings in TMDB help guide suggestions.'));
-    return `<div class="cinema-account"><ha-icon icon="mdi:account-star-outline"></ha-icon><p role="status">${esc(text)}</p>${this.accountUrl?`<a href="${esc(this.accountUrl)}" target="_blank" rel="noopener noreferrer">${esc(this.label('TMDB-Freigabe öffnen','Open TMDB authorization'))}</a><button type="button" data-account="finish">${esc(this.label('Ich habe bestätigt','I approved it'))}</button>`:!this.discovery.account.connected?`<button type="button" data-account="start">${esc(this.label('TMDB-Konto verbinden','Connect TMDB account'))}</button>`:''}</div>`;
+    return `<div class="cinema-account"><ha-icon icon="mdi:account-star-outline"></ha-icon><p role="status">${esc(text)}</p>${this.accountUrl?`<a href="${esc(this.accountUrl)}" target="_blank" rel="noopener noreferrer">${esc(this.label('TMDB-Freigabe öffnen','Open TMDB authorization'))}</a><button type="button" data-account="finish">${esc(this.label('Ich habe bestätigt','I approved it'))}</button>`:!this.discovery.account.connected?`<button type="button" data-account="start" ${!this.discovery.account.can_connect||this.requestCapabilities?.tmdb_account?.available!==true||this.discoveryLoading||this.discoveryError?'disabled':''}>${esc(this.label('TMDB-Konto verbinden','Connect TMDB account'))}</button>`:''}</div>`;
   }
 
   releaseLabel(entry) {
@@ -1086,6 +1145,14 @@ class CinemaLibraryView extends MediaLibraryView {
 
 // ---- cinema-styles.js ----
 const cinemaStyles = `
+  .cinema-refresh-connections { display:grid; place-items:center; flex-shrink:0; width:36px; height:42px; padding:4px; background:transparent; border:0; border-radius:7px; color:#8ee6f0; }
+  .library-season-dialog { box-sizing:border-box; width:min(440px,calc(100vw - 32px)); max-height:calc(100dvh - 32px); overflow:auto; padding:24px; border:1px solid #405b6b; border-radius:12px; background:#0d1821; color:#f0f7fc; }
+  .library-season-dialog::backdrop { background:#000b; }
+  .library-season-dialog h2 { margin:0 0 12px; font-size:1.2rem; }
+  .library-season-dialog label { display:grid; gap:8px; }
+  .library-season-dialog select { padding:10px; color:#eef7fa; background:#122935; border:1px solid #34586b; border-radius:7px; }
+  .library-season-actions { display:flex; flex-wrap:wrap; gap:12px; margin-top:20px; }
+  .library-season-actions button { min-height:42px; padding:8px 14px; font:inherit; border:1px solid #34586b; border-radius:7px; color:#6ce6ed; background:#122935; cursor:pointer; }
   .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
   .mediarr-cinema { max-width:none; color:#f4f6fa; background:#090d12; }
   .mediarr-cinema.mediarr-page { padding:0; height:auto; min-height:calc(100dvh - var(--header-height,56px)); }
@@ -1469,7 +1536,7 @@ class BaseSection {
         <div class="section-header">
           <div class="section-header-content">
             <ha-icon class="section-toggle-icon" icon="mdi:chevron-down"></ha-icon>
-            <div class="section-label">${label}</div>
+            <div class="section-label">${this._escapeHtml(label)}</div>
           </div>
         </div>
         <div class="section-content">
@@ -1512,7 +1579,7 @@ class BaseSection {
 
     const img = new Image();
     img.referrerPolicy = 'no-referrer';
-    img.onload = img.onerror = () => {
+    img.onload = () => {
       if (cardInstance._bgVersion !== version) return;
       inactive.style.backgroundImage = `url('${newUrl}')`;
       requestAnimationFrame(() => {
@@ -1521,6 +1588,7 @@ class BaseSection {
         primaryEl._activeLayer = isA ? 'b' : 'a';
       });
     };
+    img.onerror = () => { /* Keep the currently visible background on load failure. */ };
     img.src = newUrl;
   }
 
@@ -1696,6 +1764,7 @@ class BaseSection {
         const blackClearlyBetter =
           contrastWithBlack >= 7 && (contrastWithBlack - contrastWithWhite) >= 1.2;
         const mode = blackClearlyBetter ? 'light' : 'dark';
+        if (cardInstance._contrastCache.size >= 100) cardInstance._contrastCache.delete(cardInstance._contrastCache.keys().next().value);
         cardInstance._contrastCache.set(cacheKey, mode);
 
         if (requestId === cardInstance._contrastRequestId) {
@@ -1733,25 +1802,26 @@ class BaseSection {
 
     const items = itemsOverride !== null
       ? itemsOverride
-      : (entity.attributes.data || []).slice(0, maxItems);
+      : (Array.isArray(entity?.attributes?.data) ? entity.attributes.data : []);
+    const safeItems = (Array.isArray(items) ? items : []).filter(item => item && typeof item === 'object').slice(0, Math.max(0, Number(maxItems) || 10));
 
     const listElement = cardInstance.querySelector(`.${this.key}-list`);
     if (!listElement) return;
 
-    if (items.length === 0) {
+    if (safeItems.length === 0) {
       listElement.innerHTML = this.generateMediaItem({ title_default: true }, 0, null, -1);
       return;
     }
 
-    listElement.innerHTML = items.map((item, index) =>
+    listElement.innerHTML = safeItems.map((item, index) =>
       this.generateMediaItem(item, index, cardInstance.selectedType, cardInstance.selectedIndex)
     ).join('');
 
-    this.addClickHandlers(cardInstance, listElement, items);
-    this._preloadImages(items);
+    this.addClickHandlers(cardInstance, listElement, safeItems);
+    this._preloadImages(safeItems);
 
     if (cardInstance.cardBackground && (!this._lastBackgroundUpdate || Date.now() - this._lastBackgroundUpdate > 30000)) {
-      const bgImage = this.getRandomArtwork(items);
+      const bgImage = this.getRandomArtwork(safeItems);
       if (bgImage) {
         cardInstance.cardBackground.style.backgroundImage = `url('${bgImage}')`;
         this._lastBackgroundUpdate = Date.now();
@@ -1986,13 +2056,14 @@ class Sonarr2Section extends SonarrBaseSection {
 class RadarrBaseSection extends BaseSection {
   update(cardInstance, entity) {
     const maxItems = cardInstance.config[`${this.key}_max_items`] || cardInstance.config.max_items || 10;
-    const releaseTypes = cardInstance.config[`${this.key}_release_types`] || ['Digital', 'Theaters', 'Physical'];
+    const configuredTypes = cardInstance.config[`${this.key}_release_types`];
+    const releaseTypes = (Array.isArray(configuredTypes) ? configuredTypes : ['Digital', 'Theaters', 'Theatres', 'Physical']).filter(type=>typeof type==='string');
 
-    let items = entity.attributes.data || [];
+    let items = Array.isArray(entity?.attributes?.data) ? entity.attributes.data.filter(item=>item&&typeof item==='object') : [];
 
     if (items.length > 0 && !items[0].title_default) {
       items = items.filter(item =>
-        releaseTypes.some(type => item.release && item.release.includes(type))
+        releaseTypes.some(type => typeof item?.release === 'string' && item.release.toLowerCase().includes(type.toLowerCase().replace('theatres', 'theaters'))) || (releaseTypes.some(type => ['theaters', 'theatres'].includes(String(type).toLowerCase())) && typeof item?.release === 'string' && /theat(?:er|re)s/i.test(item.release))
       );
     }
 
@@ -2008,14 +2079,15 @@ class RadarrBaseSection extends BaseSection {
       return;
     }
 
-    const dateStr = item.release ? (item.release.split(' - ')[1] || item.release) : '';
+    const release = typeof item.release==='string'?item.release:'';
+    const dateStr = release.split(' - ')[1] || release;
     const releaseDate = this.formatDate(dateStr.includes('Unknown') ? '' : dateStr);
     const runtime = item.runtime ? `${item.runtime} min` : '';
 
     cardInstance.info.innerHTML = `
       <div class="title">${this._escapeHtml(item.title)}${item.year ? ` (${this._escapeHtml(String(item.year))})` : ''}</div>
       <div class="details">${this._escapeHtml(item.genres || '')}</div>
-      <div class="metadata">${releaseDate}${runtime ? ` | ${runtime}` : ''}</div>
+      <div class="metadata">${releaseDate}${runtime ? ` | ${this._escapeHtml(runtime)}` : ''}</div>
       ${item.overview ? `<div class="overview">${this._escapeHtml(item.overview)}</div>` : ''}
     `;
   }
@@ -2088,7 +2160,7 @@ class SeerSection extends BaseSection {
     if (!sectionConfig) return;
 
     const maxItems = cardInstance.config.seer_max_items || cardInstance.config.max_items || 10;
-    const items = (entity.attributes.data || []).slice(0, maxItems);
+    const items = (Array.isArray(entity?.attributes?.data) ? entity.attributes.data : []).filter(Boolean).slice(0, maxItems);
 
     const listElement = cardInstance.querySelector(`[data-list="${sectionConfig.key}"]`);
     if (!listElement) return;
@@ -2118,7 +2190,7 @@ class SeerSection extends BaseSection {
           <div class="section-header">
             <div class="section-header-content">
               <ha-icon class="section-toggle-icon" icon="mdi:chevron-down"></ha-icon>
-              <div class="section-label">${this.t(cardInstance, section.titleKey, section.title)}</div>
+              <div class="section-label">${this._escapeHtml(this.t(cardInstance, section.titleKey, section.title))}</div>
             </div>
           </div>
           <div class="section-content">
@@ -2150,7 +2222,7 @@ class SeerSection extends BaseSection {
     if (!this.existingRequests) {
       const seerEntity = cardInstance.config.seer_entity;
       if (seerEntity && cardInstance._hass.states[seerEntity]) {
-        this.existingRequests = cardInstance._hass.states[seerEntity].attributes.data || [];
+        this.existingRequests = cardInstance._hass.states[seerEntity]?.attributes?.data || [];
       } else {
         this.existingRequests = [];
       }
@@ -2204,17 +2276,7 @@ class SeerSection extends BaseSection {
       } else {
         actionButton = `
           <div class="request-button-container">
-            <button class="request-button" onclick="this.dispatchEvent(new CustomEvent('seer-request', {
-              bubbles: true,
-              detail: {
-                title: '${title.replace(/'/g, "\\'")}',
-                year: '${year}',
-                type: '${type}',
-                tmdb_id: ${tmdbId},
-                poster: '${(item.poster || '').replace(/'/g, "\\'")}',
-                overview: '${overview.replace(/'/g, "\\'")}'
-              }
-            }))">
+            <button class="request-button" data-mediarr-request="true">
               <ha-icon icon="mdi:plus-circle-outline"></ha-icon>
               ${this.t(cardInstance, 'request', 'Request')}
             </button>
@@ -2228,14 +2290,7 @@ class SeerSection extends BaseSection {
       cardInstance.info.innerHTML = `
         <div class="title">${this._escapeHtml(title)}</div>
         <div class="details">
-          <span class="status ${statusInfo.class}" onclick="this.dispatchEvent(new CustomEvent('change-status', {
-            bubbles: true,
-            detail: {
-              title: '${title.replace(/'/g, "\\'")}',
-              type: '${item.media_type || 'movie'}',
-              request_id: ${item.request_id || 0}
-            }
-          }))">
+          <span class="status ${statusInfo.class}" data-mediarr-status="true">
             <ha-icon icon="${statusInfo.icon}"></ha-icon>
             ${statusInfo.text}
           </span>
@@ -2252,6 +2307,17 @@ class SeerSection extends BaseSection {
         </div>
       `;
     }
+    cardInstance.info.querySelectorAll('[data-mediarr-request]').forEach(button => {
+      button.addEventListener('click', () => button.dispatchEvent(new CustomEvent('seer-request', {
+        bubbles: true, detail: { title: item.title || item.name || '', year: item.year || '', type: this._determineMediaType(item, sectionKey),
+          tmdb_id: item.tmdb_id || item.tmdbId || item.ids?.tmdb || item.id || 0, poster: item.poster || '', overview: item.overview || '' }
+      })));
+    });
+    cardInstance.info.querySelectorAll('[data-mediarr-status]').forEach(button => {
+      button.addEventListener('click', () => button.dispatchEvent(new CustomEvent('change-status', {
+        bubbles: true, detail: { title, type: item.media_type || 'movie', request_id: item.request_id || 0 }
+      })));
+    });
   }
 
   _determineMediaType(item, sectionKey) {
@@ -2385,7 +2451,7 @@ class SeerSection extends BaseSection {
             });
 
           if (typeof cardInstance.selectedIndex !== 'undefined' && cardInstance.selectedType) {
-            const selectedItems = cardInstance._hass.states[cardInstance.config.seer_entity].attributes.data || [];
+            const selectedItems = cardInstance._hass.states[cardInstance.config.seer_entity]?.attributes?.data || [];
             this.updateInfo(cardInstance, selectedItems[cardInstance.selectedIndex], cardInstance.selectedType);
           }
           this._showToast(cardInstance, this.t(cardInstance, 'confirm', 'Confirm'), 'success');
@@ -2400,6 +2466,7 @@ class SeerSection extends BaseSection {
     if (!cardInstance._seerRequestHandlerAdded) {
       cardInstance.addEventListener('seer-request', async (e) => {
         const { title, year, type, tmdb_id } = e.detail;
+        const requestButton = e.target?.closest?.('[data-mediarr-request]');
 
         try {
           const parsedTmdbId = parseInt(tmdb_id, 10);
@@ -2417,18 +2484,18 @@ class SeerSection extends BaseSection {
           }
 
           const existingRequest = this.existingRequests.find(request =>
-            request.title.toLowerCase() === title.toLowerCase() &&
+            String(request?.title || '').toLowerCase() === String(title || '').toLowerCase() &&
             (!year || request.year == year)
           );
 
-          if (existingRequest && type.toUpperCase() === 'MOVIE') {
+          if (existingRequest && String(type).toUpperCase() === 'MOVIE') {
             this._showToast(cardInstance, `"${title}" ${this.t(cardInstance, 'already_requested', 'has already been requested.')}`, 'info');
             return;
           }
 
           let action, data;
 
-          if (type.toUpperCase() === 'TV SHOW') {
+          if (['TV', 'TV SHOW', 'SERIES'].includes(String(type).toUpperCase())) {
             const season = await this._openSeasonModal(title, cardInstance);
             if (season === null) return;
             data = { name: title, season };
@@ -2443,7 +2510,7 @@ class SeerSection extends BaseSection {
           await window.document.querySelector('home-assistant')
             ?.hass.callService('mediarr', action.split('.')[1], data);
 
-          const button = cardInstance.querySelector('.request-button');
+          const button = requestButton;
           if (button) {
             button.innerHTML = `
               <ha-icon icon="mdi:check-circle-outline"></ha-icon>
@@ -2458,7 +2525,7 @@ class SeerSection extends BaseSection {
 
         } catch (error) {
           console.error('Error sending media request:', error);
-          const button = cardInstance.querySelector('.request-button');
+          const button = requestButton;
           if (button) {
             button.innerHTML = `
               <ha-icon icon="mdi:alert-circle"></ha-icon>
@@ -2513,7 +2580,7 @@ class TMDBSection extends BaseSection {
           <div class="section-header">
             <div class="section-header-content">
               <ha-icon class="section-toggle-icon" icon="mdi:chevron-down"></ha-icon>
-              <div class="section-label">${this.t(cardInstance, section.titleKey, section.title)}</div>
+              <div class="section-label">${this._escapeHtml(this.t(cardInstance, section.titleKey, section.title))}</div>
             </div>
           </div>
           <div class="section-content">
@@ -2600,17 +2667,7 @@ class TMDBSection extends BaseSection {
       <div class="overview">${this._escapeHtml(item.overview || '')}</div>
       <div class="details">
         <div class="request-button-container">
-          <button class="request-button" onclick="this.dispatchEvent(new CustomEvent('seer-request', {
-            bubbles: true,
-            detail: {
-              title: '${(item.title || '').replace(/'/g, "\\'")}',
-              year: '${item.year || ''}',
-              type: '${item.type || ''}',
-              tmdb_id: ${item.tmdb_id || 0},
-              poster: '${(item.poster || '').replace(/'/g, "\\'")}',
-              overview: '${(item.overview || '').replace(/'/g, "\\'")}'
-            }
-          }))">
+          <button class="request-button" data-mediarr-request="true">
             <ha-icon icon="mdi:plus-circle-outline"></ha-icon>
             ${this.t(cardInstance, 'request', 'Request')}
           </button>
@@ -2618,6 +2675,12 @@ class TMDBSection extends BaseSection {
         ${item.vote_average ? `<div class="rating">Rating: ${this._escapeHtml(String(item.vote_average))}/10</div>` : ''}
       </div>
     `;
+    cardInstance.info.querySelectorAll('[data-mediarr-request]').forEach(button => {
+      button.addEventListener('click', () => button.dispatchEvent(new CustomEvent('seer-request', {
+        bubbles: true, detail: { title: item.title || item.name || '', year: item.year || '', type: item.type || item.media_type || 'movie',
+          tmdb_id: item.tmdb_id || item.tmdbId || item.ids?.tmdb || item.id || 0, poster: item.poster || '', overview: item.overview || '' }
+      })));
+    });
   }
 }
 
@@ -2661,17 +2724,7 @@ class TraktSection extends BaseSection {
       ${item.overview ? `<div class="overview">${this._escapeHtml(item.overview)}</div>` : ''}
       <div class="details">
         <div class="request-button-container">
-          <button class="request-button" onclick="this.dispatchEvent(new CustomEvent('seer-request', {
-            bubbles: true,
-            detail: {
-              title: '${(item.title || '').replace(/'/g, "\\'")}',
-              year: '${item.year || ''}',
-              type: '${item.type || 'movie'}',
-              tmdb_id: ${item.tmdb_id || item.ids?.tmdb || 0},
-              poster: '${(item.poster || '').replace(/'/g, "\\'")}',
-              overview: '${(item.overview || '').replace(/'/g, "\\'")}'
-            }
-          }))">
+          <button class="request-button" data-mediarr-request="true">
             <ha-icon icon="mdi:plus-circle-outline"></ha-icon>
             ${this.t(cardInstance, 'request', 'Request')}
           </button>
@@ -2684,6 +2737,12 @@ class TraktSection extends BaseSection {
         ` : ''}
       </div>
     `;
+    cardInstance.info.querySelectorAll('[data-mediarr-request]').forEach(button => {
+      button.addEventListener('click', () => button.dispatchEvent(new CustomEvent('seer-request', {
+        bubbles: true, detail: { title: item.title || item.name || '', year: item.year || '', type: item.type || item.media_type || 'movie',
+          tmdb_id: item.tmdb_id || item.tmdbId || item.ids?.tmdb || item.id || 0, poster: item.poster || '', overview: item.overview || '' }
+      })));
+    });
   }
 }
 
@@ -2718,7 +2777,7 @@ class ImmaculaterrSection extends BaseSection {
           <div class="section-header">
             <div class="section-header-content">
               <ha-icon class="section-toggle-icon" icon="mdi:chevron-down"></ha-icon>
-              <div class="section-label">${this.t(cardInstance, section.titleKey, section.title)}</div>
+              <div class="section-label">${this._escapeHtml(this.t(cardInstance, section.titleKey, section.title))}</div>
             </div>
           </div>
           <div class="section-content">
@@ -2925,19 +2984,7 @@ class ImmaculaterrSection extends BaseSection {
       <button
         class="request-button ${isRequested ? 'status-approved' : ''}"
         ${canRequest ? '' : 'disabled'}
-        onclick="this.dispatchEvent(new CustomEvent('immaculaterr-action', {
-          bubbles: true,
-          detail: {
-            title: '${this._escapeHtml(item.title || '')}',
-            media_type: '${item.media_type}',
-            library_section_key: '${this._escapeHtml(item.library_section_key || '')}',
-            suggestion_id: ${item.id},
-            action: 'approve',
-            apply: true,
-            sectionKey: '${activeSectionKey}',
-            index: ${cardInstance.selectedIndex}
-          }
-        }))">
+        data-mediarr-action="approve">
         <ha-icon icon="${isRequested ? 'mdi:check-circle-outline' : 'mdi:download-outline'}"></ha-icon>
         ${requestLabel}
       </button>
@@ -2946,19 +2993,7 @@ class ImmaculaterrSection extends BaseSection {
     const rejectButton = `
       <button
         class="request-button request-button-secondary"
-        onclick="this.dispatchEvent(new CustomEvent('immaculaterr-action', {
-          bubbles: true,
-          detail: {
-            title: '${this._escapeHtml(item.title || '')}',
-            media_type: '${item.media_type}',
-            library_section_key: '${this._escapeHtml(item.library_section_key || '')}',
-            suggestion_id: ${item.id},
-            action: 'reject',
-            apply: true,
-            sectionKey: '${activeSectionKey}',
-            index: ${cardInstance.selectedIndex}
-          }
-        }))">
+        data-mediarr-action="reject">
         <ha-icon icon="mdi:thumb-down-outline"></ha-icon>
         ${this.t(cardInstance, 'not_interested', 'Not interested')}
       </button>
@@ -2985,6 +3020,14 @@ class ImmaculaterrSection extends BaseSection {
       </div>
       ${noteMarkup}
     `;
+    cardInstance.info.querySelectorAll('[data-mediarr-action]').forEach(button => {
+      button.addEventListener('click', () => button.dispatchEvent(new CustomEvent('immaculaterr-action', {
+        bubbles: true,
+        detail: { title: item.title || '', media_type: item.media_type, library_section_key: item.library_section_key,
+          suggestion_id: item.id, action: button.dataset.mediarrAction, apply: true,
+          sectionKey: activeSectionKey, index: cardInstance.selectedIndex }
+      })));
+    });
   }
 }
 
@@ -4221,7 +4264,7 @@ function deriveVisibleSections(config) {
 }
 
 
-const MEDIARR_BUILD = '0.6.0-dev.5';
+const MEDIARR_BUILD = '0.6.0-dev.7';
 console.log(`[mediarr-card] build ${MEDIARR_BUILD} loaded`);
 
 class MediarrCard extends HTMLElement {
@@ -4365,7 +4408,7 @@ class MediarrCard extends HTMLElement {
 
   async _getPlexClients(plexUrl, plexToken) {
     try {
-      const response = await fetch(`${plexUrl}/clients?X-Plex-Token=${plexToken}`);
+      const response = await fetch(`${plexUrl}/clients?X-Plex-Token=${encodeURIComponent(plexToken)}`);
       if (!response.ok) throw new Error('Failed to fetch clients');
       
       const text = await response.text();
@@ -4408,11 +4451,11 @@ class MediarrCard extends HTMLElement {
       `;
     } else {
       clientList.innerHTML = clients.map(client => `
-        <div class="client-item" data-client-id="${client.clientId}">
+        <div class="client-item" data-client-id="${this._escapeClientHtml(client.clientId)}">
           <ha-icon class="client-item-icon" icon="${this._getClientIcon(client.product)}"></ha-icon>
           <div class="client-item-info">
-            <div class="client-item-name">${client.name}</div>
-            <div class="client-item-details">${client.product} ${client.version}</div>
+            <div class="client-item-name">${this._escapeClientHtml(client.name)}</div>
+            <div class="client-item-details">${this._escapeClientHtml(client.product)} ${this._escapeClientHtml(client.version)}</div>
           </div>
         </div>
       `).join('');
@@ -4429,6 +4472,10 @@ class MediarrCard extends HTMLElement {
     }
     
     modal.classList.remove('hidden');
+  }
+
+  _escapeClientHtml(value) {
+    return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;').replace(/'/g, '&#39;');
   }
 
   _getClientIcon(product) {
@@ -4475,11 +4522,13 @@ class MediarrCard extends HTMLElement {
     this.nowPlayingTitle.textContent = entity.attributes.media_title || '';
     this.nowPlayingSubtitle.textContent = entity.attributes.media_series_title || '';
     
-    if (entity.attributes.media_position && entity.attributes.media_duration) {
+    if (Number.isFinite(Number(entity.attributes.media_position)) && Number(entity.attributes.media_duration) > 0) {
       const progress = (entity.attributes.media_position / entity.attributes.media_duration) * 100;
-      this.progressBar.style.width = `${progress}%`;
+      this.progressBar.style.width = `${Math.max(0, Math.min(100, progress))}%`;
     }
     
+    else { this.progressBar.style.width = '0%'; }
+
     if (entity.attributes.entity_picture) {
       this.querySelector('.now-playing-background').style.backgroundImage = 
         `url('${entity.attributes.entity_picture}')`;
@@ -4603,7 +4652,7 @@ class MediarrCard extends HTMLElement {
 
     if (initialEntityId && hass.states[initialEntityId]) {
       const state = hass.states[initialEntityId];
-      if (state.attributes.data?.[0]) {
+      if (Array.isArray(state.attributes?.data) && state.attributes.data[0]) {
         const data = state.attributes.data[0];
         
         // Set initial selection
@@ -4702,12 +4751,15 @@ class MediarrCard extends HTMLElement {
       this._updateNowPlaying(hass.states[this.config.media_player_entity]);
     }
 
+    if (!this._renderedEntityStates) this._renderedEntityStates = new Map();
     Object.entries(this.sections).forEach(([key, section]) => {
       const entityKeys = SECTION_ENTITY_KEYS[key] || [`${key}_entity`];
       entityKeys.forEach(entityKey => {
         const entityId = this.config[entityKey];
         if (!entityId) return;
         const entity = hass.states[entityId];
+        if (this._renderedEntityStates.get(entityKey) === entity) return;
+        this._renderedEntityStates.set(entityKey, entity);
         if (entity && entity.state !== 'unavailable') {
           section.update(this, entity);
         } else {
@@ -4736,6 +4788,7 @@ class MediarrCard extends HTMLElement {
     }
     
     // Set defaults for the new options
+    this._renderedEntityStates?.clear();
     this.config = {
       view: hasEntity ? 'compact' : 'library',
       compact_items: 4,

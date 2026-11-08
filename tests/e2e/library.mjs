@@ -99,21 +99,21 @@ try {
  await listPane.evaluate(el=>el.scrollTop=0);
  const mockServices=async(fail=false)=>expanded.evaluate((el,fail)=>{
    const current=el._hass;
-   el._hass={...current,services:{...current.services,mediarr:{submit_movie_request:{},submit_tv_request:{}}},callService:async(domain,service,data)=>{el.__calls??=[];el.__calls.push({domain,service,data});if(fail)throw new Error('Test backend rejected request');}};
-   el._libraryView.refresh();
+   el._hass={...current,services:{...current.services,mediarr:{submit_movie_request:{},submit_tv_request:{}}},callWS:msg=>msg.type==='mediarr/request_capabilities'?Promise.resolve({movie:{available:true,reason:'ready'},tv:{available:true,reason:'ready'}}):current.callWS(msg),callService:async(domain,service,data)=>{el.__calls??=[];el.__calls.push({domain,service,data});if(fail)throw new Error('Test backend rejected request');}};
+   el._libraryView.requestCapabilities={movie:{available:true,reason:'ready'},tv:{available:true,reason:'ready'}};el._libraryView.refresh();
  },fail);
  await mockServices();
  await expanded.locator('.library-request').click();
  await expanded.locator('.library-heading .library-status-waiting').waitFor();
  const calls=await expanded.evaluate(el=>el.__calls);
- assert.deepEqual(calls[0],{domain:'mediarr',service:'submit_movie_request',data:{name:'Sternenreise'}});
+ assert.deepEqual(calls[0],{domain:'mediarr',service:'submit_movie_request',data:{name:'Sternenreise',tmdb_id:101}});
  passed.push('movie request invokes advertised Mediarr service and enters waiting state (mock backend)');
  await results.filter({hasText:'Sternenstation'}).click();
  await expanded.locator('.library-request').click();
- await expanded.locator('#season-select').selectOption('latest');
- await expanded.locator('.mediarr-btn-confirm').click();
+ await expanded.locator('.library-season-dialog select').selectOption('latest');
+ await expanded.locator('.library-season-dialog [data-confirm]').click();
  await expanded.locator('.library-heading .library-status-waiting').waitFor();
- assert.deepEqual((await expanded.evaluate(el=>el.__calls))[1],{domain:'mediarr',service:'submit_tv_request',data:{name:'Sternenstation',season:'latest'}});
+ assert.deepEqual((await expanded.evaluate(el=>el.__calls))[1],{domain:'mediarr',service:'submit_tv_request',data:{name:'Sternenstation',tmdb_id:202,season:'latest'}});
  passed.push('series request uses season selection and TV service (mock backend)');
  await expanded.locator('.mediarr-search').fill('Fehlerfilm');await results.click();await mockServices(true);
  await expanded.locator('.library-request').click();
