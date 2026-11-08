@@ -420,6 +420,32 @@ class MediaLibraryView {
   }
 
   label(de,en) { return this.card._mediaLabel(de,en); }
+  startRequestChecks() {
+    this.loadRequestCapabilities();
+    this.requestCheckTimer=setInterval(()=>{if(document.visibilityState==='visible'&&this.card.isConnected)this.loadRequestCapabilities();},30000);
+  }
+  async loadRequestCapabilities() {
+    if(this.checkingRequests)return;
+    this.checkingRequests=true;
+    let timer;
+    try {
+      this.requestCapabilities=await Promise.race([this.card._hass.callWS({type:'mediarr/request_capabilities'}),new Promise((_,reject)=>timer=setTimeout(()=>reject({code:'timeout'}),20000))]);
+      this.requestCheckError=null;
+    }catch(error){this.requestCapabilities=null;this.requestCheckError=error?.code||'unavailable';}
+    finally{clearTimeout(timer);this.checkingRequests=false;if(this.card.isConnected)this.refresh();}
+  }
+  requestUnavailableMessage(entry) {
+    if(this.requestCheckError==='unknown_command')return this.label('Für die Verbindungsprüfung die Mediarr-Integration aktualisieren.','Update Mediarr integration to check connections.');
+    const state=this.requestCapabilities?.[entry.kind];
+    const reason=state?.reason;
+    if(entry.refs.some(ref=>ref.provider==='immaculaterr'&&ref.item.id!=null&&ref.item.library_section_key&&ref.item.approval_required_from_observatory!==false)&&this.card._hass?.services?.mediarr?.process_immaculaterr_suggestion&&this.requestCapabilities?.immaculaterr?.available!==true)return this.label('Immaculaterr-Verbindung nicht verfügbar oder noch nicht geprüft.','Immaculaterr connection unavailable or not checked yet.');
+    if(!state&&!this.requestCheckError)return this.label('Verbindung wird geprüft …','Checking connection …');
+    if(reason?.startsWith('radarr_'))return this.label('Radarr nicht erreichbar oder in Seerr nicht korrekt eingerichtet.','Radarr is unreachable or not configured correctly in Seerr.');
+    if(reason?.startsWith('sonarr_'))return this.label('Sonarr nicht erreichbar oder in Seerr nicht korrekt eingerichtet.','Sonarr is unreachable or not configured correctly in Seerr.');
+    if(reason==='seer_auth')return this.label('Seerr hat den API-Zugang abgewiesen.','Seerr rejected the API credential.');
+    if(reason==='seer_not_configured')return this.label('Für Hinzufügen Seerr in Mediarr einrichten.','Configure Seerr in Mediarr to add titles.');
+    return this.label('Anfrageverbindung momentan nicht verfügbar.','Request connection is currently unavailable.');
+  }
   stageLabel(stage) {
     return ({all:this.label('Alle Titel','All titles'),library:this.label('Meine Bibliothek','My library'),discover:this.label('Dein nächster Filmabend','Your next movie night'),waiting:this.label('Deine Merkliste','Your watchlist'),ready:this.label('Vorhang auf','Ready to watch')})[stage];
   }
@@ -457,6 +483,7 @@ class MediaLibraryView {
     this.input.oninput = () => this.scheduleSearch();
     this.refresh();
     this.loadLibrary();
+    this.startRequestChecks();
     this.libraryTimer=setInterval(()=>{if(document.visibilityState==='visible'&&this.card.isConnected)this.loadLibrary(true);},60000);
   }
 
@@ -489,7 +516,7 @@ class MediaLibraryView {
     }
   }
 
-  destroy() {clearTimeout(this.searchTimer);clearInterval(this.libraryTimer);++this.searchVersion;}
+  destroy() {this.seasonCancel?.();clearInterval(this.requestCheckTimer);clearTimeout(this.searchTimer);clearInterval(this.libraryTimer);++this.searchVersion;}
 
   scheduleSearch() {
     clearTimeout(this.searchTimer);
@@ -632,7 +659,7 @@ class MediaLibraryView {
     const playable = entry.refs.find(ref=>ref.provider==='plex' && ref.item.key && this.card.config.plex_url && this.card.config.plex_token);
     const actionMarkup = playable ? `<button type="button" class="library-play library-request">${esc(this.label('Abspielen', 'Play'))}</button>` : entry.stage === 'discover' ? `
       <button type="button" class="library-request" ${!actionable || busy ? 'disabled' : ''}>${esc(busy ? this.label('Wird hinzugefügt …', 'Adding …') : this.label('+ Zur Merkliste', '+ Add to watchlist'))}</button>
-      ${!actionable ? `<small>${esc(this.label('Hinzufügen derzeit nicht verfügbar.', 'Adding is currently unavailable.'))}</small>` : ''}` : '';
+      ${!actionable ? `<small role="status">${esc(this.requestUnavailableMessage(entry))}</small>` : ''}` : '';
     this.focus.innerHTML = `
       <article class="media-details-panel library-detail">
         <div class="library-hero">
@@ -675,9 +702,9 @@ class MediaLibraryView {
     if (!['movie','tv'].includes(entry.kind)) return null;
     const services=this.card._hass?.services?.mediarr || {};
     const suggestion=entry.refs.find(ref=>ref.provider==='immaculaterr' && ref.item.id != null && ref.item.library_section_key && ref.item.approval_required_from_observatory !== false);
-    if(suggestion && services.process_immaculaterr_suggestion) return {name:'process_immaculaterr_suggestion',suggestion};
+    if(suggestion && services.process_immaculaterr_suggestion)return this.requestCapabilities?.immaculaterr?.available===true?{name:'process_immaculaterr_suggestion',suggestion}:null;
     const name=entry.kind==='tv'?'submit_tv_request':'submit_movie_request';
-    return services[name]?{name}:null;
+    return services[name]&&this.requestCapabilities?.[entry.kind]?.available===true?{name}:null;
   }
 
   async request(entry) {
@@ -687,20 +714,42 @@ class MediaLibraryView {
     this.busy.add(entry.key);this.messages.delete(entry.key);this.render();
     try {
       let data={name:entry.title};
-      if(entry.catalog && entry.ids.tmdb) data.tmdb_id=Number(entry.ids.tmdb);
+      const tmdbId=Number(entry.ids.tmdb);
+      if(Number.isSafeInteger(tmdbId)&&tmdbId>0)data.tmdb_id=tmdbId;
       if(service.suggestion) {
         const item=service.suggestion.item;
         data={media_type:item.media_type,library_section_key:item.library_section_key,suggestion_id:item.id,action:'approve',apply:true};
       } else if(entry.kind==='tv') {
-        const season=await this.card.sections.seer._openSeasonModal(entry.title,this.card);
+        const season=await this.selectRequestSeason(entry);
         if(season===null) return;
         data.season=season;
       }
-      await this.card._hass.callService('mediarr',service.name,data);
+      let timer;
+      try {
+        await Promise.race([
+          this.card._hass.callService('mediarr',service.name,data),
+          new Promise((_,reject)=>{timer=setTimeout(()=>reject({code:'request_timeout',message:this.label('Keine Bestätigung erhalten. Prüfe den Status in Seerr, bevor du erneut anfragst.','No confirmation received. Check Seerr before requesting again.')}),30000);}),
+        ]);
+      } finally {clearTimeout(timer);}
       this.pending.add(entry.key);
       if(entry.catalog) this.card._catalogRequests.set(entry.key,{...entry.item,tmdb_id:Number(entry.ids.tmdb),media_type:entry.kind});
     } catch(error) { this.messages.set(entry.key,error?.message||this.label('Hinzufügen fehlgeschlagen.','Could not add title.')); }
     finally { this.busy.delete(entry.key);this.refresh(); }
+  }
+
+  selectRequestSeason(entry) {
+    return new Promise(resolve=>{
+      const dialog=document.createElement('dialog');dialog.className='library-season-dialog';
+      dialog.setAttribute('aria-label',this.label('Staffeln auswählen','Select seasons'));
+      dialog.innerHTML=`<h2>${escapeMediaHtml(this.label('Staffeln auswählen','Select seasons'))}</h2><p>${escapeMediaHtml(entry.title)}</p><label>${escapeMediaHtml(this.label('Staffeln','Seasons'))}<select><option value="first">${escapeMediaHtml(this.label('Erste Staffel','First season'))}</option><option value="latest">${escapeMediaHtml(this.label('Neueste Staffel','Latest season'))}</option><option value="all" selected>${escapeMediaHtml(this.label('Alle Staffeln','All seasons'))}</option></select></label><div class="library-season-actions"><button type="button" data-confirm>${escapeMediaHtml(this.label('Hinzufügen','Add'))}</button><button type="button" data-cancel>${escapeMediaHtml(this.label('Abbrechen','Cancel'))}</button></div>`;
+      let finished=false;
+      const close=value=>{if(finished)return;finished=true;dialog.close();dialog.remove();this.seasonCancel=null;resolve(value);};
+      this.seasonCancel=()=>close(null);
+      dialog.querySelector('[data-confirm]').onclick=()=>close(dialog.querySelector('select').value);
+      dialog.querySelector('[data-cancel]').onclick=()=>close(null);
+      dialog.addEventListener('cancel',event=>{event.preventDefault();event.stopPropagation();close(null);});
+      this.shell.append(dialog);dialog.showModal();
+    });
   }
 }
 
@@ -761,7 +810,7 @@ class CinemaLibraryView extends MediaLibraryView {
     this.card.querySelectorAll('.section, .media-details-panel').forEach(el=>el.remove());
     this.card.content.hidden=true;this.card.classList.add('mediarr-cinema');
     this.shell=document.createElement('div');this.shell.className='cinema-shell';
-    this.shell.innerHTML=`<header class="cinema-toolbar"><span class="cinema-brand"><ha-icon icon="mdi:movie-open-outline"></ha-icon><strong>Mediarr</strong></span><label class="cinema-search-label"><span class="sr-only">${esc(this.label('Filme und Serien suchen','Search movies and series'))}</span><ha-icon icon="mdi:magnify" aria-hidden="true"></ha-icon><input class="mediarr-search" type="search" maxlength="128" placeholder="${esc(this.label('Filme und Serien suchen …','Search movies and series …'))}"></label><button class="cinema-download-shortcut" type="button" aria-label="${esc(this.label('Laufende Downloads','Active downloads'))}"><ha-icon icon="mdi:download-outline"></ha-icon><span></span></button></header><main class="cinema-body"><p class="cinema-library-status" role="status"></p><section class="cinema-detail" hidden><button type="button" class="cinema-back">← ${esc(this.label('Zurück zur Auswahl','Back to selection'))}</button><div class="library-focus"></div></section><div class="cinema-home"></div><section class="cinema-search-results" hidden><p class="mediarr-search-status" role="status"></p><p class="library-catalog-status" role="status"></p><div class="library-results"></div><button class="library-load-more" type="button">${esc(this.label('Weitere Treffer','More results'))}</button></section></main>`;
+    this.shell.innerHTML=`<header class="cinema-toolbar"><span class="cinema-brand"><ha-icon icon="mdi:movie-open-outline"></ha-icon><strong>Mediarr</strong></span><label class="cinema-search-label"><span class="sr-only">${esc(this.label('Filme und Serien suchen','Search movies and series'))}</span><ha-icon icon="mdi:magnify" aria-hidden="true"></ha-icon><input class="mediarr-search" type="search" maxlength="128" placeholder="${esc(this.label('Filme und Serien suchen …','Search movies and series …'))}"></label><button class="cinema-refresh-connections" type="button" aria-label="${esc(this.label('Verbindungen prüfen','Check connections'))}" title="${esc(this.label('Verbindungen prüfen','Check connections'))}"><ha-icon icon="mdi:refresh" aria-hidden="true"></ha-icon></button><button class="cinema-download-shortcut" type="button" aria-label="${esc(this.label('Laufende Downloads','Active downloads'))}"><ha-icon icon="mdi:download-outline"></ha-icon><span></span></button></header><main class="cinema-body"><p class="cinema-library-status" role="status"></p><section class="cinema-detail" hidden><button type="button" class="cinema-back">← ${esc(this.label('Zurück zur Auswahl','Back to selection'))}</button><div class="library-focus"></div></section><div class="cinema-home"></div><section class="cinema-search-results" hidden><p class="mediarr-search-status" role="status"></p><p class="library-catalog-status" role="status"></p><div class="library-results"></div><button class="library-load-more" type="button">${esc(this.label('Weitere Treffer','More results'))}</button></section></main>`;
     content.append(this.shell);this.input=this.shell.querySelector('input');this.body=this.shell.querySelector('.cinema-body');
     this.nowPlaying=document.createElement('section');this.nowPlaying.className='cinema-now-playing';this.nowPlaying.hidden=true;
     this.nowPlaying.setAttribute('aria-label',this.label('Aktuelle Wiedergabe','Now playing'));
@@ -771,8 +820,10 @@ class CinemaLibraryView extends MediaLibraryView {
     this.moreButton=this.shell.querySelector('.library-load-more');
     this.input.oninput=()=>{if(this.detailKey)this.back(false);this.scheduleSearch();};
     this.shell.querySelector('.cinema-back').onclick=()=>this.back();
+    this.shell.querySelector('.cinema-refresh-connections').onclick=async event=>{const button=event.currentTarget;button.disabled=true;await Promise.allSettled([this.loadRequestCapabilities(),this.loadPlayback(),this.loadDiscovery()]);if(button.isConnected)button.disabled=false;};
     this.shell.querySelector('.cinema-download-shortcut').onclick=()=>{this.input.value='';this.back(false);this.scheduleSearch();this.home.querySelector('.cinema-downloads')?.scrollIntoView({behavior:'smooth',block:'start'});};
     this.refresh();this.loadLibrary();this.loadDiscovery();this.loadCollections();
+    this.startRequestChecks();
     this.loadPlayback();
     this.playbackTimer=setInterval(()=>{if(document.visibilityState==='visible'&&this.card.isConnected)this.loadPlayback();},15000);
     this.libraryTimer=setInterval(()=>{if(document.visibilityState==='visible'&&this.card.isConnected)this.loadLibrary(true);},60000);
@@ -813,6 +864,10 @@ class CinemaLibraryView extends MediaLibraryView {
     this.render();
   }
 
+  hasAvailablePlayer() {
+    return this.playbackPlayers.some(player=>{const state=this.card._hass?.states?.[player.entity_id]?.state;return player.reason!=='disabled'&&(state?!['unavailable','unknown'].includes(state):player.available);});
+  }
+
   async loadPlayback() {
     if(this.playbackLoading)return;
     this.playbackLoading=true;
@@ -820,7 +875,7 @@ class CinemaLibraryView extends MediaLibraryView {
       const data=await this.ws('mediarr/players');if(!this.alive)return;
       this.playbackPlayers=data.players||[];this.playbackStale=false;
     }catch{this.playbackStale=true;}
-    finally{this.playbackLoading=false;if(this.alive)this.renderPlayback();}
+    finally{this.playbackLoading=false;if(this.alive){this.renderPlayback();this.render();}}
   }
 
   renderPlayback() {
@@ -894,13 +949,14 @@ class CinemaLibraryView extends MediaLibraryView {
     this.home.hidden=!!this.detailKey||!!this.input.value.trim();
     if(this.detailKey) {
       const entry=this.entries.find(entry=>entry.key===this.detailKey);
-      const signature=JSON.stringify([entry,this.metadataMessage(entry||{}),this.messages.get(entry?.key),this.busy.has(entry?.key)]);
+      const signature=JSON.stringify([entry,this.metadataMessage(entry||{}),this.messages.get(entry?.key),this.busy.has(entry?.key),this.requestCapabilities,this.requestCheckError,this.hasAvailablePlayer()]);
       if(this.detailSignature===signature)return;
       this.detailSignature=signature;
       this.selectedKey=this.detailKey;super.renderDetails(entry);
       this.focus.querySelector('.library-play')?.remove();
       if(entry?.stage==='ready'&&entry.refs.some(ref=>ref.provider==='plex'&&ref.item.library_key)) {
         const play=document.createElement('button');play.type='button';play.className='library-request cinema-detail-play';play.innerHTML=`<ha-icon icon="mdi:play" aria-hidden="true"></ha-icon>${esc(this.label('Abspielen','Play'))}`;
+        play.disabled=!this.hasAvailablePlayer();play.title=play.disabled?this.label('Kein erreichbarer Plex-Player.','No reachable Plex player.'):'';
         play.onclick=()=>this.play(entry);this.focus.querySelector('.library-actions').prepend(play);
       }
       const trailer=this.focus.querySelector('.library-trailer');
@@ -936,15 +992,16 @@ class CinemaLibraryView extends MediaLibraryView {
 
   heroMarkup(entry) {
     const canPlay=entry.stage==='ready'&&entry.refs.some(ref=>ref.provider==='plex'&&ref.item.library_key);
-    const canRequest=entry.stage==='discover'&&this.requestService(entry);
+    const canRequest=entry.stage==='discover';
+    const requestAllowed=this.requestService(entry);
     const action=canPlay?this.label('Abspielen','Play'):canRequest?this.label('Hinzufügen','Add'):this.label('Details','Details');
-    return `<section class="cinema-hero"><div class="cinema-hero-backdrop"></div><div class="cinema-hero-copy"><h1>${esc(entry.title)}</h1><p class="cinema-hero-meta">${esc([entry.year,mediaNames(entry.item.genres).slice(0,2).join(' · '),entry.item.runtime?`${entry.item.runtime} min`:null,entry.rating?`★ ${entry.rating}`:null].filter(Boolean).join(' · '))}</p><span class="cinema-availability cinema-availability-${entry.stage}">${esc(this.status(entry))}</span><p class="cinema-hero-synopsis">${esc(entry.summary||this.label('Öffne den Film für Handlung und Besetzung.','Open this title for synopsis and cast.'))}</p><div class="cinema-hero-actions"><button type="button" class="cinema-primary" data-hero-action="${canPlay?'play':canRequest?'request':'details'}">${canPlay?'<ha-icon icon="mdi:play" aria-hidden="true"></ha-icon>':''}${esc(action)}</button>${entry.item.trailer?.url?`<button type="button" class="cinema-hero-trailer"><ha-icon icon="mdi:movie-play-outline" aria-hidden="true"></ha-icon>${esc(this.label('Trailer','Trailer'))}</button>`:''}${canPlay||canRequest?`<button type="button" data-select-key="${esc(entry.key)}">${esc(this.label('Details','Details'))}</button>`:''}</div></div></section>`;
+    return `<section class="cinema-hero"><div class="cinema-hero-backdrop"></div><div class="cinema-hero-copy"><h1>${esc(entry.title)}</h1><p class="cinema-hero-meta">${esc([entry.year,mediaNames(entry.item.genres).slice(0,2).join(' · '),entry.item.runtime?`${entry.item.runtime} min`:null,entry.rating?`★ ${entry.rating}`:null].filter(Boolean).join(' · '))}</p><span class="cinema-availability cinema-availability-${entry.stage}">${esc(this.status(entry))}</span><p class="cinema-hero-synopsis">${esc(entry.summary||this.label('Öffne den Film für Handlung und Besetzung.','Open this title for synopsis and cast.'))}</p><div class="cinema-hero-actions"><button type="button" class="cinema-primary" ${canPlay&&!this.hasAvailablePlayer()?`disabled title="${esc(this.label('Kein erreichbarer Plex-Player.','No reachable Plex player.'))}"`:canRequest&&!requestAllowed?`disabled title="${esc(this.requestUnavailableMessage(entry))}"`:""} data-hero-action="${canPlay?'play':canRequest?'request':'details'}">${canPlay?'<ha-icon icon="mdi:play" aria-hidden="true"></ha-icon>':''}${esc(action)}</button>${entry.item.trailer?.url?`<button type="button" class="cinema-hero-trailer"><ha-icon icon="mdi:movie-play-outline" aria-hidden="true"></ha-icon>${esc(this.label('Trailer','Trailer'))}</button>`:''}${canPlay||canRequest?`<button type="button" data-select-key="${esc(entry.key)}">${esc(this.label('Details','Details'))}</button>`:''}</div></div></section>`;
   }
 
   accountMarkup() {
     const errors=this.discovery.errors||{};
     const text=this.accountMessage||(!this.discovery.account.connected?this.label('Verbinde dein TMDB-Konto für persönliche Empfehlungen.','Connect your TMDB account for personal recommendations.'):errors.personal?this.label('TMDB-Empfehlungen sind momentan nicht verfügbar.','TMDB recommendations are currently unavailable.'):this.label('Noch keine neuen Kontoempfehlungen. Bewertungen in TMDB helfen bei der Auswahl.','No new account recommendations yet. Ratings in TMDB help guide suggestions.'));
-    return `<div class="cinema-account"><ha-icon icon="mdi:account-star-outline"></ha-icon><p role="status">${esc(text)}</p>${this.accountUrl?`<a href="${esc(this.accountUrl)}" target="_blank" rel="noopener noreferrer">${esc(this.label('TMDB-Freigabe öffnen','Open TMDB authorization'))}</a><button type="button" data-account="finish">${esc(this.label('Ich habe bestätigt','I approved it'))}</button>`:!this.discovery.account.connected?`<button type="button" data-account="start">${esc(this.label('TMDB-Konto verbinden','Connect TMDB account'))}</button>`:''}</div>`;
+    return `<div class="cinema-account"><ha-icon icon="mdi:account-star-outline"></ha-icon><p role="status">${esc(text)}</p>${this.accountUrl?`<a href="${esc(this.accountUrl)}" target="_blank" rel="noopener noreferrer">${esc(this.label('TMDB-Freigabe öffnen','Open TMDB authorization'))}</a><button type="button" data-account="finish">${esc(this.label('Ich habe bestätigt','I approved it'))}</button>`:!this.discovery.account.connected?`<button type="button" data-account="start" ${!this.discovery.account.can_connect||this.requestCapabilities?.tmdb_account?.available!==true||this.discoveryLoading||this.discoveryError?'disabled':''}>${esc(this.label('TMDB-Konto verbinden','Connect TMDB account'))}</button>`:''}</div>`;
   }
 
   releaseLabel(entry) {
@@ -1086,6 +1143,14 @@ class CinemaLibraryView extends MediaLibraryView {
 
 // ---- cinema-styles.js ----
 const cinemaStyles = `
+  .cinema-refresh-connections { display:grid; place-items:center; flex-shrink:0; width:36px; height:42px; padding:4px; background:transparent; border:0; border-radius:7px; color:#8ee6f0; }
+  .library-season-dialog { box-sizing:border-box; width:min(440px,calc(100vw - 32px)); max-height:calc(100dvh - 32px); overflow:auto; padding:24px; border:1px solid #405b6b; border-radius:12px; background:#0d1821; color:#f0f7fc; }
+  .library-season-dialog::backdrop { background:#000b; }
+  .library-season-dialog h2 { margin:0 0 12px; font-size:1.2rem; }
+  .library-season-dialog label { display:grid; gap:8px; }
+  .library-season-dialog select { padding:10px; color:#eef7fa; background:#122935; border:1px solid #34586b; border-radius:7px; }
+  .library-season-actions { display:flex; flex-wrap:wrap; gap:12px; margin-top:20px; }
+  .library-season-actions button { min-height:42px; padding:8px 14px; font:inherit; border:1px solid #34586b; border-radius:7px; color:#6ce6ed; background:#122935; cursor:pointer; }
   .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
   .mediarr-cinema { max-width:none; color:#f4f6fa; background:#090d12; }
   .mediarr-cinema.mediarr-page { padding:0; height:auto; min-height:calc(100dvh - var(--header-height,56px)); }
@@ -4221,7 +4286,7 @@ function deriveVisibleSections(config) {
 }
 
 
-const MEDIARR_BUILD = '0.6.0-dev.5';
+const MEDIARR_BUILD = '0.6.0-dev.6';
 console.log(`[mediarr-card] build ${MEDIARR_BUILD} loaded`);
 
 class MediarrCard extends HTMLElement {

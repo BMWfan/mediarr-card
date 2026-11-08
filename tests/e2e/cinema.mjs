@@ -36,10 +36,11 @@ try {
    ],radarr:[item('Nordpfad',11,{release_date:'2030-12-18',poster:'',banner:''}),item('Downloadfilm',12,{download_status:'downloading',download_progress:68})],sonarr:[item('Downloadserie',13,{media_type:'tv',download_status:'paused',download_progress:24})]};
    const discovery={trending:[item('Trendingfilm',21),item('Sternenreise',1),item('Nordpfad',11),item('Trendingserie',22,{media_type:'tv'})],upcoming:[item('Orbital',24,{release_date:'2030-11-01'}),item('Baldserie',25,{media_type:'tv',release_date:'2031-01-12'})]};
    window.__cinemaCalls=[];window.__cinemaRequests=[];window.__cinemaAccount=false;window.__cinemaPlayersReady=false;window.__cinemaPlaybackState='idle';window.__cinemaSecondActive=false;
-   const config={type:'custom:mediarr-card',view:'library',plex_entity:'sensor.cinema_plex',radarr_entity:'sensor.cinema_radarr',sonarr_entity:'sensor.cinema_sonarr'};
-   const hass={...actual,language:'de',states:{...actual.states,'sensor.cinema_plex':{state:'2',attributes:{data:[{title:'Sternenstation',number:'S02E03',poster:art},{title:'Sternenstation',number:'S02E04',poster:art}]}}},services:{...actual.services,mediarr:{submit_movie_request:{},submit_tv_request:{}}},
-     callService:async(domain,service,data)=>window.__cinemaRequests.push({domain,service,data}),
+   const config={type:'custom:mediarr-card',view:'library',tmdb_entity:'sensor.request_discovery',plex_entity:'sensor.cinema_plex',radarr_entity:'sensor.cinema_radarr',sonarr_entity:'sensor.cinema_sonarr'};
+   const hass={...actual,language:'de',states:{...actual.states,'sensor.request_discovery':{state:'3',attributes:{data:[item('Sensor Film',42),item('Sensor Serie',43,{media_type:'tv'}),item('Sensor Zeit',44)]}},'sensor.cinema_plex':{state:'2',attributes:{data:[{title:'Sternenstation',number:'S02E03',poster:art},{title:'Sternenstation',number:'S02E04',poster:art}]}}},services:{...actual.services,mediarr:{submit_movie_request:{},submit_tv_request:{}}},
+     callService:async(domain,service,data)=>{window.__cinemaRequests.push({domain,service,data});if(data.name==='Sensor Zeit')return new Promise(()=>{});},
      callWS:async msg=>{
+       if(msg.type==='mediarr/request_capabilities')return {movie:{available:!window.__movieOffline,reason:window.__movieOffline?'radarr_unavailable':'ready'},tv:{available:!window.__tvOffline,reason:window.__tvOffline?'sonarr_unavailable':'ready'},tmdb_account:{available:true,reason:'ready'}};
        window.__cinemaCalls.push(msg);
        if(msg.type==='mediarr/library')return {groups,page:1,total_pages:1,complete:true};
        if(msg.type==='mediarr/players')return {players:[{entity_id:'media_player.plex_fixture',name:'Plex Test TV',available:window.__cinemaPlayersReady,reason:window.__cinemaPlayersReady?'available':'unavailable',state:window.__cinemaPlaybackState,title:'Sternenreise',can_pause:true,can_resume:true},{entity_id:'media_player.disabled_fixture',name:'Disabled Plex',available:false,reason:'disabled'},...(window.__cinemaSecondActive?[{entity_id:'media_player.office_fixture',name:'Büro',available:true,reason:'available',state:'playing',title:'Anderer Film',can_pause:false,can_resume:false}]:[])]};
@@ -67,6 +68,9 @@ try {
  await page.screenshot({path:path.join(runtime,'cinema-home-desktop.png')});
  await source.locator('.cinema-upcoming-card').filter({hasText:'Nordpfad'}).locator('img').waitFor();
  passed.push('real HA panel displays cinematic hero and curated poster rails without extra menu');
+ assert.equal(await source.locator('.cinema-primary').isDisabled(),true,'Play is disabled without a reachable Plex player');
+ await source.evaluate(async el=>{window.__cinemaPlayersReady=true;await el._libraryView.loadPlayback();});
+ await page.evaluate(()=>window.__cinemaPlayersReady=false);
  await source.locator('.cinema-primary').click();
  assert.equal(await source.locator('[data-player="media_player.plex_fixture"]').isDisabled(),true);
  assert.ok((await source.locator('.cinema-player-list').textContent()).includes('Öffne Plex'));
@@ -178,6 +182,38 @@ try {
  await source.locator('.cinema-back').click();assert.equal(await search.inputValue(),'Nord');
  await page.screenshot({path:path.join(runtime,'cinema-search-desktop.png')});
  passed.push('global search shows owned, tracked and missing movies; new request uses exact TMDB ID and preserves query on back');
+ await search.fill('Sensor');
+ await source.locator('.cinema-search-result').filter({hasText:'Sensor Film'}).click();
+ await source.evaluate(async el=>{window.__movieOffline=true;await el._libraryView.loadRequestCapabilities();});
+ assert.equal(await source.locator('.library-request').isDisabled(),true);
+ assert.ok((await source.locator('.library-actions').textContent()).includes('Radarr'));
+ const beforeDisabled=await page.evaluate(()=>window.__cinemaRequests.length);
+ await source.locator('.library-request').dispatchEvent('click');
+ assert.equal(await page.evaluate(()=>window.__cinemaRequests.length),beforeDisabled);
+ await source.evaluate(async el=>{window.__movieOffline=false;await el._libraryView.loadRequestCapabilities();});
+ await source.locator('.library-request').click();await source.locator('.library-status-waiting').waitFor();
+ assert.deepEqual((await page.evaluate(()=>window.__cinemaRequests)).at(-1),{domain:'mediarr',service:'submit_movie_request',data:{name:'Sensor Film',tmdb_id:42}});
+ await source.locator('.cinema-back').click();
+ await source.locator('.cinema-search-result').filter({hasText:'Sensor Serie'}).click();
+ await source.locator('.library-request').click();
+ await source.locator('.library-season-dialog').waitFor();
+ await page.keyboard.press('Escape');
+ assert.equal(await source.locator('.library-request').isEnabled(),true);
+ await source.locator('.library-request').click();
+ await source.locator('.library-season-dialog select').selectOption('all');
+ await source.locator('.library-season-dialog [data-confirm]').click();
+ await source.locator('.library-status-waiting').waitFor();
+ assert.deepEqual((await page.evaluate(()=>window.__cinemaRequests)).at(-1),{domain:'mediarr',service:'submit_tv_request',data:{name:'Sensor Serie',tmdb_id:43,season:'all'}});
+ await source.locator('.cinema-back').click();
+ await source.locator('.cinema-search-result').filter({hasText:'Sensor Zeit'}).click();
+ await page.clock.install();
+ await source.locator('.library-request').click();
+ await page.clock.fastForward(31000);
+ await source.locator('.library-action-message').filter({hasText:'Keine Bestätigung'}).waitFor();
+ assert.equal(await source.locator('.library-request').isEnabled(),true);
+ assert.equal(await source.locator('.library-status-waiting').count(),0,'timeout must not claim the request was accepted');
+ await source.locator('.cinema-back').click();
+ passed.push('sensor movies and TV use exact IDs, native season selection cancels cleanly, offline actions are disabled and stalled services time out');
  await page.setViewportSize({width:390,height:844});
  await source.locator('.cinema-shell').waitFor();
  await source.evaluate(el=>{el._fullLibraryState={loaded:true,complete:true,groups:window.__cinemaGroups};el.hass=window.__cinemaHass;el.setConfig(window.__cinemaConfig);});

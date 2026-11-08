@@ -2,6 +2,21 @@
 
 All notable changes to this fork are documented in this file.
 
+## 0.6.0-dev.6 (2026-11-08)
+
+- Send known TMDB IDs for all requests, including sensor/discovery titles, instead
+  of searching again by name. Use a native season dialog inside both Cinema
+  page/overlay and classic library; cancel/close releases the busy state.
+- Bound the service acknowledgement wait to 30 seconds. A timeout leaves the
+  request unconfirmed and instructs checking Seerr before retrying.
+- Disable request actions until read-only connection checks confirm Seerr and
+  its default Radarr/Sonarr profile/root configuration. Checks run every 30 seconds;
+  offline status explains why a button is disabled. Optional Immaculaterr approval
+  and TMDB account buttons also require successful connection checks.
+- Disable Cinema Play when no permitted reachable Plex player is known. Connection
+  loss after a successful check is still handled by command error reporting.
+- Requires sensor integration 0.8.0-dev.5. No main/stable update.
+
 ## 0.6.0-dev.5 (2026-11-07)
 
 - Match Play/Add and the other Cinema text actions to the compact Trailer button:

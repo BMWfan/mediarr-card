@@ -30,6 +30,7 @@ try {
    el.hass={...actual,language:'de',states,services:{...actual.services,mediarr:{submit_movie_request:{},submit_tv_request:{}}},
      callService:async(domain,service,data)=>{window.requestCalls.push({domain,service,data});if(data.name==='Rejected')throw new Error('Rejected by backend');},
      callWS:msg=>{
+       if(msg.type==='mediarr/request_capabilities')return {movie:{available:true,reason:'ready'},tv:{available:true,reason:'ready'}};
        if(msg.type==='mediarr/search') {window.catalogCalls.push(msg);return new Promise((resolve,reject)=>window.catalogPending[msg.query+':'+msg.page]={resolve,reject});}
        if(msg.type==='mediarr/media_details')return Promise.resolve({media_type:msg.media_type,tmdb_id:msg.tmdb_id,title:msg.title,overview:'Vollständige Handlung',cast:[{name:'Catalog Actor',character:'Pilot'}]});
        return actual.callWS(msg);
@@ -87,8 +88,8 @@ try {
  passed.push('new catalog movie requests the selected TMDB ID and enters the watchlist');
  await expanded.locator('.library-result').filter({hasText:'Nova',exact:false}).filter({hasText:'Serie'}).click();
  await expanded.locator('.library-request').click();
- await expanded.locator('#season-select').selectOption('all');
- await expanded.locator('.mediarr-btn-confirm').click();
+ await expanded.locator('.library-season-dialog select').selectOption('all');
+ await expanded.locator('.library-season-dialog [data-confirm]').click();
  await expanded.locator('.library-heading .library-status-waiting').waitFor();
  assert.deepEqual((await page.evaluate(()=>window.requestCalls))[1],{domain:'mediarr',service:'submit_tv_request',data:{name:'Nova',tmdb_id:7,season:'all'}});
  passed.push('new catalog series uses TV request with exact ID and season selection');
