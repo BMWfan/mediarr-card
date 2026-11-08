@@ -432,7 +432,7 @@ class MediaLibraryView {
       this.requestCapabilities=await Promise.race([this.card._hass.callWS({type:'mediarr/request_capabilities'}),new Promise((_,reject)=>timer=setTimeout(()=>reject({code:'timeout'}),20000))]);
       this.requestCheckError=null;
     }catch(error){this.requestCapabilities=null;this.requestCheckError=error?.code||'unavailable';}
-    finally{clearTimeout(timer);this.checkingRequests=false;if(this.card.isConnected)this.refresh();}
+    finally{clearTimeout(timer);this.checkingRequests=false;if(this.card.isConnected){this.refresh();const confirm=this.shell?.querySelector('.library-season-dialog [data-confirm]');if(confirm&&this.seasonEntry){confirm.disabled=!this.requestService(this.seasonEntry);confirm.title=confirm.disabled?this.requestUnavailableMessage(this.seasonEntry):'';}}}
   }
   requestUnavailableMessage(entry) {
     if(this.requestCheckError==='unknown_command')return this.label('Für die Verbindungsprüfung die Mediarr-Integration aktualisieren.','Update Mediarr integration to check connections.');
@@ -724,6 +724,7 @@ class MediaLibraryView {
         if(season===null) return;
         data.season=season;
       }
+      if(!this.requestService(entry)){this.messages.set(entry.key,this.requestUnavailableMessage(entry));return;}
       let timer;
       try {
         await Promise.race([
@@ -740,10 +741,11 @@ class MediaLibraryView {
   selectRequestSeason(entry) {
     return new Promise(resolve=>{
       const dialog=document.createElement('dialog');dialog.className='library-season-dialog';
+      this.seasonEntry=entry;
       dialog.setAttribute('aria-label',this.label('Staffeln auswählen','Select seasons'));
       dialog.innerHTML=`<h2>${escapeMediaHtml(this.label('Staffeln auswählen','Select seasons'))}</h2><p>${escapeMediaHtml(entry.title)}</p><label>${escapeMediaHtml(this.label('Staffeln','Seasons'))}<select><option value="first">${escapeMediaHtml(this.label('Erste Staffel','First season'))}</option><option value="latest">${escapeMediaHtml(this.label('Neueste Staffel','Latest season'))}</option><option value="all" selected>${escapeMediaHtml(this.label('Alle Staffeln','All seasons'))}</option></select></label><div class="library-season-actions"><button type="button" data-confirm>${escapeMediaHtml(this.label('Hinzufügen','Add'))}</button><button type="button" data-cancel>${escapeMediaHtml(this.label('Abbrechen','Cancel'))}</button></div>`;
       let finished=false;
-      const close=value=>{if(finished)return;finished=true;dialog.close();dialog.remove();this.seasonCancel=null;resolve(value);};
+      const close=value=>{if(finished)return;finished=true;dialog.close();dialog.remove();this.seasonCancel=null;this.seasonEntry=null;resolve(value);};
       this.seasonCancel=()=>close(null);
       dialog.querySelector('[data-confirm]').onclick=()=>close(dialog.querySelector('select').value);
       dialog.querySelector('[data-cancel]').onclick=()=>close(null);

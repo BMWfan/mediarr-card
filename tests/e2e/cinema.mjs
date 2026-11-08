@@ -200,6 +200,9 @@ try {
  await page.keyboard.press('Escape');
  assert.equal(await source.locator('.library-request').isEnabled(),true);
  await source.locator('.library-request').click();
+ await source.evaluate(async el=>{window.__tvOffline=true;await el._libraryView.loadRequestCapabilities();});
+ assert.equal(await source.locator('.library-season-dialog [data-confirm]').isDisabled(),true);
+ await source.evaluate(async el=>{window.__tvOffline=false;await el._libraryView.loadRequestCapabilities();});
  await source.locator('.library-season-dialog select').selectOption('all');
  await source.locator('.library-season-dialog [data-confirm]').click();
  await source.locator('.library-status-waiting').waitFor();
