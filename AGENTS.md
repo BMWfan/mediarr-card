@@ -31,3 +31,11 @@ local Home Assistant environment, requirements, overrides and test scope.
   service calls; they do not validate a real Radarr/Sonarr connection.
 - Unified overlay data/rendering lives in media-library.js. Update the module
   list in scripts/build-single-file.sh when adding bundle modules.
+
+## Project workflow
+
+Follow the SDD-Light workflow in [`.github/SDD-LIGHT.md`](.github/SDD-LIGHT.md)
+and choose the S, M, or L specification template in
+[`.github/spec-templates/`](.github/spec-templates/). Preserve the development,
+testing, and safety requirements above. Do not edit CI or release workflows
+unless the issue explicitly requires it.
