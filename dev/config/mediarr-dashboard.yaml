@@ -1,0 +1,8 @@
+title: Mediarr Test
+views:
+  - title: Test
+    path: test
+    cards:
+      - type: custom:mediarr-card
+        plex_entity: sensor.plex_mediarr_dev
+        max_items: 10

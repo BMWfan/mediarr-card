@@ -2,6 +2,49 @@
 
 All notable changes to this fork are documented in this file.
 
+## 0.5.0 (2026-11-01)
+
+- Add authenticated TMDB catalog search alongside existing-library matches,
+  paged results, exact-ID requests, stale-response protection and explicit errors.
+- Add `view: library` for a full-page Home Assistant panel, alongside the compact
+  dashboard card and fullscreen overlay.
+- Read the complete Plex movie/show catalog and Radarr/Sonarr managed lists
+  through the backend, including watched titles and download queue progress.
+- Show download status and progress on list, detail and compact posters.
+- Keep discovery suggestions sourced from configured integrations; no new
+  recommendation engine or account-history import is introduced.
+- Show regional streaming subscriptions separately from rental/purchase offers,
+  with JustWatch/TMDB attribution. Requires mediarr_sensor 0.7.0.
+
+- Replace the compact opening link with a full-width film-night button,
+  including the clapperboard icon, subtitle and arrow without hover movement.
+- Give the desktop title list and film details separate scroll areas, so long
+  synopses and cast stay reachable while search and category controls remain
+  visible. Keep a single page scroll on mobile and reset details for a new title.
+
+## 0.4.1 (2026-11-01)
+
+- Correct legacy Plex/Jellyfin TV detection from episode numbers, movie years
+  and descriptions, Sonarr episode-title suffixes and Jellyfin field casing.
+- Preserve unknown media types; infer a missing type only from unambiguous ID
+  evidence. Unknown titles cannot accidentally submit movie requests.
+- Load complete selected-title metadata via the authenticated Mediarr backend,
+  with caching, race protection and explicit missing-backend/TMDB errors.
+  Requires the paired mediarr_sensor backend update for cast/credits loading.
+
+## 0.4.0 (2026-10-31)
+
+- Default compact dashboard with recently added/discovery posters, a watchlist
+  row, direct detail navigation and a small fullscreen opening button.
+- Fullscreen overlay with source-independent discovery, waiting and available
+  categories, ID-based deduplication and cinematic title/cast details.
+- Backend-aware movie/series requests, truthful missing-data states and shared
+  pending requests across compact/large views. Global catalog search still
+  requires a separate backend capability.
+- Source selection, compact poster count and legacy-layout option in the editor.
+- Stable banner hover; responsive layout, history/Escape handling and keyboard
+  focus restoration. Added Docker HA/Playwright development workflow and tests.
+
 ## 0.3.5 (2026-05-22)
 
 ### Fixed

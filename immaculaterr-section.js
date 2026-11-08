@@ -206,6 +206,7 @@ export class ImmaculaterrSection extends BaseSection {
   }
 
   updateInfo(cardInstance, item, sectionKey = null) {
+    this.updateMediaDetails(cardInstance, item);
     this._currentCard = cardInstance;
     if (!item || item.title_default) return;
 

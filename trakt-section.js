@@ -26,6 +26,7 @@ export class TraktSection extends BaseSection {
   }
 
   updateInfo(cardInstance, item) {
+    this.updateMediaDetails(cardInstance, item);
     if (!item || item.title_default) return;
 
     const bg = item.backdrop || item.poster || '';

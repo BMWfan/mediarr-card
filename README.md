@@ -1,6 +1,52 @@
+<p align="center"><img src="brand/icon.png" width="72" height="72" alt="Mediarr clapperboard icon"></p>
+
 # Mediarr Card for Home Assistant
 
 A visual overview card for Home Assistant that combines media servers, media managers, and discovery/request sources in one Lovelace card.
+
+## Complete media page (0.5.0 + Mediarr integration 0.7.0)
+
+Keep `view: compact` for the dashboard overview and its fullscreen opening button.
+Choose **Full-page media library** in the card editor, or use `view: library` on
+a Home Assistant **panel** view to fill the available dashboard content area:
+
+```yaml
+views:
+  - title: Medien
+    path: medien
+    panel: true
+    cards:
+      - type: custom:mediarr-card
+        view: library
+        streaming_region: DE
+```
+
+The backend needs Plex configured in Mediarr (manual credentials or its supported
+Home Assistant Plex connection). The full library reads all movie/show sections,
+not just recently-added sensors. **Meine Bibliothek** includes watched titles;
+**Vorhang auf** focuses on available, unwatched titles. Radarr/Sonarr configuration
+provides complete managed lists and queue progress, refreshed about once a minute
+while the large view is open. Partial/unavailable sources are explicitly labelled.
+Large catalogs are loaded in API pages and displayed in batches of 60 rows.
+
+Search combines local matches with new TMDB titles after two characters. It needs
+the existing TMDB credential in the integration. New titles use Mediarr's Seerr
+request services, which route to the configured Radarr/Sonarr servers. No direct
+Radarr/Sonarr request button is advertised when Seerr services are unavailable.
+Requests from catalog results carry the exact selected TMDB ID.
+
+Suggestions continue to come from the configured discovery integrations.
+Mediarr does not implement a second recommendation engine or imitate Netflix.
+Immaculaterr is optional and can be excluded using the data-source selection.
+Plex watch state belongs to the account of the configured Plex token, not
+necessarily to each individual Home Assistant user.
+
+Details show streaming offers for `streaming_region` (default `DE`), separating
+subscriptions from rentals and purchases. Availability data comes from
+JustWatch via TMDB and may change; links allow checking the current offer.
+This feature does not connect personal Netflix/Prime accounts or import histories.
+Netflix/Prime exports, TMDB account authorization and preference-feedback storage
+are not implemented in this release.
 
 ## Fork Notes
 
@@ -23,8 +69,75 @@ Edit `mediarr-card.main.js` and the section/style modules, then generate the dis
 ./scripts/build-single-file.sh
 ```
 
+## Compact dashboard and fullscreen media view
+
+The default `view: compact` shows recently added posters and a smaller watchlist
+row. A poster opens that title directly in the large view; the watchlist link
+opens the waiting category. The small outlined opening button opens the whole
+library. No additional Home Assistant sidebar entry is created.
+
+`compact_items` controls the first poster row (1–8, default 4); the watchlist row
+shows up to eight posters with the full count in its header. When no titles are
+available yet, the first row shows discovery recommendations instead. Empty and
+unavailable sources have explicit empty states. Both options are available in
+the card editor. Choose `view: legacy` to retain the previous source sections
+and inline details/now-playing layout.
+
+Use the understated **Open Mediarr** button at the bottom of the card to open
+an overlay covering the entire Home Assistant page. The dashboard card stays in place and the sidebar remains unchanged. Close with **Back**, Escape or browser Back to return
+to the dashboard. On desktop, media lists and details appear side by side;
+on phones they stack vertically.
+
+The large view groups configured sources into **Dein nächster Filmabend**
+(discovery), **Deine Merkliste** (already added, awaiting availability) and
+**Vorhang auf** (available in the library). Source selection is shared between compact and large views. Matching typed TMDB/TVDB/IMDb IDs are combined; a title/year fallback
+is used only without conflicting IDs. Films and series remain separate. Data
+sources are available in an unobtrusive disclosure in the detail view.
+
+The detail view includes a fading backdrop, overlapping poster/title,
+synopsis, metadata and cast portraits when provided. Legacy Plex/Jellyfin
+payloads are normalized: `number: S01E03` denotes TV, a four-digit movie
+`number` supplies the year, and a movie's legacy `episode` field supplies the
+short synopsis. A series episode title is not treated as its full synopsis.
+Ambiguous media types stay unknown rather than being silently treated as movies.
+
+When the selected title lacks complete metadata, the card requests
+`mediarr/media_details` through the authenticated Home Assistant WebSocket.
+This requires `BMWfan/mediarr_sensor` v0.6.2 or newer; v0.6.1 does not
+provide that command. The backend uses the TMDB credential already configured
+in Mediarr and returns only public title metadata. Do not enter TMDB keys in
+card YAML or frontend URLs. Missing backend support/configuration and failures
+are explicitly shown with a retry action. Results are cached per language and
+title and cannot overwrite a different selection when a slow request finishes.
+For automatic cast loading, update the sensor integration to v0.6.2 and restart
+Home Assistant, then update this card to v0.4.1 and reload the frontend. The
+backend must have a valid TMDB credential configured.
+
+Search filters titles, years and descriptions from your currently loaded
+Mediarr sensor lists. It is not a global movie-catalog search. The watchlist
+button invokes an advertised `mediarr.submit_movie_request` or
+`mediarr.submit_tv_request` service (with season selection for TV), or the
+existing Immaculaterr suggestion service when supported. The configured backend
+routes requests to the media manager. The card does not connect directly to
+Radarr/Sonarr or create a separate bookmark-only watchlist. Failed requests
+remain visible and can be retried; successful requests await sensor confirmation.
+
+Availability, release dates, download progress and watch status depend on the
+fields supplied by your integrations. Unknown watch status is not treated as
+unwatched. Explicitly watched records are hidden from the large view. A Plex
+play action is shown only when the existing Plex connection and item key are
+configured. It uses the existing client selector, not a browser movie player.
+
+## Home Assistant development environment
+
+Run the card in an isolated Home Assistant instance with synthetic data and
+Playwright browser checks. See [dev/README.md](dev/README.md) for setup, startup,
+test commands and the current coverage.
+
 ## Features
 
+- Expandable title details with synopsis, ratings, cast, director, genres and runtime when supplied by the sensor (no additional API key required)
+- Stable banner artwork on hover
 - Collapsible sections
 - Dynamic card/media backdrops
 - Plex and Jellyfin recently-added support

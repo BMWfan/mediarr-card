@@ -116,6 +116,7 @@ export class SeerSection extends BaseSection {
   }
 
   async updateInfo(cardInstance, item, sectionKey) {
+    this.updateMediaDetails(cardInstance, item);
     if (!item || item.title_default) return;
 
     const title = item.title || item.name || '';
@@ -210,7 +211,7 @@ export class SeerSection extends BaseSection {
     }, 2600);
   }
 
-  _openStatusModal(title) {
+  _openStatusModal(title, cardInstance = this._currentCard) {
     return new Promise((resolve) => {
       const modal = document.createElement('div');
       modal.className = 'mediarr-modal-overlay';
@@ -232,12 +233,11 @@ export class SeerSection extends BaseSection {
         </div>
       `;
 
-      document.body.appendChild(modal);
+      const container = cardInstance?._isExpandedView ? cardInstance : document.body;
+      container.appendChild(modal);
 
       const close = () => {
-        if (document.body.contains(modal)) {
-          document.body.removeChild(modal);
-        }
+        modal.remove();
       };
 
       modal.querySelector('.mediarr-modal-close').onclick = () => { close(); resolve(null); };
@@ -250,7 +250,7 @@ export class SeerSection extends BaseSection {
     });
   }
 
-  _openSeasonModal(title) {
+  _openSeasonModal(title, cardInstance = this._currentCard) {
     return new Promise((resolve) => {
       const modal = document.createElement('div');
       modal.className = 'mediarr-modal-overlay';
@@ -272,11 +272,10 @@ export class SeerSection extends BaseSection {
         </div>
       `;
 
-      document.body.appendChild(modal);
+      const container = cardInstance?._isExpandedView ? cardInstance : document.body;
+      container.appendChild(modal);
       const close = () => {
-        if (document.body.contains(modal)) {
-          document.body.removeChild(modal);
-        }
+        modal.remove();
       };
 
       modal.querySelector('.mediarr-modal-close').onclick = () => { close(); resolve(null); };
@@ -308,7 +307,7 @@ export class SeerSection extends BaseSection {
     if (!cardInstance._statusChangeHandlerAdded) {
       cardInstance.addEventListener('change-status', async (e) => {
         const { title, type, request_id } = e.detail;
-        const new_status = await this._openStatusModal(title);
+        const new_status = await this._openStatusModal(title, cardInstance);
         if (!new_status) return;
 
         try {
@@ -366,7 +365,7 @@ export class SeerSection extends BaseSection {
           let action, data;
 
           if (['TV', 'TV SHOW', 'SERIES'].includes(String(type).toUpperCase())) {
-            const season = await this._openSeasonModal(title);
+            const season = await this._openSeasonModal(title, cardInstance);
             if (season === null) return;
             data = { name: title, season };
             action = 'mediarr.submit_tv_request';

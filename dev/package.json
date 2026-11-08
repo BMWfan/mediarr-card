@@ -1,0 +1,1 @@
+{"name":"mediarr-card-dev","private":true,"type":"module","scripts":{"test":"node ../tests/e2e/mediarr.mjs"},"devDependencies":{"playwright":"1.58.2"}}
