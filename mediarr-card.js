@@ -1375,9 +1375,10 @@ class Sonarr2Section extends SonarrBaseSection {
 class RadarrBaseSection extends BaseSection {
   update(cardInstance, entity) {
     const maxItems = cardInstance.config[`${this.key}_max_items`] || cardInstance.config.max_items || 10;
-    const releaseTypes = cardInstance.config[`${this.key}_release_types`] || ['Digital', 'Theaters', 'Theatres', 'Physical'];
+    const configuredTypes = cardInstance.config[`${this.key}_release_types`];
+    const releaseTypes = (Array.isArray(configuredTypes) ? configuredTypes : ['Digital', 'Theaters', 'Theatres', 'Physical']).filter(type=>typeof type==='string');
 
-    let items = Array.isArray(entity?.attributes?.data) ? entity.attributes.data : [];
+    let items = Array.isArray(entity?.attributes?.data) ? entity.attributes.data.filter(item=>item&&typeof item==='object') : [];
 
     if (items.length > 0 && !items[0].title_default) {
       items = items.filter(item =>
@@ -1397,14 +1398,15 @@ class RadarrBaseSection extends BaseSection {
       return;
     }
 
-    const dateStr = item.release ? (item.release.split(' - ')[1] || item.release) : '';
+    const release = typeof item.release==='string'?item.release:'';
+    const dateStr = release.split(' - ')[1] || release;
     const releaseDate = this.formatDate(dateStr.includes('Unknown') ? '' : dateStr);
     const runtime = item.runtime ? `${item.runtime} min` : '';
 
     cardInstance.info.innerHTML = `
       <div class="title">${this._escapeHtml(item.title)}${item.year ? ` (${this._escapeHtml(String(item.year))})` : ''}</div>
       <div class="details">${this._escapeHtml(item.genres || '')}</div>
-      <div class="metadata">${releaseDate}${runtime ? ` | ${runtime}` : ''}</div>
+      <div class="metadata">${releaseDate}${runtime ? ` | ${this._escapeHtml(runtime)}` : ''}</div>
       ${item.overview ? `<div class="overview">${this._escapeHtml(item.overview)}</div>` : ''}
     `;
   }
@@ -1507,7 +1509,7 @@ class SeerSection extends BaseSection {
           <div class="section-header">
             <div class="section-header-content">
               <ha-icon class="section-toggle-icon" icon="mdi:chevron-down"></ha-icon>
-              <div class="section-label">${this.t(cardInstance, section.titleKey, section.title)}</div>
+              <div class="section-label">${this._escapeHtml(this.t(cardInstance, section.titleKey, section.title))}</div>
             </div>
           </div>
           <div class="section-content">
@@ -1897,7 +1899,7 @@ class TMDBSection extends BaseSection {
           <div class="section-header">
             <div class="section-header-content">
               <ha-icon class="section-toggle-icon" icon="mdi:chevron-down"></ha-icon>
-              <div class="section-label">${this.t(cardInstance, section.titleKey, section.title)}</div>
+              <div class="section-label">${this._escapeHtml(this.t(cardInstance, section.titleKey, section.title))}</div>
             </div>
           </div>
           <div class="section-content">
@@ -2094,7 +2096,7 @@ class ImmaculaterrSection extends BaseSection {
           <div class="section-header">
             <div class="section-header-content">
               <ha-icon class="section-toggle-icon" icon="mdi:chevron-down"></ha-icon>
-              <div class="section-label">${this.t(cardInstance, section.titleKey, section.title)}</div>
+              <div class="section-label">${this._escapeHtml(this.t(cardInstance, section.titleKey, section.title))}</div>
             </div>
           </div>
           <div class="section-content">

@@ -59,7 +59,7 @@ export class SeerSection extends BaseSection {
           <div class="section-header">
             <div class="section-header-content">
               <ha-icon class="section-toggle-icon" icon="mdi:chevron-down"></ha-icon>
-              <div class="section-label">${this.t(cardInstance, section.titleKey, section.title)}</div>
+              <div class="section-label">${this._escapeHtml(this.t(cardInstance, section.titleKey, section.title))}</div>
             </div>
           </div>
           <div class="section-content">
