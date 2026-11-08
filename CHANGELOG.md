@@ -2,6 +2,18 @@
 
 All notable changes to this fork are documented in this file.
 
+## 0.6.0-dev.7 (2026-11-08)
+
+- Include the reviewed PR #15 legacy security hardening: DOM listeners instead
+  of inline script handlers, escaped client/section metadata, retained artwork
+  after image failures, bounded progress/cache/list data and robust Radarr input.
+- Verify these protections with ten synthetic browser security regressions.
+- Make release publication manual with exact version confirmation. Developer
+  versions cannot be stable/latest; stable publication requires reviewed main.
+  Add six tests exercising the actual release workflow guard.
+- Upload only explicitly selected synthetic test artifacts from the ignored
+  runtime directory, so screenshots are available for PR review.
+
 ## 0.6.0-dev.6 (2026-11-08)
 
 - Send known TMDB IDs for all requests, including sensor/discovery titles, instead

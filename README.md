@@ -6,6 +6,12 @@ A visual overview card for Home Assistant that combines media servers, media man
 
 ## Cinema developer version
 
+The current candidate also includes the legacy security fixes from PR #15.
+Release workflows no longer publish on main pushes. A manual dispatch requires
+an explicit approved release type and exact version confirmation; developer
+versions cannot become stable/latest. No release workflow was dispatched by
+these tests. Runtime screenshots are uploaded only through an explicit file list.
+
 Request fix in 0.6.0-dev.6: known IDs are preserved for sensor and catalog titles,
 TV requests use a native season dialog, and unconfirmed service calls time out
 after 30 seconds. Check Seerr before retrying a timed-out request; it may still
@@ -18,7 +24,7 @@ with a short shared backend cache. Requests require the updated sensor version.
 Play requires an available authorized Plex player. Refresh/retry controls remain
 usable for recovery, and commands still handle outages occurring after a check.
 
-Pair **card 0.6.0-dev.6** with **sensor integration 0.8.0-dev.5**. These are HACS
+Pair **card 0.6.0-dev.7** with **sensor integration 0.8.0-dev.6**. These are HACS
 prereleases: enable beta versions and select the versions explicitly. Main and
 stable releases are unchanged until user approval. Update the sensor first and
 restart Home Assistant, then update the card and reload the frontend.
