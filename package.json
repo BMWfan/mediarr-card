@@ -1,6 +1,6 @@
 {
   "name": "mediarr-card",
-  "version": "0.6.0-dev.7",
+  "version": "0.6.0-dev.8",
   "private": true,
   "description": "Mediarr Card for Home Assistant",
   "license": "MIT"

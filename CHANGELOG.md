@@ -2,6 +2,12 @@
 
 All notable changes to this fork are documented in this file.
 
+## 0.6.0-dev.8 (2026-11-09)
+
+- Include reviewed read-only security CI and paired card/backend contract fixtures.
+- Add three frontend adapter regressions and document older backend behavior.
+- Runtime behavior is unchanged from dev.7; only the displayed build version changes.
+
 ## 0.6.0-dev.7 (2026-11-08)
 
 - Include the reviewed PR #15 legacy security hardening: DOM listeners instead
