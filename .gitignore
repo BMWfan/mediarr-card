@@ -32,3 +32,6 @@ dev/.runtime/
 # Python release-policy test bytecode
 __pycache__/
 *.py[cod]
+
+.maintenance-output/
+.maintenance-state/
