@@ -1,0 +1,31 @@
+version: 1
+project: mediarr-card
+mode: report
+create_issues: false
+delegate: false
+sources:
+- id: ha-core
+  kind: release
+  repository: home-assistant/core
+  relevance: HA compatibility, services and authenticated WebSocket behavior
+- id: ha-developer-news
+  kind: feed
+  url: https://contributors.home-assistant.io/blog/rss.xml
+  relevance: Official API deprecations, frontend or integration changes
+- id: actions-checkout
+  kind: release
+  repository: actions/checkout
+  relevance: Review compatibility and security of pinned CI actions
+- id: ha-frontend
+  kind: release
+  repository: home-assistant/frontend
+  relevance: Lovelace, custom card lifecycle, themes, mobile and rendering
+- id: playwright
+  kind: release
+  repository: microsoft/playwright
+  relevance: Pinned browser test toolchain and browser compatibility
+- id: playwright-advisories
+  kind: advisory
+  ecosystem: npm
+  package: playwright
+  relevance: Review lockfile versions against advisory affected ranges
