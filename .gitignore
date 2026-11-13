@@ -35,3 +35,6 @@ __pycache__/
 
 .maintenance-output/
 .maintenance-state/
+
+# Isolated compatibility-test runtimes (may contain local-only auth)
+dev/.runtime-ha-*/

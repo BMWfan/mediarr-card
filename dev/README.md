@@ -1,6 +1,6 @@
 # Local Home Assistant development
 
-This disposable Home Assistant Core 2026.10.4 instance runs the real frontend
+This disposable Home Assistant Core 2026.11.1 instance runs the real frontend
 with a locally built Mediarr card, synthetic sensors and a YAML dashboard.
 It does not connect to production or need Plex, Sonarr, Radarr, MCP, cloud
 credentials or `remote_homeassistant`. Bootstrap removes the optional cloud
@@ -69,7 +69,9 @@ The fixture artwork is a local SVG illustration, not production poster art.
 
 GitHub Actions runs the same workflow for pull requests and pushes to main.
 It uploads only the screenshot, result JSON and service log, never authentication
-or the HA database. The workflow itself still needs its first run on GitHub.
+or the HA database. Each run retains the tested commit, actual Core/frontend and browser versions,
+and the complete synthetic test output alongside the selected screenshots. A
+green older run is not evidence for a newer Home Assistant image or commit.
 
 To stop without deleting local state:
 

@@ -2,6 +2,13 @@
 
 All notable changes to this fork are documented in this file.
 
+## 0.6.0-dev.9 (2026-11-13)
+
+- Verify Card rendering and interactions against actual Home Assistant 2026.11.1 / frontend 20261028.5.
+- Pin the new image, assert the running HA version and retain commit/version/test evidence in CI.
+- Document a code-specific feature impact review; optional new UI features are not silently enabled.
+- Card runtime behavior is unchanged apart from the developer build identifier.
+
 ## 0.6.0-dev.7 (2026-11-08)
 
 - Include the reviewed PR #15 legacy security hardening: DOM listeners instead
