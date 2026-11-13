@@ -24,10 +24,20 @@ jobs:
         run: dev/node_modules/.bin/playwright install-deps chromium
       - name: Start Home Assistant
         run: bash dev/start.sh
+      - name: Record and verify test target
+        run: |
+          git rev-parse HEAD > dev/.runtime/test-commit.txt
+          docker compose -p mediarr-card-dev -f dev/compose.yaml exec -T homeassistant \
+            python -c "import json; from importlib.metadata import version; from homeassistant.const import __version__; assert __version__ == '2026.11.1', __version__; print(json.dumps({'core': __version__, 'frontend': version('home-assistant-frontend')}))" \
+            > dev/.runtime/ha-version.json
+          node -e "const {chromium}=require('./dev/node_modules/playwright'); const {execFileSync}=require('node:child_process'); console.log(JSON.stringify({node:process.version,playwright:require('./dev/node_modules/playwright/package.json').version,chromium:execFileSync(process.env.CHROMIUM_PATH || chromium.executablePath(),['--version'],{encoding:'utf8'}).trim()}))" \
+            > dev/.runtime/browser-version.json
       - name: Check Home Assistant configuration
         run: docker compose -p mediarr-card-dev -f dev/compose.yaml exec -T homeassistant python -m homeassistant --script check_config --config /config
       - name: Test real Home Assistant frontend
-        run: bash dev/test.sh
+        run: |
+          set -o pipefail
+          bash dev/test.sh 2>&1 | tee dev/.runtime/test-output.log
       - name: Capture service logs
         if: always()
         run: docker compose -p mediarr-card-dev -f dev/compose.yaml logs --no-color > dev/.runtime/service.log
@@ -37,6 +47,10 @@ jobs:
           include-hidden-files: true
           name: homeassistant-test-results
           path: |
+            dev/.runtime/test-commit.txt
+            dev/.runtime/ha-version.json
+            dev/.runtime/browser-version.json
+            dev/.runtime/test-output.log
             dev/.runtime/dashboard.png
             dev/.runtime/test-results.json
             dev/.runtime/library-test-results.json
