@@ -56,6 +56,14 @@ refresh its local bootstrap token with `dev/start.sh`, then run
 `HA_SMOKE_AUTH_FILE` pointing to the ignored local-auth file. No provider
 credentials are needed. Never upload that file or HA storage.
 
+## GitHub CI correction
+
+The first candidate CI run failed before tests in the new browser-version
+recorder: it used Playwright's default cache instead of setup's project runtime
+browser path. The step now sets the same `PLAYWRIGHT_BROWSERS_PATH` as setup/tests.
+The failed run is not counted as a passing browser suite; a complete new run is
+required. This changes only evidence collection, not Card behavior.
+
 ## Evidence, review and limits
 
 CI now preserves exact commit, actual Core/frontend/browser versions and complete

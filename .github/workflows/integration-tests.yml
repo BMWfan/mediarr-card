@@ -25,6 +25,8 @@ jobs:
       - name: Start Home Assistant
         run: bash dev/start.sh
       - name: Record and verify test target
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/dev/.runtime/browsers
         run: |
           git rev-parse HEAD > dev/.runtime/test-commit.txt
           docker compose -p mediarr-card-dev -f dev/compose.yaml exec -T homeassistant \
