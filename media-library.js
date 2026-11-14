@@ -236,6 +236,26 @@ export function mergeCatalogEntries(local, results) {
   return entries;
 }
 
+function collectionCatalogParts(parts) {
+  return parts.slice(0,100).map(part=>Object.fromEntries(['media_type','tmdb_id','title','year','poster','backdrop','overview','release_date'].map(key=>[key,part?.[key]])));
+}
+
+export function movieCollectionEntries(entry, entries) {
+  const collection=entry?.kind==='movie' && entry.item.collection;
+  if(!collection || !Number.isSafeInteger(collection.id) || collection.id<=0 || !Array.isArray(collection.parts))return [];
+  const ids=new Set();
+  const parts=collectionCatalogParts(collection.parts).filter(part=>{
+    if(part?.media_type!=='movie'||!Number.isSafeInteger(part.tmdb_id)||part.tmdb_id<=0||ids.has(part.tmdb_id))return false;
+    ids.add(part.tmdb_id);return true;
+  });
+  if(!parts.some(part=>String(part.tmdb_id)===String(entry.ids.tmdb)))return [];
+  const merged=mergeCatalogEntries(entries,parts);
+  return parts.map(part=>{
+    const item=merged.find(item=>item.kind==='movie'&&String(item.ids.tmdb)===String(part.tmdb_id));
+    return item?{...item,poster:item.poster||mediaImage(part.poster),year:item.year||mediaText(part.year)}:null;
+  }).filter(Boolean);
+}
+
 function metadataNamespace(card) {
   const region=card.config.streaming_region || 'DE';
   return (card._hass?.language || 'en')+(region==='DE'?'':`:${region}`);
@@ -261,6 +281,7 @@ export function mediaEntriesForCard(card, catalog = []) {
     if (!cached || Date.now() - cached.timestamp > 6 * 60 * 60 * 1000) continue;
     const metadata = cached.data;
     for (const [key,value] of Object.entries(metadata)) {
+      if(key==='collection'){entry.item[key]=value;continue;}
       if (value !== null && value !== undefined && value !== '' && (!Array.isArray(value) || value.length)) entry.item[key]=value;
     }
     entry.kind=metadata.media_type;
@@ -436,7 +457,7 @@ export class MediaLibraryView {
   }
 
   refresh() {
-    this.entries = mediaEntriesForCard(this.card,this.catalog);
+    this.entries = mediaEntriesForCard(this.card,[...this.catalog,...(this.collectionParts||[])]);
     this.render();
   }
 
@@ -467,6 +488,7 @@ export class MediaLibraryView {
   destroy() {this.seasonCancel?.();clearInterval(this.requestCheckTimer);clearTimeout(this.searchTimer);clearInterval(this.libraryTimer);++this.searchVersion;}
 
   scheduleSearch() {
+    this.collectionFocusKey=null;
     clearTimeout(this.searchTimer);
     ++this.searchVersion;
     this.catalog=[];this.searchPage=0;this.totalPages=0;this.searchError=null;
@@ -533,16 +555,17 @@ export class MediaLibraryView {
     this.moreButton.hidden=visible.length<=this.localLimit && (!query || this.searchPage>=this.totalPages);
     this.moreButton.onclick=()=>{if(visible.length>this.localLimit){this.localLimit+=60;this.render();}else this.searchCatalog(this.searchPage+1);};
     this.moreButton.disabled=this.searching;
-    if (!visible.some(entry => entry.key === this.selectedKey)) this.selectedKey = visible[0]?.key;
+    if (!visible.some(entry => entry.key === this.selectedKey) && (!this.collectionFocusKey || this.collectionFocusKey!==this.selectedKey)) this.selectedKey = visible[0]?.key;
     this.results.innerHTML = visible.length ? visible.slice(0,this.localLimit).map(entry => `<button type="button" class="media-item library-result ${entry.key===this.selectedKey?'selected':''}" data-key="${esc(entry.key)}" aria-pressed="${entry.key===this.selectedKey}"><span class="library-result-poster">${downloadBadge(entry,this.label.bind(this))}${entry.poster?`<img src="${esc(entry.poster)}" alt="" loading="lazy">`:'<ha-icon icon="mdi:movie-open-outline"></ha-icon>'}</span><span class="media-item-title">${esc(entry.title)}</span><span class="library-result-meta">${esc([entry.year,entry.kind==='tv'?this.label('Serie','Series'):entry.kind==='movie'?this.label('Film','Movie'):this.label('Medientyp unbekannt','Unknown media type'),entry.rating?`★ ${entry.rating}`:''].filter(Boolean).join(' · '))}</span><span class="mediarr-result-summary">${esc(entry.summary)}</span><span class="library-status library-status-${entry.stage}">${esc(this.status(entry))}</span></button>`).join('') : `<p class="library-empty">${esc(query?this.label('Keine passenden Titel gefunden.','No matching titles found.'):this.label('Hier sind noch keine Titel vorhanden.','No titles here yet.'))}</p>`;
     this.results.querySelectorAll('button').forEach(button => button.onclick = () => {
       const hadFocus = button.matches(':focus');
       this.selectedKey=button.dataset.key;
+      this.collectionFocusKey=null;
       this.render();
       if (hadFocus) [...this.results.querySelectorAll('button')].find(row=>row.dataset.key===this.selectedKey)?.focus({preventScroll:true});
       if (matchMedia('(max-width: 700px)').matches) this.focus.scrollIntoView({behavior:'smooth',block:'start'});
     });
-    this.renderDetails(visible.find(entry=>entry.key===this.selectedKey));
+    this.renderDetails((this.collectionFocusKey===this.selectedKey?this.entries:visible).find(entry=>entry.key===this.selectedKey));
     this.shell.querySelectorAll('img').forEach(img => img.onerror = () => { img.onerror=null; img.hidden=true; });
   }
 
@@ -580,11 +603,33 @@ export class MediaLibraryView {
     return '';
   }
 
+  collectionMarkup(entry) {
+    const parts=movieCollectionEntries(entry,this.entries);
+    if(!parts.length && !entry.item.collection_error)return '';
+    const esc=escapeMediaHtml;
+    return `<section class="library-collection" aria-label="${esc(this.label('Filmreihe','Film series'))}"><h2>${esc(mediaText(entry.item.collection?.name)||this.label('Filmreihe','Film series'))}</h2>${parts.length?`<div class="library-collection-rail">${parts.map(part=>`<button type="button" class="library-collection-part" data-collection-key="${esc(part.key)}" aria-current="${String(String(part.ids.tmdb)===String(entry.ids.tmdb))}"><span class="library-collection-art">${part.poster?`<img src="${esc(part.poster)}" alt="" loading="lazy">`:'<ha-icon icon="mdi:movie-open-outline" aria-hidden="true"></ha-icon>'}${downloadBadge(part,this.label.bind(this))}</span><strong>${esc(part.title)}</strong><small>${esc(part.year)}</small><small>${esc(part.stage==='ready'?this.label('In deiner Mediathek','In your library'):part.stage==='waiting'?this.label('Auf der Merkliste','On your watchlist'):this.label('Hinzufügbar','Available to add'))}${part.watched===true?` · ${esc(this.label('Gesehen','Watched'))}`:''}</small></button>`).join('')}</div>`:''}${entry.item.collection_error?`<p role="status">${esc(this.label('Filmreihe momentan nicht verfügbar.','Film series is currently unavailable.'))}</p><button class="library-collection-retry" type="button">${esc(this.label('Erneut versuchen','Retry'))}</button>`:''}</section>`;
+  }
+
+  selectCollectionPart(key,entry) {
+    if(!movieCollectionEntries(entry,this.entries).some(part=>part.key===key)||key===entry.key)return;
+    this.collectionParts=collectionCatalogParts(entry.item.collection.parts);
+    this.collectionContext=entry.item.collection;
+    this.selectedKey=key;
+    this.collectionFocusKey=key;
+    if('detailKey' in this)this.detailKey=key;
+    this.refresh();
+    const heading=this.focus.querySelector('h1');
+    if(heading){heading.tabIndex=-1;heading.focus({preventScroll:true});}
+    if(typeof this.scrollSurface==='function')this.scrollSurface().scrollTop=0;
+  }
+
   renderDetails(entry) {
+    const collectionScroll=this.focus.querySelector('.library-collection-rail')?.scrollLeft||0;
+    if(entry?.kind==='movie' && entry.item.collection===undefined && this.collectionContext?.parts?.some(part=>part.media_type==='movie'&&String(part.tmdb_id)===String(entry.ids.tmdb)))entry.item.collection=this.collectionContext;
     if (this._renderedDetailKey !== entry?.key) this.focus.scrollTop = 0;
     this._renderedDetailKey = entry?.key;
     const esc=escapeMediaHtml;
-    if (entry && (!entry.summary || !mediaCast(entry.item).length || entry.kind==='unknown' || entry.item.streaming===undefined || entry.item.trailer===undefined)) void this.loadMetadata(entry);
+    if (entry && (!entry.summary || !mediaCast(entry.item).length || entry.kind==='unknown' || entry.item.streaming===undefined || entry.item.trailer===undefined || (entry.kind==='movie' && entry.item.collection===undefined))) void this.loadMetadata(entry);
     if (!entry) { this.focus.innerHTML=`<p class="library-empty">${esc(this.label('Wähle einen Titel aus.','Choose a title.'))}</p>`; return; }
     const item=entry.item;
     const trailerUrl=/^https:\/\/www\.youtube\.com\/watch\?v=[A-Za-z0-9_-]{11}$/.test(item.trailer?.url||'')?item.trailer.url:'';
@@ -630,6 +675,7 @@ export class MediaLibraryView {
           <p class="library-metadata-status" role="status">${esc(this.metadataMessage(entry))}</p>
           ${this.metadataMessage(entry) && !this.metadataPending.has(`${metadataNamespace(this.card)}:${entry.key}`) ? `<button type="button" class="library-metadata-retry">${esc(this.label('Details erneut laden','Retry details'))}</button>` : ''}
           <p class="media-details-synopsis">${esc(entry.summary || this.label('Für diesen Titel liegt noch keine Beschreibung vor.', 'No synopsis is available for this title yet.'))}</p>
+          ${this.collectionMarkup(entry)}
           ${streaming}
           ${directors ? `<p class="library-director"><strong>${esc(this.label('Regie', 'Director'))}</strong> ${esc(directors)}</p>` : ''}
           <h2>${esc(this.label('Besetzung', 'Cast'))}</h2>${castMarkup || castText ? `<div class="library-cast">${castMarkup || esc(castText)}</div>` : `<p>${esc(this.label('Für diesen Titel ist noch keine Besetzung verfügbar.', 'Cast information is not available for this title yet.'))}</p>`}
@@ -637,6 +683,11 @@ export class MediaLibraryView {
         </div>
       </article>`;
     const retry=this.focus.querySelector('.library-metadata-retry');
+    const rail=this.focus.querySelector('.library-collection-rail');
+    if(rail)rail.scrollLeft=collectionScroll;
+    this.focus.querySelectorAll('[data-collection-key]').forEach(button=>button.onclick=()=>this.selectCollectionPart(button.dataset.collectionKey,entry));
+    const collectionRetry=this.focus.querySelector('.library-collection-retry');
+    if(collectionRetry)collectionRetry.onclick=()=>void this.loadMetadata(entry,true);
     if(retry) retry.onclick=()=>{void this.loadMetadata(entry,true);this.renderDetails(entry);};
     const backdrop=this.focus.querySelector('.library-backdrop');
     if(entry.banner) backdrop.style.backgroundImage=`url(${JSON.stringify(entry.banner)})`;
