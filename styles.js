@@ -1065,6 +1065,15 @@ export const styles = `
   .library-action-message { color: #ffb5b5; font-size: .85rem; }
   .library-action-message:empty { display: none; }
   .library-detail-body { padding: 24px 0; line-height: 1.7; }
+  .library-collection { margin:24px 0; min-width:0; }
+  .library-collection-rail { display:flex; gap:16px; overflow-x:auto; padding:4px 4px 14px; scroll-snap-type:x proximity; }
+  .library-collection-part { flex:0 0 clamp(112px,16vw,156px); display:flex; flex-direction:column; gap:6px; padding:8px; border:1px solid #ffffff22; border-radius:12px; background:#ffffff05; color:inherit; text-align:left; scroll-snap-align:start; cursor:pointer; }
+  .library-collection-part[aria-current="true"] { border-color:var(--primary-color,#35c7e9); box-shadow:0 0 0 1px var(--primary-color,#35c7e9); }
+  .library-collection-part:focus-visible { outline:3px solid var(--primary-color,#35c7e9); outline-offset:2px; }
+  .library-collection-art { display:grid; place-items:center; position:relative; width:100%; aspect-ratio:2/3; overflow:hidden; border-radius:7px; background:#15212e; }
+  .library-collection-art img { width:100%; height:100%; object-fit:cover; }
+  .library-collection-part strong { line-height:1.3; }
+  .library-collection-part small { color:#bccbd8; line-height:1.4; }
   .library-detail-body h2 { font-size: 1.2rem; margin: 0 0 12px; }
   .library-detail-body p { color: #bfccdd; margin: 0 0 24px; }
   .media-details-synopsis { white-space: pre-line; overflow-wrap: anywhere; }

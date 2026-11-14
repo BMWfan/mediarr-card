@@ -103,7 +103,7 @@ export class CinemaLibraryView extends MediaLibraryView {
   }
 
   refresh() {
-    const extra=[...this.catalog,...this.discovery.trending,...this.discovery.personal,...this.discovery.upcoming];
+    const extra=[...this.catalog,...(this.collectionParts||[]),...this.discovery.trending,...this.discovery.personal,...this.discovery.upcoming];
     this.entries=mediaEntriesForCard(this.card,extra);
     this.renderPlayback();
     this.render();
