@@ -195,9 +195,23 @@ export class CinemaLibraryView extends MediaLibraryView {
     if(this.detailKey) {
       const entry=this.entries.find(entry=>entry.key===this.detailKey);
       const signature=JSON.stringify([entry,this.metadataMessage(entry||{}),this.messages.get(entry?.key),this.busy.has(entry?.key),this.requestCapabilities,this.requestCheckError,this.hasAvailablePlayer()]);
-      if(this.detailSignature===signature)return;
+      if(this.detailSignature===signature){
+        const markup=entry?this.collectionMarkup(entry):'';
+        const section=this.focus.querySelector('.library-collection');
+        if(section && markup && markup!==this.collectionRailMarkup){
+          const template=document.createElement('template');template.innerHTML=markup;
+          const position=section.querySelector('.library-collection-rail')?.scrollLeft||0;
+          patchCinemaDOM(section,template.content.firstElementChild.innerHTML);
+          const rail=section.querySelector('.library-collection-rail');if(rail)rail.scrollLeft=position;
+          section.querySelectorAll('[data-collection-key]').forEach(button=>button.onclick=()=>this.selectCollectionPart(button.dataset.collectionKey,entry));
+          const retry=section.querySelector('.library-collection-retry');if(retry)retry.onclick=()=>void this.loadMetadata(entry,true);
+          this.collectionRailMarkup=markup;
+        }
+        return;
+      }
       this.detailSignature=signature;
       this.selectedKey=this.detailKey;super.renderDetails(entry);
+      this.collectionRailMarkup=entry?this.collectionMarkup(entry):'';
       this.focus.querySelector('.library-play')?.remove();
       if(entry?.stage==='ready'&&entry.refs.some(ref=>ref.provider==='plex'&&ref.item.library_key)) {
         const play=document.createElement('button');play.type='button';play.className='library-request cinema-detail-play';play.innerHTML=`<ha-icon icon="mdi:play" aria-hidden="true"></ha-icon>${esc(this.label('Abspielen','Play'))}`;

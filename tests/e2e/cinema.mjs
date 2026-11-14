@@ -300,6 +300,15 @@ try {
  assert.match(await source.locator('.library-collection-part').nth(0).textContent(),/Mediathek.*Gesehen/s);
  assert.match(await source.locator('.library-collection-part').nth(1).textContent(),/Merkliste/);
  assert.match(await source.locator('.library-collection-part').nth(2).textContent(),/Hinzufügbar/);
+ await source.evaluate(el=>{
+   window.__collectionHeroImage=el.querySelector('.library-poster img');
+   el._fullLibraryState.groups.plex.push({...el._fullLibraryState.groups.radarr[0],library_key:'0:702'});
+   el._libraryView.refresh();
+ });
+ await source.locator('.library-collection-part').nth(1).filter({hasText:'In deiner Mediathek'}).waitFor();
+ assert.ok(await source.evaluate(el=>window.__collectionHeroImage===el.querySelector('.library-poster img')),'other-part status updates preserve the loaded hero image');
+ await source.evaluate(el=>{el._fullLibraryState.groups.plex.pop();el._libraryView.refresh();});
+ await source.locator('.library-collection-part').nth(1).filter({hasText:'Auf der Merkliste'}).waitFor();
  const requestsBefore=await page.evaluate(()=>window.__cinemaRequests.length);
  await source.locator('.library-collection-part').nth(1).click();
  await source.locator('h1').filter({hasText:'Orbit 2'}).waitFor();
@@ -332,6 +341,15 @@ try {
  await page.screenshot({path:path.join(runtime,'cinema-collection-overlay.png')});
  await overlay.locator('.mediarr-overlay-close').click();
  passed.push('compact-card fullscreen overlay supports trilogy navigation with its existing single vertical scroll surface');
+ await source.evaluate(el=>{el.setConfig({...window.__cinemaConfig,view:'library',library_layout:'classic'});el.hass=window.__cinemaHass;});
+ await source.locator('[data-category=library]').click();
+ await source.locator('h1').filter({hasText:'Orbit 1'}).waitFor();
+ await source.locator('.library-collection-part').nth(2).click();
+ await source.locator('h1').filter({hasText:'Orbit 3'}).waitFor();
+ assert.equal(await source.locator('[data-category=library]').getAttribute('aria-pressed'),'true','collection selection preserves the classic library filter');
+ assert.equal(await source.locator('.media-details-synopsis').count(),1);
+ passed.push('classic library can select a collection part outside its current filter without changing that filter');
+
 
  assert.deepEqual(errors,[]);
  console.log(`PASS: ${passed.length} cinema checks\n${passed.join('\n')}`);

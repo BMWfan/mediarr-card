@@ -7,7 +7,7 @@ and frontend 20261028.5. Synthetic provider/HTTP replies only.
   sorting/deduplication, TV/adult/invalid filtering, collection cache, missing
   membership, wrong movie replies, optional failure and retry recovery covered.
 - Card full `bash dev/test.sh`: **31 model/contract tests**, **6 release-policy
-  tests**, **78 browser checks**, exit **0**. Cinema suite now has 15 checks.
+  tests**, **79 browser checks**, exit **0**. Cinema suite now has 16 checks.
 - Browser scenarios cover desktop/mobile and compact fullscreen overlay, one
   unchanged-position synopsis, individual owned/watched/waiting/missing status,
   keyboard part selection, updated metadata/cast and exact selected movie request
@@ -33,3 +33,5 @@ sensor first/restart HA, then Card/reload frontend. Old cards ignore additional
 metadata; old backends retain normal movie details but cannot provide this rail.
 Hosted CI/tag verification will be recorded on the PR after push. Main merge
 requires owner testing and explicit approval; stable releases remain untouched.
+
+Final review also covers the opt-in classic library: selecting a part outside the active filter retains the selected details and preserves that filter. Changes to another part's availability patch only the collection rail, keeping the selected hero image node and horizontal scroll position. Both cases passed in the final full browser suite.

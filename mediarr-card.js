@@ -540,6 +540,7 @@ class MediaLibraryView {
   destroy() {this.seasonCancel?.();clearInterval(this.requestCheckTimer);clearTimeout(this.searchTimer);clearInterval(this.libraryTimer);++this.searchVersion;}
 
   scheduleSearch() {
+    this.collectionFocusKey=null;
     clearTimeout(this.searchTimer);
     ++this.searchVersion;
     this.catalog=[];this.searchPage=0;this.totalPages=0;this.searchError=null;
@@ -606,16 +607,17 @@ class MediaLibraryView {
     this.moreButton.hidden=visible.length<=this.localLimit && (!query || this.searchPage>=this.totalPages);
     this.moreButton.onclick=()=>{if(visible.length>this.localLimit){this.localLimit+=60;this.render();}else this.searchCatalog(this.searchPage+1);};
     this.moreButton.disabled=this.searching;
-    if (!visible.some(entry => entry.key === this.selectedKey)) this.selectedKey = visible[0]?.key;
+    if (!visible.some(entry => entry.key === this.selectedKey) && (!this.collectionFocusKey || this.collectionFocusKey!==this.selectedKey)) this.selectedKey = visible[0]?.key;
     this.results.innerHTML = visible.length ? visible.slice(0,this.localLimit).map(entry => `<button type="button" class="media-item library-result ${entry.key===this.selectedKey?'selected':''}" data-key="${esc(entry.key)}" aria-pressed="${entry.key===this.selectedKey}"><span class="library-result-poster">${downloadBadge(entry,this.label.bind(this))}${entry.poster?`<img src="${esc(entry.poster)}" alt="" loading="lazy">`:'<ha-icon icon="mdi:movie-open-outline"></ha-icon>'}</span><span class="media-item-title">${esc(entry.title)}</span><span class="library-result-meta">${esc([entry.year,entry.kind==='tv'?this.label('Serie','Series'):entry.kind==='movie'?this.label('Film','Movie'):this.label('Medientyp unbekannt','Unknown media type'),entry.rating?`★ ${entry.rating}`:''].filter(Boolean).join(' · '))}</span><span class="mediarr-result-summary">${esc(entry.summary)}</span><span class="library-status library-status-${entry.stage}">${esc(this.status(entry))}</span></button>`).join('') : `<p class="library-empty">${esc(query?this.label('Keine passenden Titel gefunden.','No matching titles found.'):this.label('Hier sind noch keine Titel vorhanden.','No titles here yet.'))}</p>`;
     this.results.querySelectorAll('button').forEach(button => button.onclick = () => {
       const hadFocus = button.matches(':focus');
       this.selectedKey=button.dataset.key;
+      this.collectionFocusKey=null;
       this.render();
       if (hadFocus) [...this.results.querySelectorAll('button')].find(row=>row.dataset.key===this.selectedKey)?.focus({preventScroll:true});
       if (matchMedia('(max-width: 700px)').matches) this.focus.scrollIntoView({behavior:'smooth',block:'start'});
     });
-    this.renderDetails(visible.find(entry=>entry.key===this.selectedKey));
+    this.renderDetails((this.collectionFocusKey===this.selectedKey?this.entries:visible).find(entry=>entry.key===this.selectedKey));
     this.shell.querySelectorAll('img').forEach(img => img.onerror = () => { img.onerror=null; img.hidden=true; });
   }
 
@@ -665,6 +667,7 @@ class MediaLibraryView {
     this.collectionParts=collectionCatalogParts(entry.item.collection.parts);
     this.collectionContext=entry.item.collection;
     this.selectedKey=key;
+    this.collectionFocusKey=key;
     if('detailKey' in this)this.detailKey=key;
     this.refresh();
     const heading=this.focus.querySelector('h1');
@@ -1000,9 +1003,23 @@ class CinemaLibraryView extends MediaLibraryView {
     if(this.detailKey) {
       const entry=this.entries.find(entry=>entry.key===this.detailKey);
       const signature=JSON.stringify([entry,this.metadataMessage(entry||{}),this.messages.get(entry?.key),this.busy.has(entry?.key),this.requestCapabilities,this.requestCheckError,this.hasAvailablePlayer()]);
-      if(this.detailSignature===signature)return;
+      if(this.detailSignature===signature){
+        const markup=entry?this.collectionMarkup(entry):'';
+        const section=this.focus.querySelector('.library-collection');
+        if(section && markup && markup!==this.collectionRailMarkup){
+          const template=document.createElement('template');template.innerHTML=markup;
+          const position=section.querySelector('.library-collection-rail')?.scrollLeft||0;
+          patchCinemaDOM(section,template.content.firstElementChild.innerHTML);
+          const rail=section.querySelector('.library-collection-rail');if(rail)rail.scrollLeft=position;
+          section.querySelectorAll('[data-collection-key]').forEach(button=>button.onclick=()=>this.selectCollectionPart(button.dataset.collectionKey,entry));
+          const retry=section.querySelector('.library-collection-retry');if(retry)retry.onclick=()=>void this.loadMetadata(entry,true);
+          this.collectionRailMarkup=markup;
+        }
+        return;
+      }
       this.detailSignature=signature;
       this.selectedKey=this.detailKey;super.renderDetails(entry);
+      this.collectionRailMarkup=entry?this.collectionMarkup(entry):'';
       this.focus.querySelector('.library-play')?.remove();
       if(entry?.stage==='ready'&&entry.refs.some(ref=>ref.provider==='plex'&&ref.item.library_key)) {
         const play=document.createElement('button');play.type='button';play.className='library-request cinema-detail-play';play.innerHTML=`<ha-icon icon="mdi:play" aria-hidden="true"></ha-icon>${esc(this.label('Abspielen','Play'))}`;
