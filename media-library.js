@@ -8,6 +8,25 @@ export function mediaNames(value) {
   return (Array.isArray(value) ? value : [value]).map(entry => mediaText(entry?.name ?? entry?.tag ?? entry)).filter(Boolean);
 }
 
+export function mediaAddedTimestamp(entry) {
+  const parse=value=>{
+    if(typeof value!=='number'&&typeof value!=='string')return 0;
+    const text=String(value).trim();
+    if(!text)return 0;
+    const number=Number(text);
+    const result=Number.isFinite(number)?(number<1e12?number*1000:number):Date.parse(text);
+    return Number.isFinite(result)&&result>0?result:0;
+  };
+  const libraryItems=(entry.refs||[]).filter(ref=>['plex','jellyfin'].includes(ref.provider)).map(ref=>ref.item);
+  for(const item of [...libraryItems,entry.item||{}]){
+    for(const field of ['added_at','addedAt','DateCreated','date_added','added']){
+      const time=parse(item?.[field]);
+      if(time)return time;
+    }
+  }
+  return 0;
+}
+
 export function hasUnwatchedMedia(entry) {
   const progress = entry.kind === 'tv' && entry.item.episode_progress;
   return progress?.available === true ? progress.unwatched_count > 0 : entry.watched !== true;
@@ -359,13 +378,13 @@ export class CompactMediaView {
 
   refresh() {
     const entries = mediaEntriesForCard(this.card).filter(entry => entry.watched !== true);
-    const signature = JSON.stringify([this.card._hass?.language,this.card.config.compact_items,entries.map(entry=>[entry.key,entry.stage,entry.title,entry.poster,entry.kind,entry.item.added,entry.item.added_at,mediaDownload(entry)])]);
+    const signature = JSON.stringify([this.card._hass?.language,this.card.config.compact_items,entries.map(entry=>[entry.key,entry.stage,entry.title,entry.poster,entry.kind,mediaAddedTimestamp(entry),mediaDownload(entry)])]);
     if (signature === this.signature) return;
     this.signature = signature;
     const esc = escapeMediaHtml;
     const limit = Math.max(1, Math.min(8, Math.floor(Number(this.card.config.compact_items) || 4)));
     const waiting = entries.filter(entry=>entry.stage==='waiting');
-    const recent = entries.filter(entry=>entry.stage==='ready').sort((a,b)=>(Date.parse(b.item.added_at || b.item.added) || 0)-(Date.parse(a.item.added_at || a.item.added) || 0));
+    const recent = entries.filter(entry=>entry.stage==='ready').sort((a,b)=>mediaAddedTimestamp(b)-mediaAddedTimestamp(a)||a.title.localeCompare(b.title));
     const firstRow = recent.length ? recent : entries.filter(entry=>entry.stage==='discover');
     this.panel.querySelector('.compact-subtitle').textContent = this.label('Dein Filmabend','Your movie night');
     this.panel.querySelector('h3').textContent = recent.length ? this.label('Neu hinzugefügt','Recently added') : this.label('Dein nächster Filmabend','Your next movie night');
