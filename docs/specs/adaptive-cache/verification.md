@@ -6,7 +6,7 @@ sensor/provider fixtures, system Chromium and the locked Playwright dependency:
 - `CHROMIUM_PATH=/usr/bin/chromium HA_DEV_RUNTIME_DIR=... HA_DEV_PORT=8125 bash dev/setup.sh`: PASS; temporary bundle build and pinned HA image pull.
 - `bash dev/start.sh` with the same environment: PASS; authenticated RUNNING HA and fixture readiness.
 - `bash dev/test.sh`: model/release and all browser groups exercised. **34 model,
-  6 release-policy, 81 browser checks** pass, including the final targeted Cinema
+  7 release-policy, 81 browser checks** pass, including the final targeted Cinema
   rerun (18 checks) after allowing HA's responsive layout to settle on resize.
 - Cinema covers empty-load reel/reduced motion, silent background refresh,
   unchanged image DOM, retained rows on outage, signed grant renewal without

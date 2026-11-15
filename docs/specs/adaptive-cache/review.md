@@ -13,6 +13,7 @@ compatibility and synthetic evidence. Findings corrected before publication:
 - Limited visible missing-art enrichment to four concurrent metadata requests.
 - Kept live Plex identity/authorization checks uncached and rejected stale source scopes.
 - Excluded private source-check timestamps from public revision changes.
+- Synchronized package, source and bundled build versions and added a release consistency regression.
 
 No workflow changes or production writes. Provider push, upstream conditional
 requests and durable Plex first-import history are outside this change. A file
