@@ -2,7 +2,7 @@
 
 ## Commands and results
 - Proposed: `python -m unittest discover -s tools/project_memory -p 'test_*.py' -v`.
-- **Not yet executed in target GitHub/Codex environment.** No test pass is claimed.
+- **Not executed successfully.** Attempted to clone the feature branch into the isolated test container, but DNS resolution of github.com failed (`Could not resolve host: github.com`). Consequently no unittest or runtime MCP handshake passed; no test pass is claimed.
 
 ## Manual checks
 - MCP stdio initialize, tools/list, tools/call: pending.
@@ -14,3 +14,14 @@
 - No session observer, auto-curation, remote persistence, authentication or full prompt-injection/secret protection.
 - No HA UI/backend changes; existing HA/browser suite not run for this isolated tooling spike.
 - Do not merge until security and functional findings are addressed, tests run and owner explicitly approves.
+
+## AI review — initial findings
+
+- **Fixed:** secret-detection regex contained escaped backslashes, making expected credential matches fail. Corrected in commit `102bda9`.
+- **Open, high:** source URL validation is not sufficient authentication/provenance; MCP clients can submit arbitrary purported facts. Restrict write permissions and mark content as untrusted before rollout.
+- **Open, high:** no full secret scanning; do not ingest production data or external issue text automatically.
+- **Open, medium:** MCP JSON-RPC interoperability needs actual client tests, including protocol framing/version and error handling.
+- **Open, medium:** persistence, duplicate behavior and token estimates need runtime verification.
+- **Open, design:** semantic retrieval and cloud Codex integration are not implemented; keyword overlap is explicitly only a spike.
+
+**Review disposition:** do not merge. Continue with reproducible tests and a real Codex cloud compatibility gate.
