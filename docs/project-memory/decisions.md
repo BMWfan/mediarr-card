@@ -1,6 +1,6 @@
-# Reviewed project memory — mediarr-card
+# Proposed curated project memory — mediarr-card
 
-This file is the proposed curated memory for SPEC #43. Entries below describe repository workflow only and must be checked against their linked sources before use.
+This file is a **draft proposal** for SPEC #43, not approved memory until owner review and merge. Entries below describe repository workflow only and must be checked against their linked sources before use.
 
 ## MEM-0001
 - id: MEM-0001
