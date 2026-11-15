@@ -320,6 +320,7 @@ try {
  await source.locator('.library-cast').filter({hasText:'Actor 703'}).waitFor();
  await page.setViewportSize({width:390,height:844});
  assert.ok(await source.locator('.library-collection-rail').evaluate(node=>node.scrollWidth>node.clientWidth),'mobile rail scrolls horizontally');
+ await page.waitForFunction(()=>document.documentElement.scrollWidth<=window.innerWidth,{},{timeout:5000});
  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),'no horizontal page overflow');
  await page.screenshot({path:path.join(runtime,'cinema-collection-mobile.png')});
  await source.locator('.library-actions .library-request').click();
@@ -350,6 +351,89 @@ try {
  assert.equal(await source.locator('.media-details-synopsis').count(),1);
  passed.push('classic library can select a collection part outside its current filter without changing that filter');
 
+
+ // Cache contract: first-load feedback only, retained content during refresh/errors.
+ await source.evaluate(el=>{
+   el.setConfig({...window.__cinemaConfig,view:'compact'});
+   el._fullLibraryState={groups:null,loaded:false};el._mediaMetadataCache.clear();el._cinemaSelection='recent';
+   el._catalogRequests=new Map();el._pendingLibraryRequests=new Set();
+   const previous=window.__cinemaHass;
+   window.__cacheHold=true;window.__cacheFail=false;
+   const movie={title:'Cache Film',media_type:'movie',tmdb_id:88001,year:2026,watched:false,library_key:'0:88001',poster:'/local/library-artwork.svg',banner:'/local/library-artwork.svg?wide',overview:'Bleibt sichtbar.',cast:[{name:'Test Actor'}]};
+   window.__cacheResponse={groups:{plex:[movie],radarr:[],sonarr:[]},page:1,total_pages:1,complete:true,revision:'cache-revision-1',cache:{state:'fresh',scope_id:'fixture'}};
+   el.hass={...previous,states:{},callWS:async msg=>{
+     if(msg.type==='mediarr/library'){
+       window.__cacheLastRequest=msg;
+       if(window.__cacheFail)throw {code:'library_unavailable'};
+       if(window.__cacheHold)return new Promise(resolve=>window.__cacheRelease=resolve);
+       return window.__cacheResponse;
+     }
+     if(msg.type==='mediarr/cinema')return {trending:[],personal:[],upcoming:[],account:{},errors:{}};
+     if(msg.type==='mediarr/collections')return {collections:[]};
+     if(msg.type==='mediarr/players')return {players:[]};
+     if(msg.type==='mediarr/request_capabilities')return {movie:{available:false},tv:{available:false}};
+     return previous.callWS(msg);
+   }};
+   el.setConfig({type:'custom:mediarr-card',view:'library'});
+ });
+ await source.locator('.cinema-loading-reel').waitFor();
+ await page.emulateMedia({reducedMotion:'reduce'});
+ assert.equal(await source.locator('.cinema-loading-reel').evaluate(node=>getComputedStyle(node).animationName),'none');
+ await page.screenshot({path:path.join(runtime,'cinema-cache-initial.png')});
+ await page.evaluate(()=>{window.__cacheHold=false;window.__cacheRelease(window.__cacheResponse);});
+ await source.locator('.cinema-hero h1').filter({hasText:'Cache Film'}).waitFor();
+ await source.locator('.cinema-loading-reel').waitFor({state:'detached'});
+ await source.evaluate(el=>{
+   window.__cacheHero=el.querySelector('.cinema-library-section img');window.__cacheHold=true;
+   void el._libraryView.loadLibrary(false,true);
+ });
+ await page.waitForTimeout(200);
+ assert.equal(await source.locator('.cinema-loading-reel').count(),0,'background refresh never replaces existing content with loader');
+ assert.equal(await source.locator('.cinema-hero h1').textContent(),'Cache Film');
+ await page.evaluate(()=>{window.__cacheHold=false;window.__cacheRelease({unchanged:true,groups:{},complete:true,page:1,total_pages:1,revision:'cache-revision-1',cache:{state:'fresh'}});});
+ await source.evaluate(async el=>{while(el._fullLibraryState.loading)await new Promise(resolve=>setTimeout(resolve,10));});
+ assert.equal(await page.evaluate(()=>window.__cacheLastRequest.since_revision),'cache-revision-1');
+ assert.ok(await page.evaluate(()=>Boolean(window.__cacheHero)));
+ assert.ok(await source.evaluate(el=>el.querySelector('.cinema-library-section img')===window.__cacheHero),'unchanged snapshot keeps the decoded hero node');
+ await source.evaluate(async el=>{
+   while(el._fullLibraryState.loading)await new Promise(resolve=>setTimeout(resolve,10));
+   window.__cacheFail=true;await el._libraryView.loadLibrary(false,true);
+ });
+ assert.equal(await source.locator('.cinema-hero h1').textContent(),'Cache Film');
+ assert.match(await source.locator('.cinema-library-status').textContent(),/Letzter bekannter Stand/);
+ assert.equal(await source.locator('.cinema-loading-reel').count(),0);
+ await page.screenshot({path:path.join(runtime,'cinema-cache-retained.png')});
+ passed.push('delayed cinema reel respects reduced motion; background refresh and outage retain films and unchanged image nodes');
+
+ const imageFixture=await fs.readFile(path.join(root,'tests/fixtures/library-artwork.svg'));
+ let failedArtworkRequests=0;
+ await page.route('**/api/mediarr/library_image/cache-fixture/**',route=>{
+   const broken=new URL(route.request().url()).searchParams.get('v')==='missing';
+   if(broken&&++failedArtworkRequests===1)return route.fulfill({status:404,headers:{'Cache-Control':'no-store'},body:''});
+   return route.fulfill({contentType:'image/svg+xml',body:imageFixture});
+ });
+ await source.evaluate(async el=>{
+   window.__cacheFail=false;
+   window.__cacheResponse.groups.plex[0].poster='/api/mediarr/library_image/cache-fixture/88001?v=poster1&scope=fixture&authSig=first';
+   window.__cacheResponse.revision='cache-revision-2';
+   await el._libraryView.loadLibrary(true);
+ });
+ await source.locator('.cinema-library-section img').evaluate(async img=>{await img.decode();window.__signedPoster=img;});
+ await source.evaluate(async el=>{
+   window.__cacheResponse.groups.plex[0].poster='/api/mediarr/library_image/cache-fixture/88001?v=poster1&scope=fixture&authSig=renewed';
+   window.__cacheResponse.revision='cache-revision-3';await el._libraryView.loadLibrary(true);
+ });
+ assert.ok(await source.evaluate(el=>el.querySelector('.cinema-library-section img')===window.__signedPoster));
+ assert.match(await source.locator('.cinema-library-section img').getAttribute('src'),/authSig=first/,'grant renewal keeps the already decoded asset');
+ await source.evaluate(async el=>{
+   window.__cacheResponse.groups.plex[0].poster='/api/mediarr/library_image/cache-fixture/88001?v=missing&scope=fixture&authSig=renewed';
+   window.__cacheResponse.revision='cache-revision-4';await el._libraryView.loadLibrary(true);
+ });
+ await source.locator('.cinema-library-section img[hidden]').waitFor({state:'attached'});
+ await source.locator('.cinema-library-section img:not([hidden])').waitFor({timeout:22000});
+ assert.ok(failedArtworkRequests>=2&&failedArtworkRequests<=4,'broken artwork retries selectively without a request storm');
+ assert.equal(await source.locator('.cinema-hero h1').textContent(),'Cache Film');
+ passed.push('signed image grant renewal preserves decoded artwork; failed artwork recovers selectively while the film stays visible');
 
  assert.deepEqual(errors,[]);
  console.log(`PASS: ${passed.length} cinema checks\n${passed.join('\n')}`);

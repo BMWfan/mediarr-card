@@ -1064,6 +1064,11 @@ export const styles = `
   .library-heading small { display: block; margin-top: 8px; color: #aab8cc; }
   .library-action-message { color: #ffb5b5; font-size: .85rem; }
   .library-action-message:empty { display: none; }
+  .cinema-initial-loader { display:flex; min-height:240px; flex-direction:column; align-items:center; justify-content:center; gap:14px; color:#b9c9d6; text-align:center; padding:28px; background:radial-gradient(ellipse at center,#19334266,transparent 65%); }
+  .cinema-initial-loader strong { color:#edf5fa; font-size:1.2rem; }
+  .cinema-loading-reel { width:64px; height:64px; border:3px solid #61d4ed; border-radius:50%; background:radial-gradient(circle at 50% 18%,#0b121a 0 7px,transparent 8px),radial-gradient(circle at 81% 40%,#0b121a 0 7px,transparent 8px),radial-gradient(circle at 69% 77%,#0b121a 0 7px,transparent 8px),radial-gradient(circle at 31% 77%,#0b121a 0 7px,transparent 8px),radial-gradient(circle at 19% 40%,#0b121a 0 7px,transparent 8px),radial-gradient(circle at center,#0b121a 0 5px,transparent 6px),linear-gradient(135deg,#6c98a8,#224251); box-shadow:0 0 24px #35c7e933; animation:mediarr-reel 2.8s linear infinite; }
+  @keyframes mediarr-reel { to { transform:rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .cinema-loading-reel { animation:none; } }
   .library-detail-body { padding: 24px 0; line-height: 1.7; }
   .library-collection { margin:24px 0; min-width:0; }
   .library-collection-rail { display:flex; gap:16px; overflow-x:auto; padding:4px 4px 14px; scroll-snap-type:x proximity; }

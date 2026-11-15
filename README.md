@@ -4,6 +4,25 @@
 
 A visual overview card for Home Assistant that combines media servers, media managers, and discovery/request sources in one Lovelace card.
 
+## Adaptive cache developer version
+
+Pair **Card v0.6.0-dev.11** with **Mediarr sensor v0.8.0-dev.10**, updating the
+integration first and restarting HA, then reloading the card frontend. These
+are HACS beta versions; stable releases and main are unchanged.
+
+Existing library data stays visible during background checks. A delayed film
+reel appears only on an empty first load and respects reduced motion. Typed,
+verified movie identities survive backend restarts; availability updates across
+Trending, search and library views without removing the film from the library.
+Failed sources retain bounded last-good rows and report stale state. Explicit
+waiting-only filters exclude ready titles. Good covers remain stable; missing
+artwork gets a short retry policy. The refresh icon forces a new library and
+connection check.
+
+See [cache design and research](docs/specs/adaptive-cache/research.md) and the
+[installation/acceptance guide](docs/cinema-prerelease-testing.md). No Redis,
+service worker, extra recommendation engine or provider webhook is required.
+
 ## Cinema developer version
 
 See the [existing-instance testing and compatibility guide](docs/cinema-prerelease-testing.md) for exact HACS selections, required backend versions and rollback.
@@ -26,7 +45,7 @@ with a short shared backend cache. Requests require the updated sensor version.
 Play requires an available authorized Plex player. Refresh/retry controls remain
 usable for recovery, and commands still handle outages occurring after a check.
 
-Pair **card 0.6.0-dev.7** with **sensor integration 0.8.0-dev.6**. These are HACS
+Pair **card 0.6.0-dev.11** with **sensor integration 0.8.0-dev.10**. These are HACS
 
 prereleases: enable beta versions and select the versions explicitly. Main and
 stable releases are unchanged until user approval. Update the sensor first and
