@@ -2,24 +2,26 @@
 
 ## Current candidate and compatibility
 
-Reviewed 2026-11-08. Use **Card v0.6.0-dev.7** and **sensor v0.8.0-dev.6**.
+Reviewed 2026-11-15. Use **Card v0.6.0-dev.11** and **sensor v0.8.0-dev.10**.
 Both are developer prereleases, selected explicitly through HACS beta versions.
-Card source/tag commit: `1265a0af7325a08138547b9b34f4b04b6b5e0dea`. Root `mediarr-card.js` SHA-256:
-`dc30b17d16817e40031c1949f7336375ad5c4b97030748bf37183a15bcd87358`. Do not move or replace an existing tag.
+Release verification is recorded on the adaptive-cache PRs and the tagged files;
+do not move or replace any existing tag.
 
 HACS uses root `mediarr-card.js` (`content_in_root: true`); no attached release
 asset or extra module files are needed. Verify the version displayed in the card
 editor after reloading, and check the published release links before installing:
 
-- [Card v0.6.0-dev.7](https://github.com/BMWfan/mediarr-card/releases/tag/v0.6.0-dev.7)
-- [Sensor v0.8.0-dev.6](https://github.com/BMWfan/mediarr_sensor/releases/tag/v0.8.0-dev.6)
+- [Card v0.6.0-dev.11](https://github.com/BMWfan/mediarr-card/releases/tag/v0.6.0-dev.11)
+- [Sensor v0.8.0-dev.10](https://github.com/BMWfan/mediarr_sensor/releases/tag/v0.8.0-dev.10)
 
 | Backend | Behavior with the current card |
 | --- | --- |
 | dev.3 | Cinema/library/collections/episode data and available Plex player selection; no pause API or readiness API. Requests/account-connect stay disabled; missing pause command explains the required update without inventing state. |
 | dev.4 | Adds current-playback fields and pause/resume; lacks readiness API, so new request/account-connect actions remain disabled. |
 | dev.5 | Full request/readiness API and corrected lookups. Minimum for the current functional request flow. |
-| dev.6 | Same runtime API as dev.5, plus guarded manual release automation. Recommended pairing. |
+| dev.6 | Same runtime API as dev.5, plus guarded manual release automation. Historical pairing. |
+| dev.9 | Adds movie collection details. No durable snapshot/identity cache. |
+| dev.10 | Adds private restart persistence, revision-aware shared reads and versioned artwork. Recommended pairing. |
 
 The dev.3 browser regression is a deliberate compatibility check, **not** the
 recommended installation. It mocks the older response/unknown-command behavior;
@@ -33,17 +35,17 @@ this guide supersedes their old installation pairing.
    Use a separate test dashboard in your existing instance. Do not run repository
    `dev/setup.sh` or `dev/onboard.py` on that instance.
 2. HACS → **Mediarr** integration → download/redownload → enable beta versions →
-   select **v0.8.0-dev.6**. If needed, add `BMWfan/mediarr_sensor` as a custom
+   select **v0.8.0-dev.10**. If needed, add `BMWfan/mediarr_sensor` as a custom
    Integration repository. Restart HA and verify the integration version. Keep existing configuration;
    on first setup configure Plex, Seerr and TMDB in the Mediarr integration.
-3. HACS → **Mediarr Card** → download/redownload → select **v0.6.0-dev.7** with
+3. HACS → **Mediarr Card** → download/redownload → select **v0.6.0-dev.11** with
    beta versions enabled. If needed, add `BMWfan/mediarr-card` as Dashboard/
    Lovelace repository. Do not select an unversioned branch.
 4. Keep one JavaScript module resource for
    `/hacsfiles/mediarr-card/mediarr-card.js`, preserving HACS's cache query when
    present. Remove duplicate resources such as a second `/local/mediarr-card.js`
    entry for this test. Reload resources and fully reload the browser/companion
-   frontend cache. Verify loaded build **0.6.0-dev.7** in the card editor.
+   frontend cache. Verify loaded build **0.6.0-dev.11** in the card editor.
 5. Add a panel view to the test dashboard:
 
    ```yaml
@@ -60,6 +62,14 @@ this guide supersedes their old installation pairing.
 
 If a version is missing, refresh HACS repository information and reopen its beta
 version selector. A draft PR alone is not installable through HACS.
+
+## Cache acceptance checks
+
+- Open the full-page card or compact overlay, then reload. Previously recognized films should retain their identity and availability; existing good covers should stay stable.
+- Background checks should not show a global loading banner or clear existing films. Only an empty initial load shows the film reel.
+- Check an actual manager import: availability/checkmark updates across views, while the film remains in the library. A waiting-only selection excludes it after availability.
+- A source outage must retain last-known rows and show a stale/error state; the refresh icon explicitly rechecks the library and connections.
+- Newly missing artwork should recover when supplied; changing a poster must not replace unrelated backdrops. Verify reduced-motion behavior on your device.
 
 ## Owner acceptance checks
 
@@ -95,5 +105,4 @@ Restore dashboard YAML or the backup if configuration/storage rollback is needed
 
 Release workflows are now manual. Publishing requires exact version confirmation;
 developer versions cannot become stable/latest. Main/stable merges and publication
-remain owner decisions after testing. This documentation PR changes no runtime
-bundle, tag, release, production instance or primary PR source branch.
+remain owner decisions after testing. This developer candidate changes the card and paired backend; it does not authorize a main merge, stable release or production deployment.

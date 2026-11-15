@@ -14,3 +14,9 @@ test('unknown type remains explicit and backend failures propagate with safe cod
 test('malformed responses are not used to guess a type',async()=>{
  await assert.rejects(fetchMediaMetadata({callWS:async()=>({overview:'Something'})},{title:'Film',kind:'unknown',ids:{}}),error=>error.code==='metadata_invalid');
 });
+test('mismatched type, TMDB or external IDs cannot poison metadata identity',async()=>{
+ const entry={title:'Film',kind:'movie',ids:{tmdb:'7',imdb:'tt0000007'},year:'2020'};
+ for(const result of [{media_type:'tv',tmdb_id:7},{media_type:'movie',tmdb_id:8},{media_type:'movie',tmdb_id:7,imdb_id:'tt0000008'}]){
+  await assert.rejects(fetchMediaMetadata({callWS:async()=>result},entry),error=>error.code==='metadata_invalid');
+ }
+});
