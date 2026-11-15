@@ -2,7 +2,7 @@
 
 ## Current candidate and compatibility
 
-Reviewed 2026-11-15. Use **Card v0.6.0-dev.11** and **sensor v0.8.0-dev.10**.
+Reviewed 2026-11-15. Use **Card v0.6.0-dev.12** and **sensor v0.8.0-dev.10**.
 Both are developer prereleases, selected explicitly through HACS beta versions.
 Release verification is recorded on the adaptive-cache PRs and the tagged files;
 do not move or replace any existing tag.
@@ -11,7 +11,7 @@ HACS uses root `mediarr-card.js` (`content_in_root: true`); no attached release
 asset or extra module files are needed. Verify the version displayed in the card
 editor after reloading, and check the published release links before installing:
 
-- [Card v0.6.0-dev.11](https://github.com/BMWfan/mediarr-card/releases/tag/v0.6.0-dev.11)
+- [Card v0.6.0-dev.12](https://github.com/BMWfan/mediarr-card/releases/tag/v0.6.0-dev.12)
 - [Sensor v0.8.0-dev.10](https://github.com/BMWfan/mediarr_sensor/releases/tag/v0.8.0-dev.10)
 
 | Backend | Behavior with the current card |
@@ -38,14 +38,14 @@ this guide supersedes their old installation pairing.
    select **v0.8.0-dev.10**. If needed, add `BMWfan/mediarr_sensor` as a custom
    Integration repository. Restart HA and verify the integration version. Keep existing configuration;
    on first setup configure Plex, Seerr and TMDB in the Mediarr integration.
-3. HACS → **Mediarr Card** → download/redownload → select **v0.6.0-dev.11** with
+3. HACS → **Mediarr Card** → download/redownload → select **v0.6.0-dev.12** with
    beta versions enabled. If needed, add `BMWfan/mediarr-card` as Dashboard/
    Lovelace repository. Do not select an unversioned branch.
 4. Keep one JavaScript module resource for
    `/hacsfiles/mediarr-card/mediarr-card.js`, preserving HACS's cache query when
    present. Remove duplicate resources such as a second `/local/mediarr-card.js`
    entry for this test. Reload resources and fully reload the browser/companion
-   frontend cache. Verify loaded build **0.6.0-dev.11** in the card editor.
+   frontend cache. Verify loaded build **0.6.0-dev.12** in the card editor.
 5. Add a panel view to the test dashboard:
 
    ```yaml

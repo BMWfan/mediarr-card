@@ -1,4 +1,4 @@
-import {MediaLibraryView, mediaEntriesForCard, mediaText, mediaNames, mediaImage, mediaDownload, escapeMediaHtml, downloadBadge, hasUnwatchedMedia, seriesEpisodeLabel, metadataNamespace} from './media-library.js';
+import {MediaLibraryView, mediaEntriesForCard, mediaText, mediaNames, mediaImage, mediaDownload, escapeMediaHtml, downloadBadge, hasUnwatchedMedia, seriesEpisodeLabel, metadataNamespace, mediaAddedTimestamp} from './media-library.js';
 
 const esc=escapeMediaHtml;
 const identity=item=>`${item.media_type}:${item.tmdb_id}`;
@@ -47,7 +47,7 @@ export function curatedCinemaEntries(entries,{selection='recent',kind='all',genr
     (!genre||mediaNames(entry.item.genres||entry.item.genre).includes(genre)) && (!unseen||hasUnwatchedMedia(entry)) &&
     (selection==='unwatched'?hasUnwatchedMedia(entry):selection==='started'?entry.item.in_progress===true:
       selection.startsWith('collection:')?entry.refs.some(ref=>collectionKeys.includes(ref.item.library_key)):true))
-    .sort((a,b)=>timestamp(b.item.added||b.item.added_at)-timestamp(a.item.added||a.item.added_at)||a.title.localeCompare(b.title));
+    .sort((a,b)=>mediaAddedTimestamp(b)-mediaAddedTimestamp(a)||a.title.localeCompare(b.title));
 }
 
 export class CinemaLibraryView extends MediaLibraryView {

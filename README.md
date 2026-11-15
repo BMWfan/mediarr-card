@@ -4,9 +4,18 @@
 
 A visual overview card for Home Assistant that combines media servers, media managers, and discovery/request sources in one Lovelace card.
 
+## Recent import ordering fix (Card v0.6.0-dev.12)
+
+Cinema and compact mode now use the precise Plex import timestamp before the
+sensor's date-only display value. Same-day imports sort newest first rather
+than alphabetically; actual library source dates take precedence over merged
+request/discovery metadata. Existing unseen/kind/genre filters still apply.
+Sensor v0.8.0-dev.10 is unchanged. Films without a verified library timestamp
+sort after known imports; no arrival dates are invented.
+
 ## Adaptive cache developer version
 
-Pair **Card v0.6.0-dev.11** with **Mediarr sensor v0.8.0-dev.10**, updating the
+Pair **Card v0.6.0-dev.12** with **Mediarr sensor v0.8.0-dev.10**, updating the
 integration first and restarting HA, then reloading the card frontend. These
 are HACS beta versions; stable releases and main are unchanged.
 
@@ -45,7 +54,7 @@ with a short shared backend cache. Requests require the updated sensor version.
 Play requires an available authorized Plex player. Refresh/retry controls remain
 usable for recovery, and commands still handle outages occurring after a check.
 
-Pair **card 0.6.0-dev.11** with **sensor integration 0.8.0-dev.10**. These are HACS
+Pair **card 0.6.0-dev.12** with **sensor integration 0.8.0-dev.10**. These are HACS
 
 prereleases: enable beta versions and select the versions explicitly. Main and
 stable releases are unchanged until user approval. Update the sensor first and
