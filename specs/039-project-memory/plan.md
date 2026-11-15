@@ -15,3 +15,9 @@
 - Manually exercise JSON-RPC MCP handshake and persistence across process restarts.
 - Review security: source boundary, injection, secrets, path access and unauthorized writes.
 - Compare equivalent tasks with/without memory using total actual tokens; do not report estimates as measured savings.
+
+## Follow-up phase (out of scope for this spike)
+
+- New SDD-Light SPEC: [#43](https://github.com/BMWfan/mediarr-card/issues/43) covers automatic Codex Cloud provisioning and memory durability across independent tasks.
+- Keep #40 as an isolated draft PoC. Do not claim same-machine process restart tests prove cross-task persistence.
+- Architecture selection, remote hosting, credentials, deployment and costs require explicit owner approval. No CI/release modifications in #40.
