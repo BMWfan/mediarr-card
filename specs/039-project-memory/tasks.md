@@ -6,9 +6,10 @@
 - [x] Tasks: break work into discrete testable steps.
 - [x] Analyze: identify upstream license mismatch, cloud MCP uncertainty and memory security boundaries.
 - [x] Implement: isolated branch and draft PR #40 with stdlib-only spike.
-- [x] Add initial unit test source files (not yet executed).
-- [ ] Verify: run tests and actual MCP handshake; record exact output.
-- [ ] Verify: assess cloud Codex MCP compatibility using real cloud execution.
+- [x] Add initial unit test source files (executed 2026-11-15).
+- [x] Verify: run tests and actual installed Codex MCP client; record exact output.
+- [x] Verify: assess selected cloud workspace; actual child Codex client works, independent hosted sessions/provisioning blocked (see verification.md).
 - [ ] Verify: perform token and quality benchmark.
-- [ ] AI review: inspect diff, security, and acceptance criteria; resolve findings.
+- [x] AI review: inspect diff, security, and acceptance criteria; fix confirmed defects, record remaining rollout risks.
 - [ ] Owner-approved merge: explicit approval required; no release/deployment.
+

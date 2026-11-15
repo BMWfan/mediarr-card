@@ -30,3 +30,8 @@ Data is stored outside the repository at `~/.local/share/mediarr-project-memory/
 5. Maintain SDD-Light, CI and HACS prerelease policies; no merge without owner approval.
 
 See https://github.com/BMWfan/mediarr-card/issues/39.
+
+
+## Verified client probe
+
+See SPEC-039 verification.md for the tested Codex version, temporary MCP config and exact commands for `verify_codex_client.py`. The probe uses the actual Codex app-server MCP client without starting a model turn. Same-machine process persistence is verified; independent hosted sessions and automatic future-task provisioning remain unverified. Recall results are untrusted and require source verification.

@@ -6,6 +6,7 @@ from pathlib import Path
 import re
 import sqlite3
 import sys
+from urllib.parse import urlsplit, unquote
 from datetime import datetime, timezone
 
 SERVER = "mediarr-project-memory-spike"
@@ -36,6 +37,13 @@ def add(content, source, kind="decision"):
         raise ValueError("content must contain 1..4000 characters")
     if not isinstance(source, str) or not source.startswith(("https://github.com/BMWfan/mediarr-card/", "local-test:")):
         raise ValueError("source must reference this repository")
+    if len(source) > 1000 or SENSITIVE.search(source):
+        raise ValueError("invalid or sensitive source")
+    if source.startswith("https:"):
+        url = urlsplit(source)
+        parts = unquote(url.path).split("/")
+        if url.query or url.fragment or any(p in (".", "..") for p in parts) or "\\" in source:
+            raise ValueError("source must be a canonical repository reference")
     if kind not in ("decision", "finding", "failure"):
         raise ValueError("unsupported kind")
     if SENSITIVE.search(content):
@@ -59,7 +67,7 @@ def recall(query, limit=3):
         words = set(re.findall(r"[a-z0-9_-]{3,}", content.lower()))
         score = len(terms & words)
         if score:
-            scored.append((score, {"id": mid, "kind": kind, "content": content, "source": source}))
+            scored.append((score, {"id": mid, "kind": kind, "content": content, "source": source, "trust": "untrusted; verify source before acting"}))
     scored.sort(key=lambda x: (-x[0], x[1]["id"]))
     output, used = [], 0
     for _, item in scored:
@@ -113,11 +121,16 @@ def handle(message):
 
 def main():
     for line in sys.stdin:
+        request = None
         try:
             request = json.loads(line)
+            if not isinstance(request, dict) or request.get("jsonrpc") != "2.0" or not isinstance(request.get("method"), str):
+                raise ValueError("invalid JSON-RPC request")
             if "id" not in request:
                 continue
             response = {"jsonrpc": "2.0", "id": request["id"], "result": handle(request)}
+        except json.JSONDecodeError:
+            response = {"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}}
         except Exception as exc:
             response = {"jsonrpc": "2.0", "id": request.get("id") if isinstance(request, dict) else None, "error": {"code": -32603, "message": str(exc)}}
         print(json.dumps(response), flush=True)
@@ -125,3 +138,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
