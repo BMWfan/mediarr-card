@@ -12,7 +12,7 @@ SERVER = "mediarr-project-memory-spike"
 ROOT = Path(__file__).resolve().parents[2]
 REPO_ID = "BMWfan/mediarr-card"
 TOKEN_LIMIT = 1200
-SENSITIVE = re.compile(r"(?i)(password|api[_-]?key|secret|token|authorization|bearer)\\s*[:=]\\s*\\S+")
+SENSITIVE = re.compile(r"(?i)(password|api[_-]?key|secret|token|authorization|bearer)\s*[:=]\s*\S+")
 
 
 def db_path():
@@ -40,7 +40,7 @@ def add(content, source, kind="decision"):
         raise ValueError("unsupported kind")
     if SENSITIVE.search(content):
         raise ValueError("possible secret detected")
-    digest = hashlib.sha256((REPO_ID + "\\0" + kind + "\\0" + content.strip()).encode()).hexdigest()[:24]
+    digest = hashlib.sha256((REPO_ID + "\0" + kind + "\0" + content.strip()).encode()).hexdigest()[:24]
     with connect() as db:
         db.execute("INSERT OR IGNORE INTO memories VALUES (?,?,?,?,?,?,1)",
                    (digest, REPO_ID, kind, content.strip(), source, datetime.now(timezone.utc).isoformat()))
