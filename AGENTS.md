@@ -39,3 +39,7 @@ and choose the S, M, or L specification template in
 [`.github/spec-templates/`](.github/spec-templates/). Preserve the development,
 testing, and safety requirements above. Do not edit CI or release workflows
 unless the issue explicitly requires it.
+
+## Token-efficient development
+
+Follow the scoped-context and A/B measurement rules in [`.github/SDD-LIGHT.md`](.github/SDD-LIGHT.md#token-efficient-execution-spec-46). Locate relevant files before reading large content, keep handoffs compact, and never trade test coverage or security for fewer tokens. No NetClaw memory service is required.
