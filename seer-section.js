@@ -412,7 +412,8 @@ export class SeerSection extends BaseSection {
   }
 
   _getStatusInfo(statusCode) {
-    const status = this.statusMap[statusCode] || {
+    const scalar = typeof statusCode === 'number' || typeof statusCode === 'string';
+    const status = scalar && Object.hasOwn(this.statusMap, statusCode) ? this.statusMap[statusCode] : {
       text: 'Unknown',
       icon: 'mdi:help-circle-outline',
       class: 'status-unknown'

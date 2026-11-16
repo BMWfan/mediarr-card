@@ -54,3 +54,10 @@ test('request status labels do not advertise failed or completed requests as ava
   assert.equal(section._getStatusInfo(4).text,'Fehlgeschlagen');
   assert.equal(section._getStatusInfo(5).text,'Abgeschlossen');
 });
+test('malformed request status never resolves inherited object properties', () => {
+  const section=new SeerSection();
+  for (const status of ['constructor','toString','__proto__',{},[],null,true,99]) {
+    assert.equal(section._getStatusInfo(status).text,'Unknown');
+    assert.equal(section._getStatusInfo(status).class,'status-unknown');
+  }
+});

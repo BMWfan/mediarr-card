@@ -97,11 +97,12 @@ try {
    const id='sensor.provenance_requests';
    const sensor=el._hass.states[id];
    const rows=[{...sensor.attributes.data[0],status:2,request_status:4},
-     {...sensor.attributes.data[1],status:4,request_status:5},sensor.attributes.data[0]];
+     {...sensor.attributes.data[1],status:4,request_status:5},sensor.attributes.data[0],
+     {...sensor.attributes.data[0],request_status:'constructor'}];
    el.setConfig({...el.config,view:'legacy',visible_sections:['seer']});
    el.hass={...el._hass,states:{...el._hass.states,[id]:{...sensor,attributes:{data:rows}}}};
  });
- for(const [index,label] of [[0,'Failed'],[1,'Completed'],[2,'Failed']]) {
+ for(const [index,label] of [[0,'Failed'],[1,'Completed'],[2,'Failed'],[3,'Unknown']]) {
    await source.locator(`[data-type=seer][data-index="${index}"]`).click();
    await source.locator('[data-mediarr-status]').filter({hasText:label}).waitFor();
    assert.equal(await source.locator('.status-available').count(),0);
