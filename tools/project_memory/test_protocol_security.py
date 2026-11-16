@@ -27,3 +27,9 @@ class ProtocolSecurityTests(unittest.TestCase):
                        'https://github.com/BMWfan/mediarr-card/issues/39?secret=synthetic']:
             with self.subTest(source=source), self.assertRaises(ValueError):
                 test_server.memory.add('synthetic boundary fixture', source)
+
+    def test_encoded_backslash_source_is_rejected(self):
+        for encoded in ('%5c', '%5C'):
+            with self.subTest(encoded=encoded), self.assertRaises(ValueError):
+                test_server.memory.add('synthetic encoded separator fixture',
+                    'https://github.com/BMWfan/mediarr-card/' + encoded + '..' + encoded + 'other/issues/1')

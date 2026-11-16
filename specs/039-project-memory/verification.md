@@ -270,3 +270,107 @@ PROBE EXIT 0
 
 ASSERT initial recall count = 0 PASS
 ```
+
+## 2026-11-16 — hosted coordinator verification in the onboarding environment
+
+### SDD-Light scope and disposition
+Read AGENTS.md, .github/SDD-LIGHT.md and the four SPEC-039 documents, including earlier logs and open gates. Continue the existing M spike, Issue #39 and Draft PR #40 only. The current user explicitly extends verification to hosted discovery, automatic setup and independent-task durability, and authorizes confirmed security fixes with regression tests. Plan/tasks for this pass: inventory actual capabilities; execute existing tests; inspect reusable configuration; attempt read-only task/PR discovery; review security; document blocked A/B/C gates and exact continuation prompts. No new service, paid API call, network rule, CI/release change, publication or deployment. This does not implement the broader #43 rollout.
+
+**Result: hosted integration and independent-task durability remain BLOCKED / NOT VERIFIED.** No child Codex process is counted as hosted MCP evidence. No A/B/C success is claimed. The tested security correction and Python workflow pass. Keep the existing draft; no merge/release.
+
+### Identity and revision evidence
+Actual `cloud_environment.environment_status({})` returned provider `cloud`, connectivity `connected`, current observations, running phase and enforced restricted networking. Identifiers (not credentials):
+
+- Environment: `ccarenv_b64_Y2NhcmVudl9kYmRjOWNmN2E5NmM4MTkxYjAwNGFmZjBhNTQzOGNhNA`.
+- Source configuration: `f9ef93a8a10aacc40a2d73cf3cbef7b6ca46d298265308714ab230b5ca9c0300~cecfg_95ed6bc98a70819b93508beec989f916`.
+- Source version: `f9ef93a8a10aacc40a2d73cf3cbef7b6ca46d298265308714ab230b5ca9c0300~cecfgver_6afa79a86e94819b96404994c341abd0`; observed spec revision `1`.
+- Hosted thread/session (`CODEX_THREAD_ID` and `CODEX_SESSION_ID`): `6afa79ad-6e6c-8191-9a49-2bd60c9cc069`.
+- Execution session (`CODEX_CAAS_SESSION_ID`): `52335b253307458abb0f7b6fb92db732`.
+- A separate Cloud-task API ID is **unavailable**; the thread ID is not asserted to be that API's task ID.
+- `codex --version`: `codex-cli 0.167.0-alpha.4`; also warned `Read-only file system (os error 30)` while creating PATH aliases. Hosted `CODEX_VERSION` is `0.0.0`, so it does not establish a meaningful coordinator version. CLI and coordinator versions are distinguished.
+- Existing checkout initially on `work`, clean, at `4a71fb220f539acdcaa2a4e278a2cd6aa44f0faa`.
+- `git fetch origin spike/39-project-memory-poc` succeeded; `git switch -c spike/39-project-memory-poc FETCH_HEAD` succeeded. Tested baseline is `557bc23cedff155316594057378df2b926551e93`.
+- `git ls-remote origin refs/heads/spike/39-project-memory-poc refs/pull/40/head` returned that same SHA for both refs. This establishes PR head association, not current Draft metadata.
+
+Only selected non-secret identifier variables above were printed; other relevant environment variables were enumerated by name/presence only. No credential files or values were inspected.
+
+### Hosted discovery and task API: actual observations
+The coordinator searched its actual `ALL_TOOLS` inventory for memory tools, MCP registration/reload and task creation. No `memory_record`, `memory_recall`, `memory_invalidate`, custom-server registration/reload, or independent-task creation tool is callable. The only broad keyword hit in the final search was `mcp__codex_apps__cloud_environment_onboarding_update_environment_config_draft`, whose schema is configuration saving, not MCP registration. Calling unavailable names would not be a real MCP call, so none was fabricated.
+
+`list_mcp_resources({})` returned the Cloud Environment, Cloud Environment Onboarding and Tailscale plugin/skill resources; no project-memory server resource. `list_mcp_resource_templates({})` returned `{"resourceTemplates":[]}`. Empty resource lists alone do not prove absent tools; the negative tool inventory is the relevant observation. No existing supported method in this session can load this repository's stdio MCP server into this coordinator. This is a limitation of the exposed session capabilities, not a universal platform-support claim.
+
+Actual read-only shell attempts:
+```text
+$ codex cloud list --json
+WARNING: proceeding, even though we could not create PATH aliases: Read-only file system (os error 30)
+Error: http error: list_tasks failed: error sending request for url (https://chatgpt.com/backend-api/wham/tasks/list?limit=20&task_filter=current)
+# exit 1; no HTTP status supplied in this attempt
+
+$ gh pr view 40 --repo BMWfan/mediarr-card --json number,isDraft,headRefName,headRefOid,body,title,url
+Post "https://api.github.com/graphql": Forbidden
+# exit 1
+$ gh issue view 39 --repo BMWfan/mediarr-card --json title,body
+Post "https://api.github.com/graphql": Forbidden
+# exit 1
+$ gh api repos/BMWfan/mediarr-card/pulls/40 --jq '{number,draft,head: {ref: .head.ref,sha: .head.sha},state,html_url}'
+Get "https://api.github.com/repos/BMWfan/mediarr-card/pulls/40": Forbidden
+# exit 1
+```
+The earlier environment's HTTP 401 is historical; this attempt establishes a request failure without an HTTP status, not a renewed 401. No login, task submission, model turn or policy bypass was attempted. Git transport works despite unavailable GitHub API access. PR title/body and Draft state cannot be independently read here; no PR metadata mutation or ready-for-review action is performed.
+
+### Automatic setup settings versus snapshot versus live data
+Read the actual bound draft using `cloud_environment_onboarding.read_environment_config_draft({})`: draft `f9ef93a8a10aacc40a2d73cf3cbef7b6ca46d298265308714ab230b5ca9c0300~cecfgdraft_58a43d60b3dc819b81d53da1059b42f0`, revision `2`. It contains the earlier tested HA `install_script` and `start_skill`, repository `BMWfan/mediarr-card` ref `main`, and no runtime variable or secret requirements. Neither script registers memory MCP. The spike is on the feature branch, not that configured main checkout.
+
+The offered draft-update schema supports install/start instructions, repositories, network, variables and secrets. It has **no MCP server field or shared-volume/storage attachment field**. An install script can prepare files/register a child CLI; it is not evidence that the hosted coordinator consumes that config. No unproven registration was added to otherwise working HA instructions, no existing settings were overwritten, and no network expansion or publication was made.
+
+The onboarding contract and runtime skill's `references/environment-changes.md` distinguish: saved draft instructions do not execute or publish; publication captures prepared filesystem state for later tasks; live processes do not survive; verification requires a new task from the published version. A seeded SQLite file in a snapshot is a starting copy, not demonstrated shared live writes. This API supplies no durability/volume contract. A successful resume on the same environment cannot establish cross-task persistence. No publication is permitted in this request, and none occurred.
+
+Supported alternative under current constraints: maintain sourced, owner-reviewed decisions in repository specs on this branch/PR, fetched at an exact commit by later tasks. That is durable versioned documentation, not automatic mutable MCP memory. For future mutable memory, an operator must first establish a supported coordinator MCP binding and genuinely durable repository-isolated storage, plus authentication/authorization, retention, backup and concurrency design. Do not expose this unauthenticated stdio spike as a network service or treat a filesystem cache as durable shared storage.
+
+### Python tests and confirmed correction
+Executed in `/workspace/mediarr-card`:
+```sh
+python -m unittest discover -s tools/project_memory -p 'test_*.py' -v
+```
+Baseline: all five existing tests passed, 0.045s, exit 0.
+
+Security review found the existing source canonicalization rejected literal backslashes but accepted percent-encoded backslashes in decoded URL paths. This violates its own canonical-reference policy; it is not proof of an actual GitHub redirect or authenticated provenance exploit. Added `test_encoded_backslash_source_is_rejected`, using only synthetic `%5c` / `%5C` separator fixtures. Before the correction, the exact suite ran six tests in 0.048s and exited 1 with two subtest failures:
+```text
+FAIL: test_encoded_backslash_source_is_rejected ... (encoded='%5c')
+AssertionError: ValueError not raised
+FAIL: test_encoded_backslash_source_is_rejected ... (encoded='%5C')
+AssertionError: ValueError not raised
+FAILED (failures=2)
+```
+Corrected `add()` to reject backslashes in the once-decoded path as well as the original source. Final actual output (same command, exit 0):
+```text
+test_encoded_backslash_source_is_rejected (test_protocol_security.ProtocolSecurityTests.test_encoded_backslash_source_is_rejected) ... ok
+test_malformed_input_keeps_server_alive (test_protocol_security.ProtocolSecurityTests.test_malformed_input_keeps_server_alive) ... ok
+test_source_traversal_and_sensitive_metadata (test_protocol_security.ProtocolSecurityTests.test_source_traversal_and_sensitive_metadata) ... ok
+test_mcp_handshake (test_server.MemoryTests.test_mcp_handshake) ... ok
+test_persistence_recall_dedup_and_invalidation (test_server.MemoryTests.test_persistence_recall_dedup_and_invalidation) ... ok
+test_repository_source_boundary_and_secrets (test_server.MemoryTests.test_repository_source_boundary_and_secrets) ... ok
+
+----------------------------------------------------------------------
+Ran 6 tests in 0.037s
+
+OK
+```
+AI review: correction is confined to source validation with a red/green regression. SQL remains parameterized and repository-filtered, invalidation still excludes rows, and recall labels text untrusted. Remaining risks from prior review are unchanged: unauthenticated writers, synthetic-source escape hatch, incomplete secret/injection defenses, no trusted provenance verification, no hostile concurrency/load or backup/restore verification, no semantic retrieval or measured token benefit. No HA/card logic changed; browser tests are not relevant to this correction. Rollback is limited to the source-validation/test change; no data migration or service deployment.
+
+### Independent Cloud phases and exact continuation orders
+Phase A in **this hosted task is blocked before record**: coordinator memory tools unavailable. No marker was written through a child client or directly into SQLite as a substitute. Reserved synthetic marker: `spec039-cloud-20261116-6afa79ad-a`. Memory ID: **not created**. Source for a future successful A: `local-test:spec039-cloud-20261116-6afa79ad-a`. Thus B and C currently have an unsatisfied prerequisite, not passing results. No independent tasks were launched and no invalidation occurred.
+
+Common instructions for each continuation (start a genuinely new task, not Resume, a subprocess or a child agent):
+> Work only on BMWfan/mediarr-card branch spike/39-project-memory-poc and existing Draft PR #40. Read AGENTS.md, .github/SDD-LIGHT.md and all four specs/039-project-memory documents first. Record actual environment ID, hosted task/thread ID, revision and version evidence. Use only synthetic data. No paid API, service deployment, environment publication, network changes, CI/release changes, new PR, merge or release. Use the hosted agent's own MCP tools; never count a CLI child, direct SQLite access or snapshot seeding as hosted evidence. Append real calls/responses and exact outcomes to verification.md. Preserve the Draft state. If required tools or durable storage are unavailable, stop dependent operations and record the blocker without inventing results.
+
+**Required A recovery order, before B:**
+> In a new independent task with an operator-supported hosted MCP binding and identified durable store, inspect the hosted tool inventory. Call memory_recall with {"query":"spec039-cloud-20261116-6afa79ad-a","limit":5} before any write; require absence. Then call memory_record with {"content":"Synthetic independent-task fixture spec039-cloud-20261116-6afa79ad-a","source":"local-test:spec039-cloud-20261116-6afa79ad-a","kind":"finding"}. Record the actual returned ID. Call memory_recall with the same query; require that exact ID/content/source. Log the actual task/store identity and responses; do not invalidate. End the task. If the marker already exists unexpectedly, report contamination instead of reusing it or silently choosing a different marker.
+
+**Exact B order (only after successful A is committed in this document):**
+> Start a new independent Cloud task. Apply the common instructions above. Before any memory write, invalidation, fixture creation, setup that seeds a database, or direct data edit, use hosted memory_recall with {"query":"spec039-cloud-20261116-6afa79ad-a","limit":5}. Compare the returned ID/content/source to A's actual logged response; require a matching record in the same identified durable store. A missing/mismatched record fails the persistence gate: do not recreate it. On a match, call hosted memory_invalidate with {"id":<the actual ID returned and recorded in A>}; require invalidated=true. Recall the same query again and require that ID absent. Log every actual response and distinct task identity. End the task; do not publish a new snapshot to transfer the invalidation.
+
+**Exact C order (only after successful B is committed in this document):**
+> Start a third independent Cloud task. Apply the common instructions above. Before any memory mutation or fixture seeding, call hosted memory_recall with {"query":"spec039-cloud-20261116-6afa79ad-a","limit":5}; require A's ID absent. Establish that this is the same durable store and that the valid A fixture was observed in B; an empty fresh store or identical snapshot seed is not evidence of persisted invalidation. Do not record or invalidate the fixture in C. Log actual task/environment/store identities and responses. Mark cross-task exclusion verified only with the complete A/B/C chain; otherwise leave the gate open.
+
+These are continuation **instructions**, not executed commands or simulated logs. Current disposition remains No-Go for automatic cloud rollout and no merge.

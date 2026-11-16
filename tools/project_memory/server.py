@@ -41,8 +41,9 @@ def add(content, source, kind="decision"):
         raise ValueError("invalid or sensitive source")
     if source.startswith("https:"):
         url = urlsplit(source)
-        parts = unquote(url.path).split("/")
-        if url.query or url.fragment or any(p in (".", "..") for p in parts) or "\\" in source:
+        decoded_path = unquote(url.path)
+        parts = decoded_path.split("/")
+        if url.query or url.fragment or any(p in (".", "..") for p in parts) or "\\" in source or "\\" in decoded_path:
             raise ValueError("source must be a canonical repository reference")
     if kind not in ("decision", "finding", "failure"):
         raise ValueError("unsupported kind")
