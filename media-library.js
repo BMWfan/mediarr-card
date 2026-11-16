@@ -210,7 +210,13 @@ export function collectMediaLibrary(config, hass) {
     const libraryRefs = group.refs.filter(ref => ['plex','jellyfin'].includes(ref.provider));
     const hasFile = group.refs.some(ref => ref.item.has_file === true || ref.item.hasFile === true);
     const requested = group.refs.some(ref => ['radarr','sonarr'].includes(ref.provider) || ref.entityKey === 'seer_entity' || ref.item.sent_at);
-    group.stage = libraryRefs.length || hasFile || group.refs.some(ref => ref.entityKey === 'seer_entity' && ref.item.status === 4) ? 'ready' : requested ? 'waiting' : 'discover';
+    // Request status (including FAILED=4 / COMPLETED=5) is not media availability.
+    const seerrAvailable = group.refs.some(ref => {
+      if (ref.provider !== 'seer') return false;
+      const status = ref.item.media_status ?? ref.item.media?.status;
+      return status === 5 || status === '5' || (group.kind === 'tv' && (status === 4 || status === '4'));
+    });
+    group.stage = libraryRefs.length || hasFile || seerrAvailable ? 'ready' : requested ? 'waiting' : 'discover';
     const watched = libraryRefs.map(({item}) => {
       for (const value of [item.watched,item.played,item.user_data?.played,item.UserData?.Played]) if (typeof value === 'boolean') return value;
       const count = item.view_count ?? item.viewCount;
@@ -317,13 +323,15 @@ export class CompactMediaView {
 
   refresh() {
     const entries = mediaEntriesForCard(this.card).filter(entry => entry.watched !== true);
-    const signature = JSON.stringify([this.card._hass?.language,this.card.config.compact_items,entries.map(entry=>[entry.key,entry.stage,entry.title,entry.poster,entry.kind,entry.item.added,entry.item.added_at,mediaDownload(entry)])]);
+    const inLibrary = entry => entry.refs.some(ref => ['plex','jellyfin'].includes(ref.provider));
+    const signature = JSON.stringify([this.card._hass?.language,this.card.config.compact_items,entries.map(entry=>[entry.key,entry.stage,entry.title,entry.poster,entry.kind,inLibrary(entry),entry.item.added,entry.item.added_at,mediaDownload(entry)])]);
     if (signature === this.signature) return;
     this.signature = signature;
     const esc = escapeMediaHtml;
     const limit = Math.max(1, Math.min(8, Math.floor(Number(this.card.config.compact_items) || 4)));
     const waiting = entries.filter(entry=>entry.stage==='waiting');
-    const recent = entries.filter(entry=>entry.stage==='ready').sort((a,b)=>(Date.parse(b.item.added_at || b.item.added) || 0)-(Date.parse(a.item.added_at || a.item.added) || 0));
+    // Manager/Seerr availability proves ownership, not a recent library import.
+    const recent = entries.filter(entry=>entry.stage==='ready' && inLibrary(entry)).sort((a,b)=>(Date.parse(b.item.added_at || b.item.added) || 0)-(Date.parse(a.item.added_at || a.item.added) || 0));
     const firstRow = recent.length ? recent : entries.filter(entry=>entry.stage==='discover');
     this.panel.querySelector('.compact-subtitle').textContent = this.label('Dein Filmabend','Your movie night');
     this.panel.querySelector('h3').textContent = recent.length ? this.label('Neu hinzugefügt','Recently added') : this.label('Dein nächster Filmabend','Your next movie night');
