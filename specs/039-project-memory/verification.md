@@ -1,5 +1,15 @@
 # Verification — SPEC-039
 
+## Current summary
+
+Updated 2026-11-16. Start with [handoff.md](handoff.md); explicit full-reading requests still take precedence. Historical logs below are retained as evidence, not cumulative current status.
+
+- Local MCP client/process persistence: previously verified; not hosted cross-task evidence.
+- Python: six tests passed after the encoded-backslash correction at `fdf5f08`.
+- Hosted MCP, automatic provisioning and independent-task A/B/C: blocked/unverified; A created no memory. See the 2026-11-16 investigation and exact continuation orders below.
+- Compact-context documentation: added in the follow-up below. Total-token/quality benchmark remains unrun; no savings percentage claimed.
+- Retain Draft PR #40; no merge/release/deployment authorization. Source validation, secret filtering and trust labels do not establish authenticated provenance or production readiness.
+
 ## Commands and results
 - Proposed: `python -m unittest discover -s tools/project_memory -p 'test_*.py' -v`.
 - **Not executed successfully.** Attempted to clone the feature branch into the isolated test container, but DNS resolution of github.com failed (`Could not resolve host: github.com`). Consequently no unittest or runtime MCP handshake passed; no test pass is claimed.
@@ -374,3 +384,26 @@ Common instructions for each continuation (start a genuinely new task, not Resum
 > Start a third independent Cloud task. Apply the common instructions above. Before any memory mutation or fixture seeding, call hosted memory_recall with {"query":"spec039-cloud-20261116-6afa79ad-a","limit":5}; require A's ID absent. Establish that this is the same durable store and that the valid A fixture was observed in B; an empty fresh store or identical snapshot seed is not evidence of persisted invalidation. Do not record or invalidate the fixture in C. Log actual task/environment/store identities and responses. Mark cross-task exclusion verified only with the complete A/B/C chain; otherwise leave the gate open.
 
 These are continuation **instructions**, not executed commands or simulated logs. Current disposition remains No-Go for automatic cloud rollout and no merge.
+
+
+## 2026-11-16 — compact development context follow-up
+
+User authorized the compact-documentation approach after discussing token reduction. Updated the existing M specification, plan and tasks before implementation. The latest request authorizes the small AGENTS.md routing addition despite the original MCP spike's exclusion; retain all existing safety/release rules. Same branch and existing Draft PR #40 only.
+
+Implemented:
+- PROJECT.md: stable source map, selective reading route and maintenance limits.
+- AGENTS.md: enter through project index and matching handoff; relevant spec/plan/tasks and SDD-Light still apply. Explicit user full-reading requests take precedence.
+- .github/spec-templates/handoff.md and specs/039-project-memory/handoff.md: checked revision, concise decisions/state, evidence links, blockers and next action. No global growing issue inventory.
+- Current summary at the top of this verification file; full historical evidence and A/B/C continuation orders retained.
+- benchmark.md: paired baseline/compact independent-task protocol with actual usage counters, context-maintenance cost, cache accounting and quality/rework checks. Baseline uses normal investigation, not artificially forced bulk reads.
+
+Actual verification from /workspace/mediarr-card:
+- A Python stdlib check read the five entry/template/handoff/benchmark documents, checked local Markdown link destinations and fragments, counted UTF-8 bytes/whitespace-delimited words, and asserted PROJECT.md <=300 words and the actual handoff <=250 words. Exit 0: `PASS: local links/anchors and compact word budgets`.
+- First checker attempt incorrectly required all links to be files; it stopped on the existing valid `.github/spec-templates/` directory link. Corrected the checker to permit existing directory destinations; no project link was changed to accommodate the checker.
+- PROJECT.md: 255 words / 2017 bytes. Issue #39 handoff: 228 words / 1902 bytes. Added AGENTS routing results in 438 words / 3359 bytes for that entire file. Template: 126 words / 959 bytes; benchmark protocol: 415 words / 2707 bytes. These are input-size observations, not token estimates.
+- Before this evidence append, verification.md was 64496 bytes. That log is not required in full by the new default route; explicit user requests can still require it. No percentage of end-to-end savings follows from these sizes.
+- `git diff --check`: exit 0. Reviewed the diff against scope, checked the source map against entry imports/build module list, and verified that blocked hosted MCP/A/B/C gates remain explicit in the handoff.
+
+No application code, memory-server code, package manifests, tests, CI/release workflows, generated bundle or environment configuration changed in this follow-up. No service started or published; no model benchmark tasks launched. Runtime tests were not repeated for this documentation-only change. Existing six-test Python result is historical evidence at fdf5f08, not represented as a new run.
+
+AI review: compact context is navigation, not a replacement for normative requirements, source inspection or evidence. Summaries are dated and revision-bound; update them by replacement, keep failed checks and blockers, and retrieve original logs when resolving contradictions. The fresh-task route is available only on branches/commits containing these documents; no claim of rollout to main or existing independent tasks. Total token/cost savings and quality impact remain UNMEASURED because no matched independent-task usage dataset has been collected. benchmark.md defines the next measurement without inventing results. No merge or release.

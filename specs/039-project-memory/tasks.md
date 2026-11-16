@@ -13,3 +13,12 @@
 - [x] AI review: inspect diff, security, and acceptance criteria; fix confirmed defects, record remaining rollout risks.
 - [ ] Owner-approved merge: explicit approval required; no release/deployment.
 
+
+## Compact-context follow-up — 2026-11-16
+- [x] Specify/clarify: user authorizes compact documentation to reduce repeated context; keep prior branch/PR and no-deployment constraints.
+- [x] Plan/analyze: record bounded index/handoff design, stale-summary risks and rollback in plan.md.
+- [x] Implement: PROJECT.md, AGENTS reading route, handoff template and Issue #39 handoff.
+- [x] Verify: check local links/anchors, 300/250-word budgets and whitespace; retain historical evidence and blockers.
+- [x] AI review: confirm selective reading preserves explicit instructions and SDD-Light gates; no runtime or CI changes.
+- [x] Prepare actual-total-token and quality comparison protocol in benchmark.md.
+- [ ] Execute matched independent-task benchmark with actual usage evidence; report all maintenance/retry costs and quality outcomes.
