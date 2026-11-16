@@ -375,13 +375,15 @@ class CompactMediaView {
 
   refresh() {
     const entries = mediaEntriesForCard(this.card).filter(entry => entry.watched !== true);
-    const signature = JSON.stringify([this.card._hass?.language,this.card.config.compact_items,entries.map(entry=>[entry.key,entry.stage,entry.title,entry.poster,entry.kind,entry.item.added,entry.item.added_at,mediaDownload(entry)])]);
+    const inLibrary = entry => entry.refs.some(ref => ['plex','jellyfin'].includes(ref.provider));
+    const signature = JSON.stringify([this.card._hass?.language,this.card.config.compact_items,entries.map(entry=>[entry.key,entry.stage,entry.title,entry.poster,entry.kind,inLibrary(entry),entry.item.added,entry.item.added_at,mediaDownload(entry)])]);
     if (signature === this.signature) return;
     this.signature = signature;
     const esc = escapeMediaHtml;
     const limit = Math.max(1, Math.min(8, Math.floor(Number(this.card.config.compact_items) || 4)));
     const waiting = entries.filter(entry=>entry.stage==='waiting');
-    const recent = entries.filter(entry=>entry.stage==='ready').sort((a,b)=>(Date.parse(b.item.added_at || b.item.added) || 0)-(Date.parse(a.item.added_at || a.item.added) || 0));
+    // Manager/Seerr availability proves ownership, not a recent library import.
+    const recent = entries.filter(entry=>entry.stage==='ready' && inLibrary(entry)).sort((a,b)=>(Date.parse(b.item.added_at || b.item.added) || 0)-(Date.parse(a.item.added_at || a.item.added) || 0));
     const firstRow = recent.length ? recent : entries.filter(entry=>entry.stage==='discover');
     this.panel.querySelector('.compact-subtitle').textContent = this.label('Dein Filmabend','Your movie night');
     this.panel.querySelector('h3').textContent = recent.length ? this.label('Neu hinzugefügt','Recently added') : this.label('Dein nächster Filmabend','Your next movie night');

@@ -63,10 +63,11 @@ try {
      row(706,'File evidence')];
    const sensor=(id,data)=>({entity_id:id,state:'6',attributes:{data}});
    el._fullLibraryState={loaded:true,complete:true,groups:null};
-   el.setConfig({...el.config,view:'library',library_layout:'classic',visible_sections:['seer','radarr'],
+   el.setConfig({...el.config,view:'library',library_layout:'classic',visible_sections:['seer','radarr','plex'],plex_entity:'sensor.provenance_plex',
      seer_entity:'sensor.provenance_requests',radarr_entity:'sensor.provenance_files'});
    el.hass={...el._hass,language:'en',states:{...el._hass.states,
      'sensor.provenance_requests':sensor('sensor.provenance_requests',requests),
+     'sensor.provenance_plex':sensor('sensor.provenance_plex',[]),
      'sensor.provenance_files':sensor('sensor.provenance_files',[row(706,'File evidence',{has_file:true})])}};
  });
  await source.locator('[data-category=waiting]').click();
@@ -77,6 +78,20 @@ try {
  const available=await source.locator('.library-result').allTextContents();
  assert.equal(available.length,3);
  for(const title of ['Available media','Partial series','File evidence'])assert.ok(available.some(text=>text.includes(title)));
+ // Ownership without Plex/Jellyfin library provenance is not a new arrival.
+ await source.evaluate(el=>el.setConfig({...el.config,view:'compact'}));
+ assert.equal(await source.locator('.compact-posters .compact-poster').count(),0,
+   'manager files and Seerr availability must not enter Recently added without library provenance');
+ await source.evaluate(el=>{
+   const id='sensor.provenance_plex';
+   const sensor=el._hass.states[id];
+   el.hass={...el._hass,states:{...el._hass.states,[id]:{...sensor,attributes:{data:[
+     {title:'Available media',type:'Movie',media_type:'movie',tmdb_id:703}
+   ]}}}};
+ });
+ assert.equal(await source.locator('.compact-posters .compact-poster').count(),1,
+   'new Plex evidence must refresh unchanged ready/title/ID entries');
+ assert.ok((await source.locator('.compact-posters').textContent()).includes('Available media'));
  // Exercise actual legacy detail rendering, including explicit status precedence.
  await source.evaluate(el=>{
    const id='sensor.provenance_requests';
@@ -92,5 +107,5 @@ try {
    assert.equal(await source.locator('.status-available').count(),0);
  }
  assert.deepEqual(errors,[]);
- console.log('PASS: 5 provider configuration checks\nfull source configuration with active media player and non-string release field\nmalformed/empty/unavailable sensor updates keep the unified library usable\ncompact opening overlay is independent of legacy renderers\nSeerr request/media/file evidence renders in the correct category\nlegacy failed/completed request labels and explicit request_status precedence');
+ console.log('PASS: 6 provider configuration checks\nfull source configuration with active media player and non-string release field\nmalformed/empty/unavailable sensor updates keep the unified library usable\ncompact opening overlay is independent of legacy renderers\nSeerr request/media/file evidence renders in the correct category\nlegacy failed/completed request labels and explicit request_status precedence\nmanager-only availability does not become a recent library arrival');
 } finally {await browser.close();}
