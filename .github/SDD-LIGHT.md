@@ -74,3 +74,30 @@ integration. Confirm the minimum backend version and command/service support
 for any feature that crosses that boundary; frontend mocks alone do not verify
 backend implementation. Coordinate paired changes with that integration's
 owner/repository rather than claiming this card repository verifies them.
+
+## Token-efficient execution (SPEC #46)
+
+Optimize **total task tokens**, not merely prompt length. Do not compromise correctness, tests, security, or owner approval to save tokens.
+
+1. **Start narrow:** identify issue scope, expected behavior and relevant file paths using filenames/search first. Read only matching source regions, nearby tests, and applicable instructions; expand only when evidence requires it. Avoid repository-wide dumps, full logs and unrelated history.
+2. **Progressive context:** use short searches and bounded outputs (file paths, changed lines, failing stack traces). Request full files or large tool results only when needed to reason correctly. Never truncate away security-relevant errors or test failures.
+3. **Small tasks:** one focused objective and acceptance criteria per task; reuse existing issue/spec decisions instead of repeating exploration. S tasks can live in issue/PR; M/L retain the full SDD-Light documents and risk analysis.
+4. **Compact handoff:** when switching agents/sessions, pass issue/PR links, branch, exact changed files, verified decisions, test results, remaining blockers and next action. Avoid copying full conversations or speculative summaries.
+5. **Tool discipline:** avoid repeated identical calls; group independent lookups when safe, and inspect diffs before reading whole files. Do not add tools, embeddings, memory services or new paid API calls just to optimize context.
+6. **Quality gate:** always run the smallest relevant tests first and expand when changes cross component boundaries; record failures and limitations. Do not skip required security, compatibility or release checks.
+7. **Measure:** for comparable tasks, capture actual total input/output tokens (and cached tokens if exposed), tool calls, wall-clock time, test outcomes, review defects and rework. Compare with a baseline; if usage telemetry is unavailable, state **not measurable** instead of estimating savings.
+
+### Context budget by size (guidance, not hard token caps)
+
+- **S:** issue, relevant instructions, affected code and nearest tests; avoid unrelated specs.
+- **M:** add scoped spec/plan/tasks, interfaces, affected dependencies and regression tests; retrieve supporting details incrementally.
+- **L:** include architecture, contracts, compatibility, risks and rollback; broaden context deliberately, never by dumping the entire repository.
+
+### A/B measurement template
+
+| Task | Baseline/optimized | Model/config | Total input tokens | Total output tokens | Cached tokens (if available) | Tool calls | Duration | Tests/quality | Rework |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | --- | --- |
+| Link to issue/commit | Baseline | Record | n/a | n/a | n/a | n/a | n/a | Record | Record |
+| Same acceptance criteria | Optimized | Record | n/a | n/a | n/a | n/a | n/a | Record | Record |
+
+Only claim token savings when measurements are comparable and actually observed. No automatic memory ingestion or MCP integration is implied by this section.
