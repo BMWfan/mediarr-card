@@ -262,7 +262,13 @@ function collectMediaLibrary(config, hass) {
     const libraryRefs = group.refs.filter(ref => ['plex','jellyfin'].includes(ref.provider));
     const hasFile = group.refs.some(ref => ref.item.has_file === true || ref.item.hasFile === true);
     const requested = group.refs.some(ref => ['radarr','sonarr'].includes(ref.provider) || ref.entityKey === 'seer_entity' || ref.item.sent_at);
-    group.stage = libraryRefs.length || hasFile || group.refs.some(ref => ref.entityKey === 'seer_entity' && ref.item.status === 4) ? 'ready' : requested ? 'waiting' : 'discover';
+    // Request status (including FAILED=4 / COMPLETED=5) is not media availability.
+    const seerrAvailable = group.refs.some(ref => {
+      if (ref.provider !== 'seer') return false;
+      const status = ref.item.media_status ?? ref.item.media?.status;
+      return status === 5 || status === '5' || (group.kind === 'tv' && (status === 4 || status === '4'));
+    });
+    group.stage = libraryRefs.length || hasFile || seerrAvailable ? 'ready' : requested ? 'waiting' : 'discover';
     const watched = libraryRefs.map(({item}) => {
       for (const value of [item.watched,item.played,item.user_data?.played,item.UserData?.Played]) if (typeof value === 'boolean') return value;
       const count = item.view_count ?? item.viewCount;
@@ -1413,6 +1419,7 @@ class BaseSection {
           data_unavailable: 'Keine Daten verfügbar',
           pending: 'Ausstehend',
           approved: 'Freigegeben',
+          completed: 'Abgeschlossen',
           declined: 'Abgelehnt',
           available: 'Verfügbar',
           unknown: 'Unbekannt',
@@ -1471,6 +1478,7 @@ class BaseSection {
           data_unavailable: 'Data unavailable',
           pending: 'Pending',
           approved: 'Approved',
+          completed: 'Completed',
           declined: 'Declined',
           available: 'Available',
           unknown: 'Unknown',
@@ -2146,7 +2154,8 @@ class SeerSection extends BaseSection {
       1: { text: 'Pending', icon: 'mdi:clock-outline', class: 'status-pending' },
       2: { text: 'Approved', icon: 'mdi:check-circle-outline', class: 'status-approved' },
       3: { text: 'Declined', icon: 'mdi:close-circle-outline', class: 'status-declined' },
-      4: { text: 'Available', icon: 'mdi:download-circle-outline', class: 'status-available' }
+      4: { text: 'Failed', icon: 'mdi:alert-circle-outline', class: 'status-failed' },
+      5: { text: 'Completed', icon: 'mdi:check-circle-outline', class: 'status-completed' }
     };
   }
 
@@ -2264,7 +2273,7 @@ class SeerSection extends BaseSection {
     let actionButton = '';
     if (sectionKey !== 'seer') {
       if (existingRequest) {
-        const statusInfo = this._getStatusInfo(existingRequest.status);
+        const statusInfo = this._getStatusInfo(existingRequest.request_status ?? existingRequest.status);
         actionButton = `
           <div class="request-button-container">
             <button class="request-button ${statusInfo.class}" disabled>
@@ -2285,8 +2294,8 @@ class SeerSection extends BaseSection {
       }
     }
 
-    if (item.status) {
-      const statusInfo = this._getStatusInfo(item.status);
+    if (item.request_status ?? item.status) {
+      const statusInfo = this._getStatusInfo(item.request_status ?? item.status);
       cardInstance.info.innerHTML = `
         <div class="title">${this._escapeHtml(title)}</div>
         <div class="details">

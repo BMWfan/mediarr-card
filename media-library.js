@@ -210,7 +210,13 @@ export function collectMediaLibrary(config, hass) {
     const libraryRefs = group.refs.filter(ref => ['plex','jellyfin'].includes(ref.provider));
     const hasFile = group.refs.some(ref => ref.item.has_file === true || ref.item.hasFile === true);
     const requested = group.refs.some(ref => ['radarr','sonarr'].includes(ref.provider) || ref.entityKey === 'seer_entity' || ref.item.sent_at);
-    group.stage = libraryRefs.length || hasFile || group.refs.some(ref => ref.entityKey === 'seer_entity' && ref.item.status === 4) ? 'ready' : requested ? 'waiting' : 'discover';
+    // Request status (including FAILED=4 / COMPLETED=5) is not media availability.
+    const seerrAvailable = group.refs.some(ref => {
+      if (ref.provider !== 'seer') return false;
+      const status = ref.item.media_status ?? ref.item.media?.status;
+      return status === 5 || status === '5' || (group.kind === 'tv' && (status === 4 || status === '4'));
+    });
+    group.stage = libraryRefs.length || hasFile || seerrAvailable ? 'ready' : requested ? 'waiting' : 'discover';
     const watched = libraryRefs.map(({item}) => {
       for (const value of [item.watched,item.played,item.user_data?.played,item.UserData?.Played]) if (typeof value === 'boolean') return value;
       const count = item.view_count ?? item.viewCount;
