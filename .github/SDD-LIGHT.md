@@ -77,12 +77,12 @@ owner/repository rather than claiming this card repository verifies them.
 
 ## Token-efficient execution (SPEC #46)
 
-Optimize **total task tokens**, not merely prompt length. Do not compromise correctness, tests, security, or owner approval to save tokens.
+Optimize **total task tokens**, not merely prompt length. Do not compromise correctness, tests, security, or owner approval to save tokens. Explicit user reading requirements and applicable instructions take precedence over this guidance; summaries never replace normative requirements.
 
 1. **Start narrow:** identify issue scope, expected behavior and relevant file paths using filenames/search first. Read only matching source regions, nearby tests, and applicable instructions; expand only when evidence requires it. Avoid repository-wide dumps, full logs and unrelated history.
-2. **Progressive context:** use short searches and bounded outputs (file paths, changed lines, failing stack traces). Request full files or large tool results only when needed to reason correctly. Never truncate away security-relevant errors or test failures.
+2. **Progressive context:** use short searches and bounded outputs (file paths, changed lines, failing stack traces). Request full files or large tool results only when needed to reason correctly. If a result is truncated, narrow the query or inspect the retained output before drawing conclusions. Never truncate away security-relevant errors or test failures.
 3. **Small tasks:** one focused objective and acceptance criteria per task; reuse existing issue/spec decisions instead of repeating exploration. S tasks can live in issue/PR; M/L retain the full SDD-Light documents and risk analysis.
-4. **Compact handoff:** when switching agents/sessions, pass issue/PR links, branch, exact changed files, verified decisions, test results, remaining blockers and next action. Avoid copying full conversations or speculative summaries.
+4. **Compact handoff:** when switching agents/sessions, pass issue/PR links, branch, exact changed files, verified decisions, test results, remaining blockers and next action. Use the [handoff template](spec-templates/handoff.md), aiming for at most 200 words unless correctness requires more. Replace stale summaries at task end; link complete evidence and preserve failed/unrun checks and coverage limits. Avoid copying full conversations or speculative summaries.
 5. **Tool discipline:** avoid repeated identical calls; group independent lookups when safe, and inspect diffs before reading whole files. Do not add tools, embeddings, memory services or new paid API calls just to optimize context.
 6. **Quality gate:** always run the smallest relevant tests first and expand when changes cross component boundaries; record failures and limitations. Do not skip required security, compatibility or release checks.
 7. **Measure:** for comparable tasks, capture actual total input/output tokens (and cached tokens if exposed), tool calls, wall-clock time, test outcomes, review defects and rework. Compare with a baseline; if usage telemetry is unavailable, state **not measurable** instead of estimating savings.
@@ -94,6 +94,8 @@ Optimize **total task tokens**, not merely prompt length. Do not compromise corr
 - **L:** include architecture, contracts, compatibility, risks and rollback; broaden context deliberately, never by dumping the entire repository.
 
 ### A/B measurement template
+
+Use the [matched-task protocol and detailed worksheet](spec-templates/token-benchmark.md) for independent baseline/optimized runs. Include handoff creation/maintenance, retries and rework in the total. Keep cached input as a subset when already included in input tokens; do not double-count it. Byte/word counts are not measured token savings.
 
 | Task | Baseline/optimized | Model/config | Total input tokens | Total output tokens | Cached tokens (if available) | Tool calls | Duration | Tests/quality | Rework |
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | --- | --- |
