@@ -81,6 +81,52 @@ function mediaImage(value) {
   return /^(https?:\/\/|\/(?!\/)|data:image\/(png|jpeg|webp|gif|svg\+xml)[;,])/i.test(url) ? url : '';
 }
 
+// Prefer landscape alternatives before a poster; never accept unsafe image URLs.
+function mediaBackdropImages(entry) {
+  if (!entry) return [];
+  const fields = item => [item?.banner, item?.fanart, item?.backdrop];
+  const poster = mediaImage(entry.poster);
+  return [...new Set([entry.banner,...fields(entry.item),...(entry.refs || []).flatMap(ref=>fields(ref.item))]
+    .map(mediaImage).filter(url=>url && url!==poster))];
+}
+
+// A refresh must not replace a loaded banner until its replacement actually loads.
+function setMediaBackdrop(target, entry, card) {
+  if (!target) return;
+  const key=entry?.key;
+  const cache=card._mediaBackdropCache ||= new Map();
+  const cached=key ? cache.get(key) : '';
+  const candidates=[...new Set([...mediaBackdropImages(entry),cached,mediaImage(entry?.poster)].filter(Boolean))];
+  const signature=JSON.stringify([key,candidates]);
+  if (target._mediarrBackdrop?.signature===signature) return;
+  const previous=target._mediarrBackdrop;
+  previous?.cancel?.();
+  const state={key,signature};target._mediarrBackdrop=state;
+  if (previous?.key!==key) target.style.backgroundImage=cached ? `url(${JSON.stringify(cached)})` : '';
+  if (!key) return;
+  let index=0;
+  const current=()=>target.isConnected && target._mediarrBackdrop===state;
+  const next=()=>{
+    if (!current() || index>=candidates.length) return;
+    const url=candidates[index++],image=new Image();
+    let timer;
+    const clear=()=>{clearTimeout(timer);image.onload=image.onerror=null;};
+    state.cancel=clear;
+    image.onload=()=>{
+      clear();if(!current())return;
+      target.style.backgroundImage=`url(${JSON.stringify(url)})`;
+      if(url!==mediaImage(entry.poster)) {
+        cache.delete(key);cache.set(key,url);
+        while(cache.size>32)cache.delete(cache.keys().next().value);
+      }
+    };
+    image.onerror=()=>{clear();next();};
+    timer=setTimeout(()=>{clear();next();},5000);
+    image.src=url;
+  };
+  next();
+}
+
 function escapeMediaHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[char]));
 }
@@ -691,7 +737,7 @@ class MediaLibraryView {
     const retry=this.focus.querySelector('.library-metadata-retry');
     if(retry) retry.onclick=()=>{void this.loadMetadata(entry,true);this.renderDetails(entry);};
     const backdrop=this.focus.querySelector('.library-backdrop');
-    if(entry.banner) backdrop.style.backgroundImage=`url(${JSON.stringify(entry.banner)})`;
+    setMediaBackdrop(backdrop,entry,this.card);
     const play = this.focus.querySelector('.library-play');
     if (play) play.onclick=()=>this.card._showClientSelector(playable.item);
     const action=this.focus.querySelector('.library-request:not(.library-play)');
@@ -979,8 +1025,9 @@ class CinemaLibraryView extends MediaLibraryView {
       <div class="cinema-discovery"><section><div class="cinema-section-heading"><h2>Trending</h2><label><span class="sr-only">${esc(this.label('Zeitraum','Period'))}</span><select class="cinema-period"><option value="week" ${this.period==='week'?'selected':''}>${esc(this.label('Diese Woche','This week'))}</option><option value="day" ${this.period==='day'?'selected':''}>${esc(this.label('Heute','Today'))}</option></select></label></div>${this.rail('trending',trending,this.discoveryLoading?this.label('Trending wird geladen …','Loading trending …'):this.label('Trending momentan nicht verfügbar.','Trending is currently unavailable.'))}</section><section><div class="cinema-section-heading"><h2>${esc(this.label('Für deinen Geschmack','Picked for you'))}</h2><button type="button" class="cinema-account-settings">${esc(this.discovery.account.connected?'TMDB ✓':this.label('TMDB-Konto','TMDB account'))}</button></div>${personal.length?this.rail('personal',personal):this.accountMarkup()}</section></div>
       <section class="cinema-upcoming"><div class="cinema-section-heading"><h2>${esc(this.label('Demnächst','Coming soon'))}</h2><label><span class="sr-only">${esc(this.label('Kommende Titel','Upcoming titles'))}</span><select class="cinema-upcoming-mode"><option value="tracked" ${this.upcomingMode==='tracked'?'selected':''}>${esc(this.label('Deine vorgemerkten Titel','Your tracked titles'))}</option><option value="all" ${this.upcomingMode==='all'?'selected':''}>${esc(this.label('Kommende Veröffentlichungen','Upcoming releases'))}</option></select></label></div><div class="cinema-upcoming-rail">${upcoming.slice(0,12).map(entry=>`<button type="button" class="cinema-upcoming-card" data-select-key="${esc(entry.key)}"><span>${entry.banner||entry.poster?`<img src="${esc(entry.banner||entry.poster)}" alt="" loading="lazy">`:'<ha-icon icon="mdi:movie-open-outline"></ha-icon>'}</span><strong>${esc(entry.title)}</strong><small>${esc(this.releaseLabel(entry))}</small></button>`).join('')||`<p class="cinema-empty">${esc(this.label('Keine kommenden Titel in dieser Auswahl.','No upcoming titles in this selection.'))}</p>`}</div></section>
       <section class="cinema-downloads"><div class="cinema-section-heading"><h2>${esc(this.label('Wird gerade geladen','Downloading'))}</h2><button type="button" class="cinema-reload">${esc(this.label('Aktualisieren','Refresh'))}</button></div><div class="cinema-download-grid">${downloads.map(entry=>`<button class="cinema-download-item" type="button" data-select-key="${esc(entry.key)}">${entry.poster?`<img src="${esc(entry.poster)}" alt="" loading="lazy">`:'<ha-icon icon="mdi:movie-open-outline"></ha-icon>'}<span><strong>${esc(entry.title)}</strong>${downloadBadge(entry,this.label.bind(this))}</span></button>`).join('')||`<p class="cinema-empty">${esc(this.label('Gerade keine aktiven Downloads.','No active downloads.'))}</p>`}</div></section>`;
-    const signature=homeMarkup+(hero?.banner||'');
+    const signature=homeMarkup+JSON.stringify([hero?.key,mediaBackdropImages(hero),hero?.poster]);
     if(this.homeSignature===signature)return;
+    if(!hero)setMediaBackdrop(this.home.querySelector('.cinema-hero-backdrop'),null,this.card);
     this.homeSignature=signature;patchCinemaDOM(this.home,homeMarkup);
     this.bindHome(hero);
     for(const el of this.home.querySelectorAll('[data-rail]'))el.scrollLeft=railScroll.get(el.dataset.rail)||0;
@@ -988,7 +1035,7 @@ class CinemaLibraryView extends MediaLibraryView {
     this.bindImages(this.home);
     // Manager lists may have IDs but no cover; enrich only a bounded visible set.
     for(const entry of upcoming.slice(0,12).filter(entry=>!entry.poster))void this.loadMetadata(entry);
-    if(hero?.banner){const bg=this.home.querySelector('.cinema-hero-backdrop');if(bg)bg.style.backgroundImage=`url(${JSON.stringify(hero.banner)})`;}
+    setMediaBackdrop(this.home.querySelector('.cinema-hero-backdrop'),hero,this.card);
     if(hero && (!hero.banner || hero.banner===hero.poster || hero.item.trailer===undefined))void this.loadMetadata(hero);
   }
 

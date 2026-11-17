@@ -1,4 +1,4 @@
-import {MediaLibraryView, mediaEntriesForCard, mediaText, mediaNames, mediaImage, mediaDownload, escapeMediaHtml, downloadBadge, hasUnwatchedMedia, seriesEpisodeLabel} from './media-library.js';
+import {MediaLibraryView, mediaEntriesForCard, mediaText, mediaNames, mediaImage, mediaBackdropImages, setMediaBackdrop, mediaDownload, escapeMediaHtml, downloadBadge, hasUnwatchedMedia, seriesEpisodeLabel} from './media-library.js';
 
 const esc=escapeMediaHtml;
 const identity=item=>`${item.media_type}:${item.tmdb_id}`;
@@ -222,8 +222,9 @@ export class CinemaLibraryView extends MediaLibraryView {
       <div class="cinema-discovery"><section><div class="cinema-section-heading"><h2>Trending</h2><label><span class="sr-only">${esc(this.label('Zeitraum','Period'))}</span><select class="cinema-period"><option value="week" ${this.period==='week'?'selected':''}>${esc(this.label('Diese Woche','This week'))}</option><option value="day" ${this.period==='day'?'selected':''}>${esc(this.label('Heute','Today'))}</option></select></label></div>${this.rail('trending',trending,this.discoveryLoading?this.label('Trending wird geladen …','Loading trending …'):this.label('Trending momentan nicht verfügbar.','Trending is currently unavailable.'))}</section><section><div class="cinema-section-heading"><h2>${esc(this.label('Für deinen Geschmack','Picked for you'))}</h2><button type="button" class="cinema-account-settings">${esc(this.discovery.account.connected?'TMDB ✓':this.label('TMDB-Konto','TMDB account'))}</button></div>${personal.length?this.rail('personal',personal):this.accountMarkup()}</section></div>
       <section class="cinema-upcoming"><div class="cinema-section-heading"><h2>${esc(this.label('Demnächst','Coming soon'))}</h2><label><span class="sr-only">${esc(this.label('Kommende Titel','Upcoming titles'))}</span><select class="cinema-upcoming-mode"><option value="tracked" ${this.upcomingMode==='tracked'?'selected':''}>${esc(this.label('Deine vorgemerkten Titel','Your tracked titles'))}</option><option value="all" ${this.upcomingMode==='all'?'selected':''}>${esc(this.label('Kommende Veröffentlichungen','Upcoming releases'))}</option></select></label></div><div class="cinema-upcoming-rail">${upcoming.slice(0,12).map(entry=>`<button type="button" class="cinema-upcoming-card" data-select-key="${esc(entry.key)}"><span>${entry.banner||entry.poster?`<img src="${esc(entry.banner||entry.poster)}" alt="" loading="lazy">`:'<ha-icon icon="mdi:movie-open-outline"></ha-icon>'}</span><strong>${esc(entry.title)}</strong><small>${esc(this.releaseLabel(entry))}</small></button>`).join('')||`<p class="cinema-empty">${esc(this.label('Keine kommenden Titel in dieser Auswahl.','No upcoming titles in this selection.'))}</p>`}</div></section>
       <section class="cinema-downloads"><div class="cinema-section-heading"><h2>${esc(this.label('Wird gerade geladen','Downloading'))}</h2><button type="button" class="cinema-reload">${esc(this.label('Aktualisieren','Refresh'))}</button></div><div class="cinema-download-grid">${downloads.map(entry=>`<button class="cinema-download-item" type="button" data-select-key="${esc(entry.key)}">${entry.poster?`<img src="${esc(entry.poster)}" alt="" loading="lazy">`:'<ha-icon icon="mdi:movie-open-outline"></ha-icon>'}<span><strong>${esc(entry.title)}</strong>${downloadBadge(entry,this.label.bind(this))}</span></button>`).join('')||`<p class="cinema-empty">${esc(this.label('Gerade keine aktiven Downloads.','No active downloads.'))}</p>`}</div></section>`;
-    const signature=homeMarkup+(hero?.banner||'');
+    const signature=homeMarkup+JSON.stringify([hero?.key,mediaBackdropImages(hero),hero?.poster]);
     if(this.homeSignature===signature)return;
+    if(!hero)setMediaBackdrop(this.home.querySelector('.cinema-hero-backdrop'),null,this.card);
     this.homeSignature=signature;patchCinemaDOM(this.home,homeMarkup);
     this.bindHome(hero);
     for(const el of this.home.querySelectorAll('[data-rail]'))el.scrollLeft=railScroll.get(el.dataset.rail)||0;
@@ -231,7 +232,7 @@ export class CinemaLibraryView extends MediaLibraryView {
     this.bindImages(this.home);
     // Manager lists may have IDs but no cover; enrich only a bounded visible set.
     for(const entry of upcoming.slice(0,12).filter(entry=>!entry.poster))void this.loadMetadata(entry);
-    if(hero?.banner){const bg=this.home.querySelector('.cinema-hero-backdrop');if(bg)bg.style.backgroundImage=`url(${JSON.stringify(hero.banner)})`;}
+    setMediaBackdrop(this.home.querySelector('.cinema-hero-backdrop'),hero,this.card);
     if(hero && (!hero.banner || hero.banner===hero.poster || hero.item.trailer===undefined))void this.loadMetadata(hero);
   }
 
