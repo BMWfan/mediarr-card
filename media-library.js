@@ -53,6 +53,51 @@ export function mediaImage(value) {
   return /^(https?:\/\/|\/(?!\/)|data:image\/(png|jpeg|webp|gif|svg\+xml)[;,])/i.test(url) ? url : '';
 }
 
+export function mediaBackdropImages(entry) {
+  if (!entry) return [];
+  const fields = item => [item?.banner, item?.fanart, item?.backdrop];
+  const poster = mediaImage(entry.poster);
+  return [...new Set([entry.banner,...fields(entry.item),...(entry.refs || []).flatMap(ref=>fields(ref.item))]
+    .map(mediaImage).filter(url=>url && url!==poster))];
+}
+
+// A refresh must not replace a loaded banner until its replacement actually loads.
+export function setMediaBackdrop(target, entry, card) {
+  if (!target) return;
+  const key=entry?.key;
+  const cache=card._mediaBackdropCache ||= new Map();
+  const cached=key ? cache.get(key) : '';
+  const candidates=[...new Set([...mediaBackdropImages(entry),cached,mediaImage(entry?.poster)].filter(Boolean))];
+  const signature=JSON.stringify([key,candidates]);
+  if (target._mediarrBackdrop?.signature===signature) return;
+  const previous=target._mediarrBackdrop;
+  previous?.cancel?.();
+  const state={key,signature};target._mediarrBackdrop=state;
+  if (previous?.key!==key) target.style.backgroundImage=cached ? `url(${JSON.stringify(cached)})` : '';
+  if (!key) return;
+  let index=0;
+  const current=()=>target.isConnected && target._mediarrBackdrop===state;
+  const next=()=>{
+    if (!current() || index>=candidates.length) return;
+    const url=candidates[index++],image=new Image();
+    let timer;
+    const clear=()=>{clearTimeout(timer);image.onload=image.onerror=null;};
+    state.cancel=clear;
+    image.onload=()=>{
+      clear();if(!current())return;
+      target.style.backgroundImage=`url(${JSON.stringify(url)})`;
+      if(url!==mediaImage(entry.poster)) {
+        cache.delete(key);cache.set(key,url);
+        while(cache.size>32)cache.delete(cache.keys().next().value);
+      }
+    };
+    image.onerror=()=>{clear();next();};
+    timer=setTimeout(()=>{clear();next();},5000);
+    image.src=url;
+  };
+  next();
+}
+
 export function escapeMediaHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[char]));
 }
@@ -785,7 +830,11 @@ export class MediaLibraryView {
           <details class="library-sources"><summary>${esc(this.label('Datenquellen', 'Data sources'))}</summary>${esc([...new Set(entry.refs.map(ref => ref.provider))].join(', '))}</details>
         </div>
       </article>`;
-    if(this.patchDetailMarkup)this.patchDetailMarkup(detailsMarkup);else this.focus.innerHTML=detailsMarkup;
+    if(this.patchDetailMarkup)this.patchDetailMarkup(detailsMarkup);
+    else if(this._detailMarkup!==detailsMarkup || !this.focus.querySelector('.library-detail')) {
+      this.focus.innerHTML=detailsMarkup;
+      this._detailMarkup=detailsMarkup;
+    }
     const retry=this.focus.querySelector('.library-metadata-retry');
     const rail=this.focus.querySelector('.library-collection-rail');
     if(rail)rail.scrollLeft=collectionScroll;
@@ -794,7 +843,7 @@ export class MediaLibraryView {
     if(collectionRetry)collectionRetry.onclick=()=>void this.loadMetadata(entry,true);
     if(retry) retry.onclick=()=>{void this.loadMetadata(entry,true);this.renderDetails(entry);};
     const backdrop=this.focus.querySelector('.library-backdrop');
-    if(entry.banner) backdrop.style.backgroundImage=`url(${JSON.stringify(entry.banner)})`;
+    setMediaBackdrop(backdrop,entry,this.card);
     const play = this.focus.querySelector('.library-play');
     if (play) play.onclick=()=>this.card._showClientSelector(playable.item);
     const action=this.focus.querySelector('.library-request:not(.library-play)');
