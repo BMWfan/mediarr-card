@@ -55,7 +55,7 @@ try {
  await page.keyboard.press('Escape');
  await page.locator('mediarr-overlay-host').waitFor({state:'detached'});
  await source.evaluate(el=>{
-   const row=(id,title,extra={})=>({request_id:id,tmdb_id:id,title,type:'Movie',media_type:'movie',status:4,...extra});
+   const row=(id,title,extra={})=>({request_id:id+1000,tmdb_id:id,title,type:'Movie',media_type:'movie',status:4,...extra});
    const requests=[row(701,'Failed request'),row(702,'Completed request',{status:5}),
      row(703,'Available media',{request_status:4,media_status:5}),
      row(704,'Partial movie',{status:2,request_status:2,media_status:4}),
@@ -92,6 +92,17 @@ try {
  assert.equal(await source.locator('.compact-posters .compact-poster').count(),1,
    'new Plex evidence must refresh unchanged ready/title/ID entries');
  assert.ok((await source.locator('.compact-posters').textContent()).includes('Available media'));
+ await source.evaluate(el=>{
+   const id='sensor.provenance_plex';
+   const sensor=el._hass.states[id];
+   const added='2026-01-02';
+   const rows=[
+     {...sensor.attributes.data[0],added,added_at:'1767326400'},
+     {title:'Zulu',media_type:'movie',tmdb_id:707,added,added_at:'1767337200'}
+   ];
+   el.hass={...el._hass,states:{...el._hass.states,[id]:{...sensor,attributes:{data:rows}}}};
+ });
+ assert.deepEqual(await source.locator('.compact-posters .compact-poster-title').allTextContents(),['Zulu','Available media']);
  // Exercise actual legacy detail rendering, including explicit status precedence.
  await source.evaluate(el=>{
    const id='sensor.provenance_requests';

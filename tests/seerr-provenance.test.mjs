@@ -1,11 +1,38 @@
 import test from 'node:test';
+import {readFileSync} from 'node:fs';
 import assert from 'node:assert/strict';
-import { collectMediaLibrary } from '../media-library.js';
+import { collectMediaLibrary, CompactMediaView } from '../media-library.js';
 import { SeerSection } from '../seer-section.js';
 const state = data => ({state:'1',attributes:{data}});
 const row = extra => ({title:'Synthetic request',type:'Movie',media_type:'movie',request_id:401,tmdb_id:91,...extra});
 const collect = (item, extraConfig={}, extraStates={}) => collectMediaLibrary(
   {seer_entity:'s',...extraConfig}, {states:{s:state([row(item)]),...extraStates}})[0];
+
+test('compact recent imports refresh when Plex evidence and its timestamp arrive', () => {
+  const request = row({title:'Zulu', media_type:'tv', type:'TV Show', request_status:2, media_status:4});
+  const older = row({title:'Alpha', tmdb_id:92, added_at:'1767326400'});
+  const card = {
+    config:{seer_entity:'s', plex_entity:'p'},
+    _hass:{language:'en', states:{s:state([request]), p:state([older])}},
+    _mediaLabel:(_german,english)=>english,
+  };
+  const nodes = new Map();
+  const view = new CompactMediaView(card);
+  view.panel = {querySelector(selector) {
+    if (!nodes.has(selector)) nodes.set(selector,{style:{},querySelector:()=>null,querySelectorAll:()=>[]});
+    return nodes.get(selector);
+  }};
+  const posters = () => nodes.get('.compact-posters').innerHTML;
+  view.refresh();
+  assert.match(posters(), /Alpha/);
+  assert.doesNotMatch(posters(), /Zulu/);
+  card._hass.states.p = state([older,{...request,added_at:''}]);
+  view.refresh();
+  assert.match(posters(), /Alpha.*Zulu/);
+  card._hass.states.p = state([older,{...request,added_at:'1767337200'}]);
+  view.refresh();
+  assert.match(posters(), /Zulu.*Alpha/);
+});
 
 test('all legacy and explicit request statuses are distinct from ownership', () => {
   for (const status of [1,2,3,4,5,'4','5']) {
@@ -59,5 +86,13 @@ test('malformed request status never resolves inherited object properties', () =
   for (const status of ['constructor','toString','__proto__',{},[],null,true,99]) {
     assert.equal(section._getStatusInfo(status).text,'Unknown');
     assert.equal(section._getStatusInfo(status).class,'status-unknown');
+  }
+});
+test('paired sensor fixture preserves Seerr availability and legacy request-only behavior', () => {
+  const contract = JSON.parse(readFileSync(new URL('./contracts/v1.json', import.meta.url)));
+  for (const {request_status, media_status, kind, stage} of contract.seerr_cases) {
+    const legacy = {status:request_status, media_type:kind, type:kind === 'tv' ? 'TV Show' : 'Movie'};
+    assert.equal(collect(legacy).stage, 'waiting');
+    assert.equal(collect({...legacy, request_status, media_status}).stage, stage);
   }
 });

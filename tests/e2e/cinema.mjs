@@ -279,6 +279,162 @@ try {
  assert.equal(await source.locator('.library-request').isDisabled(),true,'old backend without readiness API cannot enable new request actions');
  assert.ok((await source.locator('.library-actions').textContent()).includes('Integration aktualisieren'));
  passed.push('sensor dev.3 player shape supports Cinema/play and missing pause command explains upgrade without fabricating state');
+ await source.evaluate(async el=>{
+   const parts=[701,702,703].map((tmdb_id,index)=>({media_type:'movie',tmdb_id,title:`Orbit ${index+1}`,year:String(1985+index),poster:'/local/library-artwork.svg',overview:`Handlung Teil ${index+1}`}));
+   const collection={id:9900,name:'Orbit Trilogie',parts};
+   const previous=window.__cinemaHass.callWS;
+   const groups={plex:[{...parts[0],library_key:'0:701',watched:true}],radarr:[{...parts[1]}],sonarr:[]};
+   window.__cinemaHass.callWS=async msg=>{
+     if(msg.type==='mediarr/request_capabilities')return {movie:{available:true},tv:{available:true}};
+     if(msg.type==='mediarr/library')return {groups,page:1,total_pages:1,complete:true};
+     if(msg.type==='mediarr/media_details'&&parts.some(part=>part.tmdb_id===msg.tmdb_id))return {...parts.find(part=>part.tmdb_id===msg.tmdb_id),collection,cast:[{name:`Actor ${msg.tmdb_id}`}],streaming:{region:'DE',subscription:[],rent:[],buy:[]},trailer:null};
+     return previous(msg);
+   };
+   el._fullLibraryState.groups=groups;el._mediaMetadataCache.clear();el.hass={...window.__cinemaHass};
+   await el._libraryView.loadRequestCapabilities();
+   el._libraryView.refresh();el._libraryView.openDetails(el._libraryView.entries.find(entry=>entry.ids.tmdb==='701').key);
+ });
+ await source.locator('.library-collection-part').nth(2).waitFor();
+ assert.equal(await source.locator('.media-details-synopsis').count(),1);
+ assert.equal(await source.locator('.library-collection').evaluate(node=>node.previousElementSibling.className),'media-details-synopsis','rail follows the existing single synopsis');
+ assert.match(await source.locator('.library-collection-part').nth(0).textContent(),/Mediathek.*Gesehen/s);
+ assert.match(await source.locator('.library-collection-part').nth(1).textContent(),/Merkliste/);
+ assert.match(await source.locator('.library-collection-part').nth(2).textContent(),/Hinzufügbar/);
+ await source.evaluate(el=>{
+   window.__collectionHeroImage=el.querySelector('.library-poster img');
+   el._fullLibraryState.groups.plex.push({...el._fullLibraryState.groups.radarr[0],library_key:'0:702'});
+   el._libraryView.refresh();
+ });
+ await source.locator('.library-collection-part').nth(1).filter({hasText:'In deiner Mediathek'}).waitFor();
+ assert.ok(await source.evaluate(el=>window.__collectionHeroImage===el.querySelector('.library-poster img')),'other-part status updates preserve the loaded hero image');
+ await source.evaluate(el=>{el._fullLibraryState.groups.plex.pop();el._libraryView.refresh();});
+ await source.locator('.library-collection-part').nth(1).filter({hasText:'Auf der Merkliste'}).waitFor();
+ const requestsBefore=await page.evaluate(()=>window.__cinemaRequests.length);
+ await source.locator('.library-collection-part').nth(1).click();
+ await source.locator('h1').filter({hasText:'Orbit 2'}).waitFor();
+ assert.match(await source.locator('.media-details-synopsis').textContent(),/Handlung Teil 2/);
+ assert.equal(await source.locator('.library-collection-part[aria-current=true]').textContent().then(text=>text.includes('Orbit 2')),true);
+ assert.equal(await page.evaluate(()=>window.__cinemaRequests.length),requestsBefore,'part selection never adds media');
+ await source.locator('.library-collection-part').nth(2).focus();await page.keyboard.press('Enter');
+ await source.locator('h1').filter({hasText:'Orbit 3'}).waitFor();
+ await source.locator('.library-cast').filter({hasText:'Actor 703'}).waitFor();
+ await page.setViewportSize({width:390,height:844});
+ assert.ok(await source.locator('.library-collection-rail').evaluate(node=>node.scrollWidth>node.clientWidth),'mobile rail scrolls horizontally');
+ await page.waitForFunction(()=>document.documentElement.scrollWidth<=window.innerWidth,{},{timeout:5000});
+ assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),'no horizontal page overflow');
+ await page.screenshot({path:path.join(runtime,'cinema-collection-mobile.png')});
+ await source.locator('.library-actions .library-request').click();
+ assert.equal((await page.evaluate(()=>window.__cinemaRequests.at(-1))).data.tmdb_id,703,'request uses the selected movie ID, never collection 9900');
+ await page.setViewportSize({width:1440,height:1000});
+ await source.locator('.library-collection-part').nth(0).click();
+ await source.locator('h1').filter({hasText:'Orbit 1'}).waitFor();
+ await page.screenshot({path:path.join(runtime,'cinema-collection-desktop.png')});
+ passed.push('canonical trilogy rail preserves one synopsis, individual state, keyboard/mobile navigation and exact selected-film requests');
+ await source.evaluate(el=>{el.setConfig({...window.__cinemaConfig,view:'compact'});el.hass=window.__cinemaHass;});
+ await source.locator('.mediarr-open-button').click();
+ await overlay.locator('.cinema-unseen input').uncheck();
+ await overlay.locator('.cinema-library-section .cinema-poster').filter({hasText:'Orbit 1'}).click();
+ await overlay.locator('.library-collection-part').nth(2).click();
+ await overlay.locator('h1').filter({hasText:'Orbit 3'}).waitFor();
+ assert.equal(await overlay.locator('.media-details-synopsis').count(),1);
+ assert.equal(await overlay.locator('.cinema-body').evaluate(node=>getComputedStyle(node).overflowY),'auto');
+ assert.equal(await overlay.locator('.library-focus').evaluate(node=>getComputedStyle(node).overflowY),'visible');
+ await page.screenshot({path:path.join(runtime,'cinema-collection-overlay.png')});
+ await overlay.locator('.mediarr-overlay-close').click();
+ passed.push('compact-card fullscreen overlay supports trilogy navigation with its existing single vertical scroll surface');
+ await source.evaluate(el=>{el.setConfig({...window.__cinemaConfig,view:'library',library_layout:'classic'});el.hass=window.__cinemaHass;});
+ await source.locator('[data-category=library]').click();
+ await source.locator('h1').filter({hasText:'Orbit 1'}).waitFor();
+ await source.locator('.library-collection-part').nth(2).click();
+ await source.locator('h1').filter({hasText:'Orbit 3'}).waitFor();
+ assert.equal(await source.locator('[data-category=library]').getAttribute('aria-pressed'),'true','collection selection preserves the classic library filter');
+ assert.equal(await source.locator('.media-details-synopsis').count(),1);
+ passed.push('classic library can select a collection part outside its current filter without changing that filter');
+
+
+ // Cache contract: first-load feedback only, retained content during refresh/errors.
+ await source.evaluate(el=>{
+   el.setConfig({...window.__cinemaConfig,view:'compact'});
+   el._fullLibraryState={groups:null,loaded:false};el._mediaMetadataCache.clear();el._cinemaSelection='recent';
+   el._catalogRequests=new Map();el._pendingLibraryRequests=new Set();
+   const previous=window.__cinemaHass;
+   window.__cacheHold=true;window.__cacheFail=false;
+   const movie={title:'Cache Film',media_type:'movie',tmdb_id:88001,year:2026,watched:false,library_key:'0:88001',poster:'/local/library-artwork.svg',banner:'/local/library-artwork.svg?wide',overview:'Bleibt sichtbar.',cast:[{name:'Test Actor'}]};
+   window.__cacheResponse={groups:{plex:[movie],radarr:[],sonarr:[]},page:1,total_pages:1,complete:true,revision:'cache-revision-1',cache:{state:'fresh',scope_id:'fixture'}};
+   el.hass={...previous,states:{},callWS:async msg=>{
+     if(msg.type==='mediarr/library'){
+       window.__cacheLastRequest=msg;
+       if(window.__cacheFail)throw {code:'library_unavailable'};
+       if(window.__cacheHold)return new Promise(resolve=>window.__cacheRelease=resolve);
+       return window.__cacheResponse;
+     }
+     if(msg.type==='mediarr/cinema')return {trending:[],personal:[],upcoming:[],account:{},errors:{}};
+     if(msg.type==='mediarr/collections')return {collections:[]};
+     if(msg.type==='mediarr/players')return {players:[]};
+     if(msg.type==='mediarr/request_capabilities')return {movie:{available:false},tv:{available:false}};
+     return previous.callWS(msg);
+   }};
+   el.setConfig({type:'custom:mediarr-card',view:'library'});
+ });
+ await source.locator('.cinema-loading-reel').waitFor();
+ await page.emulateMedia({reducedMotion:'reduce'});
+ assert.equal(await source.locator('.cinema-loading-reel').evaluate(node=>getComputedStyle(node).animationName),'none');
+ await page.screenshot({path:path.join(runtime,'cinema-cache-initial.png')});
+ await page.evaluate(()=>{window.__cacheHold=false;window.__cacheRelease(window.__cacheResponse);});
+ await source.locator('.cinema-hero h1').filter({hasText:'Cache Film'}).waitFor();
+ await source.locator('.cinema-loading-reel').waitFor({state:'detached'});
+ await source.evaluate(el=>{
+   window.__cacheHero=el.querySelector('.cinema-library-section img');window.__cacheHold=true;
+   void el._libraryView.loadLibrary(false,true);
+ });
+ await page.waitForTimeout(200);
+ assert.equal(await source.locator('.cinema-loading-reel').count(),0,'background refresh never replaces existing content with loader');
+ assert.equal(await source.locator('.cinema-hero h1').textContent(),'Cache Film');
+ await page.evaluate(()=>{window.__cacheHold=false;window.__cacheRelease({unchanged:true,groups:{},complete:true,page:1,total_pages:1,revision:'cache-revision-1',cache:{state:'fresh'}});});
+ await source.evaluate(async el=>{while(el._fullLibraryState.loading)await new Promise(resolve=>setTimeout(resolve,10));});
+ assert.equal(await page.evaluate(()=>window.__cacheLastRequest.since_revision),'cache-revision-1');
+ assert.ok(await page.evaluate(()=>Boolean(window.__cacheHero)));
+ assert.ok(await source.evaluate(el=>el.querySelector('.cinema-library-section img')===window.__cacheHero),'unchanged snapshot keeps the decoded hero node');
+ await source.evaluate(async el=>{
+   while(el._fullLibraryState.loading)await new Promise(resolve=>setTimeout(resolve,10));
+   window.__cacheFail=true;await el._libraryView.loadLibrary(false,true);
+ });
+ assert.equal(await source.locator('.cinema-hero h1').textContent(),'Cache Film');
+ assert.match(await source.locator('.cinema-library-status').textContent(),/Letzter bekannter Stand/);
+ assert.equal(await source.locator('.cinema-loading-reel').count(),0);
+ await page.screenshot({path:path.join(runtime,'cinema-cache-retained.png')});
+ passed.push('delayed cinema reel respects reduced motion; background refresh and outage retain films and unchanged image nodes');
+
+ const imageFixture=await fs.readFile(path.join(root,'tests/fixtures/library-artwork.svg'));
+ let failedArtworkRequests=0;
+ await page.route('**/api/mediarr/library_image/cache-fixture/**',route=>{
+   const broken=new URL(route.request().url()).searchParams.get('v')==='missing';
+   if(broken&&++failedArtworkRequests===1)return route.fulfill({status:404,headers:{'Cache-Control':'no-store'},body:''});
+   return route.fulfill({contentType:'image/svg+xml',body:imageFixture});
+ });
+ await source.evaluate(async el=>{
+   window.__cacheFail=false;
+   window.__cacheResponse.groups.plex[0].poster='/api/mediarr/library_image/cache-fixture/88001?v=poster1&scope=fixture&authSig=first';
+   window.__cacheResponse.revision='cache-revision-2';
+   await el._libraryView.loadLibrary(true);
+ });
+ await source.locator('.cinema-library-section img').evaluate(async img=>{await img.decode();window.__signedPoster=img;});
+ await source.evaluate(async el=>{
+   window.__cacheResponse.groups.plex[0].poster='/api/mediarr/library_image/cache-fixture/88001?v=poster1&scope=fixture&authSig=renewed';
+   window.__cacheResponse.revision='cache-revision-3';await el._libraryView.loadLibrary(true);
+ });
+ assert.ok(await source.evaluate(el=>el.querySelector('.cinema-library-section img')===window.__signedPoster));
+ assert.match(await source.locator('.cinema-library-section img').getAttribute('src'),/authSig=first/,'grant renewal keeps the already decoded asset');
+ await source.evaluate(async el=>{
+   window.__cacheResponse.groups.plex[0].poster='/api/mediarr/library_image/cache-fixture/88001?v=missing&scope=fixture&authSig=renewed';
+   window.__cacheResponse.revision='cache-revision-4';await el._libraryView.loadLibrary(true);
+ });
+ await source.locator('.cinema-library-section img[hidden]').waitFor({state:'attached'});
+ await source.locator('.cinema-library-section img:not([hidden])').waitFor({timeout:22000});
+ assert.ok(failedArtworkRequests>=2&&failedArtworkRequests<=4,'broken artwork retries selectively without a request storm');
+ assert.equal(await source.locator('.cinema-hero h1').textContent(),'Cache Film');
+ passed.push('signed image grant renewal preserves decoded artwork; failed artwork recovers selectively while the film stays visible');
+
  assert.deepEqual(errors,[]);
  console.log(`PASS: ${passed.length} cinema checks\n${passed.join('\n')}`);
 } finally {await browser.close();}

@@ -1,8 +1,15 @@
-import {MediaLibraryView, mediaEntriesForCard, mediaText, mediaNames, mediaImage, mediaDownload, escapeMediaHtml, downloadBadge, hasUnwatchedMedia, seriesEpisodeLabel} from './media-library.js';
+import {MediaLibraryView, mediaEntriesForCard, mediaText, mediaNames, mediaImage, mediaDownload, escapeMediaHtml, downloadBadge, hasUnwatchedMedia, seriesEpisodeLabel, metadataNamespace, mediaAddedTimestamp, inMediaLibrary} from './media-library.js';
 
 const esc=escapeMediaHtml;
 const identity=item=>`${item.media_type}:${item.tmdb_id}`;
 const entryIdentity=entry=>`${entry.kind}:${entry.ids.tmdb}`;
+function cinemaArtworkIdentity(value) {
+  try {
+    const url=new URL(value,location.origin);
+    if(url.origin===location.origin&&url.pathname.startsWith('/api/mediarr/library_image/'))url.searchParams.delete('authSig');
+    return url.href;
+  }catch{return String(value||'');}
+}
 // Preserve loaded images, focus and native controls during live HA updates.
 function patchCinemaDOM(target, markup) {
   const template=document.createElement('template');template.innerHTML=markup;
@@ -17,8 +24,11 @@ function patchCinemaDOM(target, markup) {
       }
       if(current.nodeType===Node.TEXT_NODE){if(current.data!==next.data)current.data=next.data;return;}
       if(!(current instanceof Element))return;
+      const sameArtwork=current instanceof HTMLImageElement&&next instanceof HTMLImageElement&&cinemaArtworkIdentity(current.src)===cinemaArtworkIdentity(next.src);
+      const keepDecoded=sameArtwork&&current.complete&&current.naturalWidth>0;
+      if(current instanceof HTMLImageElement&&!sameArtwork){clearTimeout(current._artRetry);current._artRetry=null;current._artAttempts=0;current.hidden=false;}
       for(const attr of [...current.attributes])if(!next.hasAttribute(attr.name)&&!(attr.name==='style'&&current.classList.contains('cinema-hero-backdrop')))current.removeAttribute(attr.name);
-      for(const attr of next.attributes)if(current.getAttribute(attr.name)!==attr.value)current.setAttribute(attr.name,attr.value);
+      for(const attr of next.attributes)if(!(attr.name==='src'&&keepDecoded)&&current.getAttribute(attr.name)!==attr.value)current.setAttribute(attr.name,attr.value);
       patch(current,next);
       if(current instanceof HTMLInputElement&&current.checked!==next.checked)current.checked=next.checked;
       if(current instanceof HTMLSelectElement&&current.value!==next.value)current.value=next.value;
@@ -34,10 +44,11 @@ const timestamp=value=>{
 
 export function curatedCinemaEntries(entries,{selection='recent',kind='all',genre='',unseen=true,collectionKeys=[]}={}) {
   return entries.filter(entry=>entry.stage==='ready' && (kind==='all'||entry.kind===kind) &&
+    (selection!=='recent'||inMediaLibrary(entry)) &&
     (!genre||mediaNames(entry.item.genres||entry.item.genre).includes(genre)) && (!unseen||hasUnwatchedMedia(entry)) &&
     (selection==='unwatched'?hasUnwatchedMedia(entry):selection==='started'?entry.item.in_progress===true:
       selection.startsWith('collection:')?entry.refs.some(ref=>collectionKeys.includes(ref.item.library_key)):true))
-    .sort((a,b)=>timestamp(b.item.added||b.item.added_at)-timestamp(a.item.added||a.item.added_at)||a.title.localeCompare(b.title));
+    .sort((first,second)=>mediaAddedTimestamp(second)-mediaAddedTimestamp(first)||first.title.localeCompare(second.title));
 }
 
 export class CinemaLibraryView extends MediaLibraryView {
@@ -55,7 +66,7 @@ export class CinemaLibraryView extends MediaLibraryView {
     this.card.querySelectorAll('.section, .media-details-panel').forEach(el=>el.remove());
     this.card.content.hidden=true;this.card.classList.add('mediarr-cinema');
     this.shell=document.createElement('div');this.shell.className='cinema-shell';
-    this.shell.innerHTML=`<header class="cinema-toolbar"><span class="cinema-brand"><ha-icon icon="mdi:movie-open-outline"></ha-icon><strong>Mediarr</strong></span><label class="cinema-search-label"><span class="sr-only">${esc(this.label('Filme und Serien suchen','Search movies and series'))}</span><ha-icon icon="mdi:magnify" aria-hidden="true"></ha-icon><input class="mediarr-search" type="search" maxlength="128" placeholder="${esc(this.label('Filme und Serien suchen …','Search movies and series …'))}"></label><button class="cinema-refresh-connections" type="button" aria-label="${esc(this.label('Verbindungen prüfen','Check connections'))}" title="${esc(this.label('Verbindungen prüfen','Check connections'))}"><ha-icon icon="mdi:refresh" aria-hidden="true"></ha-icon></button><button class="cinema-download-shortcut" type="button" aria-label="${esc(this.label('Laufende Downloads','Active downloads'))}"><ha-icon icon="mdi:download-outline"></ha-icon><span></span></button></header><main class="cinema-body"><p class="cinema-library-status" role="status"></p><section class="cinema-detail" hidden><button type="button" class="cinema-back">← ${esc(this.label('Zurück zur Auswahl','Back to selection'))}</button><div class="library-focus"></div></section><div class="cinema-home"></div><section class="cinema-search-results" hidden><p class="mediarr-search-status" role="status"></p><p class="library-catalog-status" role="status"></p><div class="library-results"></div><button class="library-load-more" type="button">${esc(this.label('Weitere Treffer','More results'))}</button></section></main>`;
+    this.shell.innerHTML=`<header class="cinema-toolbar"><span class="cinema-brand"><ha-icon icon="mdi:movie-open-outline"></ha-icon><strong>Mediarr</strong></span><label class="cinema-search-label"><span class="sr-only">${esc(this.label('Filme und Serien suchen','Search movies and series'))}</span><ha-icon icon="mdi:magnify" aria-hidden="true"></ha-icon><input class="mediarr-search" type="search" maxlength="128" placeholder="${esc(this.label('Filme und Serien suchen …','Search movies and series …'))}"></label><button class="cinema-refresh-connections" type="button" aria-label="${esc(this.label('Mediathek und Verbindungen aktualisieren','Refresh library and connections'))}" title="${esc(this.label('Mediathek und Verbindungen aktualisieren','Refresh library and connections'))}"><ha-icon icon="mdi:refresh" aria-hidden="true"></ha-icon></button><button class="cinema-download-shortcut" type="button" aria-label="${esc(this.label('Laufende Downloads','Active downloads'))}"><ha-icon icon="mdi:download-outline"></ha-icon><span></span></button></header><main class="cinema-body"><p class="cinema-library-status" role="status"></p><section class="cinema-detail" hidden><button type="button" class="cinema-back">← ${esc(this.label('Zurück zur Auswahl','Back to selection'))}</button><div class="library-focus"></div></section><div class="cinema-home"></div><section class="cinema-search-results" hidden><p class="mediarr-search-status" role="status"></p><p class="library-catalog-status" role="status"></p><div class="library-results"></div><button class="library-load-more" type="button">${esc(this.label('Weitere Treffer','More results'))}</button></section></main>`;
     content.append(this.shell);this.input=this.shell.querySelector('input');this.body=this.shell.querySelector('.cinema-body');
     this.nowPlaying=document.createElement('section');this.nowPlaying.className='cinema-now-playing';this.nowPlaying.hidden=true;
     this.nowPlaying.setAttribute('aria-label',this.label('Aktuelle Wiedergabe','Now playing'));
@@ -65,13 +76,30 @@ export class CinemaLibraryView extends MediaLibraryView {
     this.moreButton=this.shell.querySelector('.library-load-more');
     this.input.oninput=()=>{if(this.detailKey)this.back(false);this.scheduleSearch();};
     this.shell.querySelector('.cinema-back').onclick=()=>this.back();
-    this.shell.querySelector('.cinema-refresh-connections').onclick=async event=>{const button=event.currentTarget;button.disabled=true;await Promise.allSettled([this.loadRequestCapabilities(),this.loadPlayback(),this.loadDiscovery()]);if(button.isConnected)button.disabled=false;};
+    this.shell.querySelector('.cinema-refresh-connections').onclick=async event=>{const button=event.currentTarget;button.disabled=true;await Promise.allSettled([this.loadLibrary(true),this.loadRequestCapabilities(),this.loadPlayback(),this.loadDiscovery()]);if(button.isConnected)button.disabled=false;};
     this.shell.querySelector('.cinema-download-shortcut').onclick=()=>{this.input.value='';this.back(false);this.scheduleSearch();this.home.querySelector('.cinema-downloads')?.scrollIntoView({behavior:'smooth',block:'start'});};
-    this.refresh();this.loadLibrary();this.loadDiscovery();this.loadCollections();
+    this.refresh();this.loadLibrary(false,true);this.loadDiscovery();this.loadCollections();
     this.startRequestChecks();
     this.loadPlayback();
     this.playbackTimer=setInterval(()=>{if(document.visibilityState==='visible'&&this.card.isConnected)this.loadPlayback();},15000);
-    this.libraryTimer=setInterval(()=>{if(document.visibilityState==='visible'&&this.card.isConnected)this.loadLibrary(true);},60000);
+    this.libraryTimer=setInterval(()=>{if(document.visibilityState==='visible'&&this.card.isConnected)this.loadLibrary(false,true);},15000);
+  }
+
+  patchDetailMarkup(markup) { patchCinemaDOM(this.focus,markup); }
+
+  checkArtworkMetadata(entries) {
+    this.artworkChecks ||= new Map();
+    let budget=Math.max(0,4-this.metadataPending.size);
+    for(const entry of entries.filter(Boolean)){
+      if(!budget)break;
+      const missing=!entry.poster||!entry.banner||entry.banner===entry.poster;
+      const cached=this.card._mediaMetadataCache?.get(`${metadataNamespace(this.card)}:${entry.key}`)||this.card._mediaMetadataCache?.get(`${metadataNamespace(this.card)}:${entry.kind}:tmdb:${entry.ids.tmdb}`);
+      if(!missing&&(!cached||Date.now()<(cached.expiresAt||cached.timestamp+6*3600000)))continue;
+      if(Date.now()<(this.artworkChecks.get(entry.key)||0))continue;
+      this.artworkChecks.set(entry.key,Date.now()+300000);budget--;
+      void this.loadMetadata(entry);
+    }
+    while(this.artworkChecks.size>400)this.artworkChecks.delete(this.artworkChecks.keys().next().value);
   }
 
   async ws(type,data={}) {
@@ -103,8 +131,8 @@ export class CinemaLibraryView extends MediaLibraryView {
   }
 
   refresh() {
-    const extra=[...this.catalog,...this.discovery.trending,...this.discovery.personal,...this.discovery.upcoming];
-    this.entries=mediaEntriesForCard(this.card,extra);
+    const extra=[...this.catalog,...(this.collectionParts||[]),...this.discovery.trending,...this.discovery.personal,...this.discovery.upcoming];
+    this.setLibraryEntries(mediaEntriesForCard(this.card,extra));
     this.renderPlayback();
     this.render();
   }
@@ -186,7 +214,8 @@ export class CinemaLibraryView extends MediaLibraryView {
     const railScroll=new Map([...this.home.querySelectorAll('[data-rail]')].map(el=>[el.dataset.rail,el.scrollLeft]));
     const activeKey=this.home.querySelector('button:focus')?.dataset.selectKey;
     const state=this.card._fullLibraryState;
-    this.shell.querySelector('.cinema-library-status').textContent=state.loading?this.label('Mediathek wird geladen …','Loading library …'):state.error==='unknown_command'?this.label('Für die vollständige Mediathek die Mediarr-Integration aktualisieren.','Update the Mediarr integration for the full library.'):state.error?this.label('Nicht alle Quellen erreichbar. Die Auswahl kann unvollständig sein.','Some sources are unavailable. The selection may be incomplete.'):'';
+    this.renderLibraryStatus(this.shell.querySelector('.cinema-library-status'));
+    if(state.loading&&!this.hasLibraryContent()){this.home.hidden=true;this.shell.querySelector('.cinema-detail').hidden=true;this.shell.querySelector('.cinema-search-results').hidden=true;return;}
     const downloads=this.entries.filter(entry=>mediaDownload(entry));
     this.shell.querySelector('.cinema-download-shortcut span').textContent=downloads.length||'';
     this.shell.querySelector('.cinema-detail').hidden=!this.detailKey;
@@ -194,10 +223,25 @@ export class CinemaLibraryView extends MediaLibraryView {
     this.home.hidden=!!this.detailKey||!!this.input.value.trim();
     if(this.detailKey) {
       const entry=this.entries.find(entry=>entry.key===this.detailKey);
+      this.checkArtworkMetadata([entry]);
       const signature=JSON.stringify([entry,this.metadataMessage(entry||{}),this.messages.get(entry?.key),this.busy.has(entry?.key),this.requestCapabilities,this.requestCheckError,this.hasAvailablePlayer()]);
-      if(this.detailSignature===signature)return;
+      if(this.detailSignature===signature){
+        const markup=entry?this.collectionMarkup(entry):'';
+        const section=this.focus.querySelector('.library-collection');
+        if(section && markup && markup!==this.collectionRailMarkup){
+          const template=document.createElement('template');template.innerHTML=markup;
+          const position=section.querySelector('.library-collection-rail')?.scrollLeft||0;
+          patchCinemaDOM(section,template.content.firstElementChild.innerHTML);
+          const rail=section.querySelector('.library-collection-rail');if(rail)rail.scrollLeft=position;
+          section.querySelectorAll('[data-collection-key]').forEach(button=>button.onclick=()=>this.selectCollectionPart(button.dataset.collectionKey,entry));
+          const retry=section.querySelector('.library-collection-retry');if(retry)retry.onclick=()=>void this.loadMetadata(entry,true);
+          this.collectionRailMarkup=markup;
+        }
+        return;
+      }
       this.detailSignature=signature;
       this.selectedKey=this.detailKey;super.renderDetails(entry);
+      this.collectionRailMarkup=entry?this.collectionMarkup(entry):'';
       this.focus.querySelector('.library-play')?.remove();
       if(entry?.stage==='ready'&&entry.refs.some(ref=>ref.provider==='plex'&&ref.item.library_key)) {
         const play=document.createElement('button');play.type='button';play.className='library-request cinema-detail-play';play.innerHTML=`<ha-icon icon="mdi:play" aria-hidden="true"></ha-icon>${esc(this.label('Abspielen','Play'))}`;
@@ -223,6 +267,7 @@ export class CinemaLibraryView extends MediaLibraryView {
       <section class="cinema-upcoming"><div class="cinema-section-heading"><h2>${esc(this.label('Demnächst','Coming soon'))}</h2><label><span class="sr-only">${esc(this.label('Kommende Titel','Upcoming titles'))}</span><select class="cinema-upcoming-mode"><option value="tracked" ${this.upcomingMode==='tracked'?'selected':''}>${esc(this.label('Deine vorgemerkten Titel','Your tracked titles'))}</option><option value="all" ${this.upcomingMode==='all'?'selected':''}>${esc(this.label('Kommende Veröffentlichungen','Upcoming releases'))}</option></select></label></div><div class="cinema-upcoming-rail">${upcoming.slice(0,12).map(entry=>`<button type="button" class="cinema-upcoming-card" data-select-key="${esc(entry.key)}"><span>${entry.banner||entry.poster?`<img src="${esc(entry.banner||entry.poster)}" alt="" loading="lazy">`:'<ha-icon icon="mdi:movie-open-outline"></ha-icon>'}</span><strong>${esc(entry.title)}</strong><small>${esc(this.releaseLabel(entry))}</small></button>`).join('')||`<p class="cinema-empty">${esc(this.label('Keine kommenden Titel in dieser Auswahl.','No upcoming titles in this selection.'))}</p>`}</div></section>
       <section class="cinema-downloads"><div class="cinema-section-heading"><h2>${esc(this.label('Wird gerade geladen','Downloading'))}</h2><button type="button" class="cinema-reload">${esc(this.label('Aktualisieren','Refresh'))}</button></div><div class="cinema-download-grid">${downloads.map(entry=>`<button class="cinema-download-item" type="button" data-select-key="${esc(entry.key)}">${entry.poster?`<img src="${esc(entry.poster)}" alt="" loading="lazy">`:'<ha-icon icon="mdi:movie-open-outline"></ha-icon>'}<span><strong>${esc(entry.title)}</strong>${downloadBadge(entry,this.label.bind(this))}</span></button>`).join('')||`<p class="cinema-empty">${esc(this.label('Gerade keine aktiven Downloads.','No active downloads.'))}</p>`}</div></section>`;
     const signature=homeMarkup+(hero?.banner||'');
+    this.checkArtworkMetadata([hero,...upcoming.slice(0,12),...own.slice(0,24),...trending.slice(0,24)]);
     if(this.homeSignature===signature)return;
     this.homeSignature=signature;patchCinemaDOM(this.home,homeMarkup);
     this.bindHome(hero);
@@ -231,7 +276,8 @@ export class CinemaLibraryView extends MediaLibraryView {
     this.bindImages(this.home);
     // Manager lists may have IDs but no cover; enrich only a bounded visible set.
     for(const entry of upcoming.slice(0,12).filter(entry=>!entry.poster))void this.loadMetadata(entry);
-    if(hero?.banner){const bg=this.home.querySelector('.cinema-hero-backdrop');if(bg)bg.style.backgroundImage=`url(${JSON.stringify(hero.banner)})`;}
+    const bg=this.home.querySelector('.cinema-hero-backdrop'),artworkKey=hero?.banner?cinemaArtworkIdentity(hero.banner):null;
+    if(bg&&bg._artworkKey!==artworkKey){bg.style.backgroundImage=hero?.banner?`url(${JSON.stringify(hero.banner)})`:'none';bg._artworkKey=artworkKey;}
     if(hero && (!hero.banner || hero.banner===hero.poster || hero.item.trailer===undefined))void this.loadMetadata(hero);
   }
 
@@ -316,7 +362,7 @@ export class CinemaLibraryView extends MediaLibraryView {
       list.querySelectorAll('[data-player]').forEach(button=>button.onclick=async()=>{
         button.disabled=true;
         try {
-          await this.ws('mediarr/play',{entity_id:button.dataset.player,library_key:ref.item.library_key});
+          await this.ws('mediarr/play',{entity_id:button.dataset.player,library_key:ref.item.library_key,...(ref.item.library_scope?{library_scope:ref.item.library_scope}:{})});
           if(dialog.isConnected){list.textContent=this.label('Wiedergabe angefordert.','Playback requested.');void this.loadPlayback();}
         }catch{if(dialog.isConnected){button.disabled=false;const message=document.createElement('p');message.textContent=this.label('Wiedergabe konnte nicht gestartet werden. Prüfe Plex und das Zielgerät.','Could not start playback. Check Plex and the selected device.');list.append(message);}}
       });
@@ -382,6 +428,26 @@ export class CinemaLibraryView extends MediaLibraryView {
     return document.scrollingElement;
   }
 
-  bindImages(root) {root.querySelectorAll('img').forEach(img=>img.onerror=()=>{img.onerror=null;img.hidden=true;});}
-  destroy() {clearInterval(this.playbackTimer);this.closeTrailer();this.alive=false;++this.discoveryVersion;++this.collectionVersion;if(this.playerDialog){this.playerDialog.close();this.playerDialog.remove();this.playerDialog=null;}super.destroy();this.card.classList.remove('mediarr-cinema');}
+  bindImages(root) {
+    this.artworkTimers ||= new Set();
+    root.querySelectorAll('img').forEach(img=>{
+      img.onerror=null;
+      if(img._artBound)return;
+      img._artBound=true;
+      img.addEventListener('load',()=>{img._artFailed=false;img._artAttempts=0;img.hidden=false;clearTimeout(img._artRetry);this.artworkTimers.delete(img._artRetry);img._artRetry=null;});
+      const scheduleRetry=()=>{
+        if(img._artRetry)return;
+        const attempts=img._artAttempts=(img._artAttempts||0)+1;
+        const delay=Math.min(300000,15000*2**Math.min(attempts-1,5));
+        img._artRetry=setTimeout(()=>{
+          this.artworkTimers.delete(img._artRetry);img._artRetry=null;
+          if(!this.alive||!img.isConnected)return;
+          if(document.visibilityState==='visible')img.src=img.getAttribute('src');else scheduleRetry();
+        },delay);
+        this.artworkTimers.add(img._artRetry);
+      };
+      img.addEventListener('error',()=>{img._artFailed=true;img.hidden=true;scheduleRetry();});
+    });
+  }
+  destroy() {clearInterval(this.playbackTimer);this.closeTrailer();this.alive=false;for(const timer of this.artworkTimers||[])clearTimeout(timer);this.artworkTimers?.clear();++this.discoveryVersion;++this.collectionVersion;if(this.playerDialog){this.playerDialog.close();this.playerDialog.remove();this.playerDialog=null;}super.destroy();this.card.classList.remove('mediarr-cinema');}
 }
