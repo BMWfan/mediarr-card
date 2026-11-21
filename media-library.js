@@ -631,7 +631,7 @@ export class MediaLibraryView {
     this._renderedDetailKey = entry?.key;
     const esc=escapeMediaHtml;
     if (entry && (!entry.summary || !mediaCast(entry.item).length || entry.kind==='unknown' || entry.item.streaming===undefined || entry.item.trailer===undefined)) void this.loadMetadata(entry);
-    if (!entry) { this.focus.innerHTML=`<p class="library-empty">${esc(this.label('Wähle einen Titel aus.','Choose a title.'))}</p>`; return; }
+    if (!entry) { this._detailMarkup = null; this.focus.innerHTML=`<p class="library-empty">${esc(this.label('Wähle einen Titel aus.','Choose a title.'))}</p>`; return; }
     const item=entry.item;
     const trailerUrl=/^https:\/\/www\.youtube\.com\/watch\?v=[A-Za-z0-9_-]{11}$/.test(item.trailer?.url||'')?item.trailer.url:'';
     const genres=mediaNames(item.genres || item.genre).join(', ');
@@ -654,7 +654,7 @@ export class MediaLibraryView {
     const actionMarkup = playable ? `<button type="button" class="library-play library-request">${esc(this.label('Abspielen', 'Play'))}</button>` : entry.stage === 'discover' ? `
       <button type="button" class="library-request" ${!actionable || busy ? 'disabled' : ''}>${esc(busy ? this.label('Wird hinzugefügt …', 'Adding …') : this.label('+ Zur Merkliste', '+ Add to watchlist'))}</button>
       ${!actionable ? `<small role="status">${esc(this.requestUnavailableMessage(entry))}</small>` : ''}` : '';
-    this.focus.innerHTML = `
+    const markup = `
       <article class="media-details-panel library-detail">
         <div class="library-hero">
           <div class="library-backdrop"></div>
@@ -682,6 +682,10 @@ export class MediaLibraryView {
           <details class="library-sources"><summary>${esc(this.label('Datenquellen', 'Data sources'))}</summary>${esc([...new Set(entry.refs.map(ref => ref.provider))].join(', '))}</details>
         </div>
       </article>`;
+    if (this._detailMarkup !== markup || !this.focus.firstElementChild) {
+      this.focus.innerHTML = markup;
+      this._detailMarkup = markup;
+    }
     const retry=this.focus.querySelector('.library-metadata-retry');
     if(retry) retry.onclick=()=>{void this.loadMetadata(entry,true);this.renderDetails(entry);};
     const backdrop=this.focus.querySelector('.library-backdrop');
