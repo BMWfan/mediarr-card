@@ -1232,6 +1232,7 @@ class CinemaLibraryView extends MediaLibraryView {
     const signature=homeMarkup+JSON.stringify([hero?.key,mediaBackdropImages(hero),hero?.poster]);
     this.checkArtworkMetadata([hero,...upcoming.slice(0,12),...own.slice(0,24),...trending.slice(0,24)]);
     if(this.homeSignature===signature)return;
+    if(!hero)setMediaBackdrop(this.home.querySelector('.cinema-hero-backdrop'),null,this.card);
     this.homeSignature=signature;patchCinemaDOM(this.home,homeMarkup);
     this.bindHome(hero);
     for(const el of this.home.querySelectorAll('[data-rail]'))el.scrollLeft=railScroll.get(el.dataset.rail)||0;
