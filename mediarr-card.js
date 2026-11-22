@@ -197,7 +197,7 @@ function setMediaBackdrop(target, entry, card, preparedUrl) {
   const key=entry?.key;
   const cache=card._mediaBackdropCache ||= new Map();
   const cached=key ? cache.get(key) : '';
-  const candidates=[...new Set([preparedUrl,...mediaBackdropImages(entry),cached,mediaImage(entry?.poster)].filter(Boolean))];
+  const candidates=[...new Set([...mediaBackdropImages(entry),cached,mediaImage(entry?.poster)].filter(Boolean))];
   const signature=JSON.stringify([key,candidates]);
   if (target._mediarrBackdrop?.signature===signature) return;
   const previous=target._mediarrBackdrop;
@@ -208,23 +208,24 @@ function setMediaBackdrop(target, entry, card, preparedUrl) {
   const hero=target.matches?.('.cinema-hero-backdrop');
   if (previous?.key!==key && !(hero && key && oldImage && candidates.length)) target.style.backgroundImage=cached ? `url(${JSON.stringify(cached)})` : '';
   if (!key) return;
-  let index=0;
+  let index=Math.max(0,candidates.indexOf(preparedUrl));
   const current=()=>target.isConnected && target._mediarrBackdrop===state;
+  const retry=()=>{
+    state.retryDelay=Math.min((state.retryDelay||500)*2,30000);
+    state.retryTimer=setTimeout(()=>{if(current()){index=0;next();}},state.retryDelay);
+  };
   const next=()=>{
     if (!current()) return;
     if(index>=candidates.length){
-      if(previous?.key!==key)target.style.backgroundImage='';
-      if(candidates.length) {
-        state.retryDelay=Math.min((state.retryDelay||500)*2,30000);
-        state.retryTimer=setTimeout(()=>{if(current()){index=0;next();}},state.retryDelay);
-      }
+      if(!state.painted && previous?.key!==key)target.style.backgroundImage='';
+      if(candidates.length)retry();
       return;
     }
     const url=candidates[index++], record=loadBackdrop(card,url);
     const display=()=>{
       if(!current())return;
       target.style.backgroundImage=`url(${JSON.stringify(url)})`;
-      if(previous?.key!==key && oldImage && oldImage!=='none' && oldImage!==target.style.backgroundImage &&
+      if(!state.painted && previous?.key!==key && oldImage && oldImage!=='none' && oldImage!==target.style.backgroundImage &&
          target.matches?.('.cinema-hero-backdrop') && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
         target.style.setProperty('--previous-banner',oldImage);
         state.fade=target.animate([{opacity:1},{opacity:0}],{duration:450,easing:'ease-in-out',pseudoElement:'::before'});
@@ -233,6 +234,8 @@ function setMediaBackdrop(target, entry, card, preparedUrl) {
         cache.delete(key);cache.set(key,url);
         while(cache.size>32)cache.delete(cache.keys().next().value);
       }
+      state.painted=true;
+      if(index>1)retry();
     };
     if(record.ready) display();
     else record.promise.then(ready=>ready?display():next());
@@ -726,8 +729,6 @@ class MediaLibraryView {
       const match=entries.find(entry=>entry.kind===previous.kind&&((entry.ids.tmdb&&String(entry.ids.tmdb)===String(previous.ids.tmdb))||entry.refs.some(ref=>previous.refs.some(old=>ref.provider===old.provider&&ref.item.library_key&&ref.item.library_key===old.item.library_key&&ref.item.library_scope===old.item.library_scope))));
       if(match){if(this.detailKey)this.detailKey=match.key;this.selectedKey=match.key;if(this.collectionFocusKey===previous.key)this.collectionFocusKey=match.key;}
     }
-    const selected=entries.find(entry=>entry.key===(this.detailKey||this.selectedKey));
-    if(selected?.kind==='movie' && selected.item.collection===undefined && this.collectionContext?.parts?.some(part=>part.media_type==='movie'&&String(part.tmdb_id)===String(selected.ids.tmdb)))selected.item.collection=this.collectionContext;
     this.entries=entries;
   }
 
@@ -935,7 +936,13 @@ class MediaLibraryView {
     if(typeof this.scrollSurface==='function')this.scrollSurface().scrollTop=0;
   }
 
+  inheritCollection(entry) {
+    if(entry?.kind==='movie' && entry.item.collection===undefined && this.collectionContext?.parts?.some(part=>part.media_type==='movie'&&String(part.tmdb_id)===String(entry.ids.tmdb)))entry.item.collection=this.collectionContext;
+    return entry;
+  }
+
   renderDetails(entry) {
+    this.inheritCollection(entry);
     const collectionScroll=this.focus.querySelector('.library-collection-rail')?.scrollLeft||0;
     if (this._renderedDetailKey !== entry?.key) this.focus.scrollTop = 0;
     this._renderedDetailKey = entry?.key;
@@ -1295,7 +1302,7 @@ class CinemaLibraryView extends MediaLibraryView {
     this.shell.querySelector('.cinema-search-results').hidden=!!this.detailKey||!this.input.value.trim();
     this.home.hidden=!!this.detailKey||!!this.input.value.trim();
     if(this.detailKey) {
-      const entry=this.entries.find(entry=>entry.key===this.detailKey);
+      const entry=this.inheritCollection(this.entries.find(entry=>entry.key===this.detailKey));
       this.checkArtworkMetadata([entry]);
       const signature=JSON.stringify([entry,this.metadataMessage(entry||{}),this.messages.get(entry?.key),this.busy.has(entry?.key),this.requestCapabilities,this.requestCheckError,this.hasAvailablePlayer()]);
       if(this.detailSignature===signature){
@@ -1414,8 +1421,8 @@ class CinemaLibraryView extends MediaLibraryView {
     if(primary)primary.onclick=()=>{
       const action=this.home.querySelector('.cinema-primary').dataset.heroAction;
       if(action==='play')this.play(hero);
-      else if(action==='request'){this.openDetails(hero.key);this.request(hero);}
-      else this.openDetails(hero.key);
+      else if(action==='request'){this.openDetails(hero.key,primary);this.request(hero);}
+      else this.openDetails(hero.key,primary);
     };
     const trailer=this.home.querySelector('.cinema-hero-trailer');
     if(trailer)trailer.onclick=event=>this.showTrailer(hero,hero.item.trailer?.url,event.currentTarget);
@@ -1527,7 +1534,7 @@ class CinemaLibraryView extends MediaLibraryView {
     if(restore){
       (this.returnSurface||this.scrollSurface()).scrollTop=this.previousScroll||0;
       const container=this.returnRail?this.home.querySelector(`[data-rail="${CSS.escape(this.returnRail)}"]`):this.input.value.trim()?this.results:this.home;
-      const opener=this.returnButton?.isConnected?this.returnButton:container?.querySelector(`[data-select-key="${CSS.escape(this.returnKey)}"]`);
+      const opener=this.returnButton?.isConnected?this.returnButton:this.returnButton?.matches('.cinema-primary')?this.home.querySelector('.cinema-primary'):container?.querySelector(`[data-select-key="${CSS.escape(this.returnKey)}"]`);
       opener?.focus({preventScroll:true});
     }
   }

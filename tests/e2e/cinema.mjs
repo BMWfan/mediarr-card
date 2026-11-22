@@ -343,6 +343,14 @@ try {
  await source.locator('.library-collection-part').nth(2).filter({hasText:'In deiner Mediathek'}).waitFor();
  await source.evaluate(el=>{el._fullLibraryState.groups.plex.pop();el._libraryView.refresh();});
  await source.locator('.library-collection-part').nth(2).filter({hasText:'Hinzufügbar'}).waitFor();
+ await source.evaluate(el=>{
+   const view=el._libraryView;
+   const part=view.entries.find(entry=>entry.ids.tmdb==='702');
+   view.back(false);
+   delete part.item.collection;
+   view.openDetails(part.key);
+ });
+ assert.equal(await source.locator('.library-collection-part').count(),3,'direct detail navigation inherits collection before rendering');
  await source.locator('.library-collection-part').nth(2).focus();await page.keyboard.press('Enter');
  await source.locator('h1').filter({hasText:'Orbit 3'}).waitFor();
  await source.locator('.library-cast').filter({hasText:'Actor 703'}).waitFor();

@@ -223,7 +223,7 @@ export class CinemaLibraryView extends MediaLibraryView {
     this.shell.querySelector('.cinema-search-results').hidden=!!this.detailKey||!this.input.value.trim();
     this.home.hidden=!!this.detailKey||!!this.input.value.trim();
     if(this.detailKey) {
-      const entry=this.entries.find(entry=>entry.key===this.detailKey);
+      const entry=this.inheritCollection(this.entries.find(entry=>entry.key===this.detailKey));
       this.checkArtworkMetadata([entry]);
       const signature=JSON.stringify([entry,this.metadataMessage(entry||{}),this.messages.get(entry?.key),this.busy.has(entry?.key),this.requestCapabilities,this.requestCheckError,this.hasAvailablePlayer()]);
       if(this.detailSignature===signature){
@@ -342,8 +342,8 @@ export class CinemaLibraryView extends MediaLibraryView {
     if(primary)primary.onclick=()=>{
       const action=this.home.querySelector('.cinema-primary').dataset.heroAction;
       if(action==='play')this.play(hero);
-      else if(action==='request'){this.openDetails(hero.key);this.request(hero);}
-      else this.openDetails(hero.key);
+      else if(action==='request'){this.openDetails(hero.key,primary);this.request(hero);}
+      else this.openDetails(hero.key,primary);
     };
     const trailer=this.home.querySelector('.cinema-hero-trailer');
     if(trailer)trailer.onclick=event=>this.showTrailer(hero,hero.item.trailer?.url,event.currentTarget);
@@ -455,7 +455,7 @@ export class CinemaLibraryView extends MediaLibraryView {
     if(restore){
       (this.returnSurface||this.scrollSurface()).scrollTop=this.previousScroll||0;
       const container=this.returnRail?this.home.querySelector(`[data-rail="${CSS.escape(this.returnRail)}"]`):this.input.value.trim()?this.results:this.home;
-      const opener=this.returnButton?.isConnected?this.returnButton:container?.querySelector(`[data-select-key="${CSS.escape(this.returnKey)}"]`);
+      const opener=this.returnButton?.isConnected?this.returnButton:this.returnButton?.matches('.cinema-primary')?this.home.querySelector('.cinema-primary'):container?.querySelector(`[data-select-key="${CSS.escape(this.returnKey)}"]`);
       opener?.focus({preventScroll:true});
     }
   }

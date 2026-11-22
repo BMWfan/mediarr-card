@@ -17,6 +17,23 @@ test('visible backdrop recovers at the same URL after a temporary outage', async
  }
 });
 
+test('a displayed fallback poster is replaced when the original banner recovers', async () => {
+ const original=globalThis.Image, requests=[];
+ globalThis.Image=class {set src(url){requests.push(url);queueMicrotask(()=>requests.length===1?this.onerror():this.onload());}};
+ const target={style:{},isConnected:true};
+ try {
+   setMediaBackdrop(target,{key:'selected',banner:'/banner.jpg',poster:'/poster.jpg'},{});
+   await new Promise(resolve=>setImmediate(resolve));
+   assert.equal(target.style.backgroundImage,'url("/poster.jpg")');
+   await new Promise(resolve=>setTimeout(resolve,1100));
+   assert.deepEqual(requests,['/banner.jpg','/poster.jpg','/banner.jpg']);
+   assert.equal(target.style.backgroundImage,'url("/banner.jpg")');
+ } finally {
+   target.isConnected=false;
+   if(original===undefined)delete globalThis.Image;else globalThis.Image=original;
+ }
+});
+
 test('watchlist and trending selections stay ready beyond the recent-image limit', async () => {
  const original=globalThis.Image, requests=[];
  globalThis.Image=class {
