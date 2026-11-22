@@ -86,6 +86,9 @@ try {
  await originalPoster.focus();
  await source.locator('.cinema-hero h1').filter({hasText:'Sternenreise'}).waitFor();
  assert.ok(await originalPoster.evaluate(button=>button.matches(':focus')));
+ await page.keyboard.press('Enter');
+ await source.locator('.cinema-back').click();
+ assert.ok(await originalPoster.evaluate(button=>button.matches(':focus')),'Back returns to the originating poster despite a matching hero action');
  assert.equal(await source.locator('.cinema-primary').isDisabled(),true,'Play is disabled without a reachable Plex player');
  await source.evaluate(async el=>{window.__cinemaPlayersReady=true;await el._libraryView.loadPlayback();});
  await page.evaluate(()=>window.__cinemaPlayersReady=false);
@@ -305,7 +308,7 @@ try {
    window.__cinemaHass.callWS=async msg=>{
      if(msg.type==='mediarr/request_capabilities')return {movie:{available:true},tv:{available:true}};
      if(msg.type==='mediarr/library')return {groups,page:1,total_pages:1,complete:true};
-     if(msg.type==='mediarr/media_details'&&parts.some(part=>part.tmdb_id===msg.tmdb_id))return {...parts.find(part=>part.tmdb_id===msg.tmdb_id),collection,cast:[{name:`Actor ${msg.tmdb_id}`}],streaming:{region:'DE',subscription:[],rent:[],buy:[]},trailer:null};
+     if(msg.type==='mediarr/media_details'&&parts.some(part=>part.tmdb_id===msg.tmdb_id))return {...parts.find(part=>part.tmdb_id===msg.tmdb_id),...(msg.tmdb_id===702?{}:{collection}),cast:[{name:`Actor ${msg.tmdb_id}`}],streaming:{region:'DE',subscription:[],rent:[],buy:[]},trailer:null};
      return previous(msg);
    };
    el._fullLibraryState.groups=groups;el._mediaMetadataCache.clear();el.hass={...window.__cinemaHass};
@@ -333,6 +336,13 @@ try {
  assert.match(await source.locator('.media-details-synopsis').textContent(),/Handlung Teil 2/);
  assert.equal(await source.locator('.library-collection-part[aria-current=true]').textContent().then(text=>text.includes('Orbit 2')),true);
  assert.equal(await page.evaluate(()=>window.__cinemaRequests.length),requestsBefore,'part selection never adds media');
+ await source.evaluate(el=>{
+   el._fullLibraryState.groups.plex.push({media_type:'movie',title:'Orbit 3',tmdb_id:703,library_key:'0:703'});
+   el._libraryView.refresh();
+ });
+ await source.locator('.library-collection-part').nth(2).filter({hasText:'In deiner Mediathek'}).waitFor();
+ await source.evaluate(el=>{el._fullLibraryState.groups.plex.pop();el._libraryView.refresh();});
+ await source.locator('.library-collection-part').nth(2).filter({hasText:'Hinzufügbar'}).waitFor();
  await source.locator('.library-collection-part').nth(2).focus();await page.keyboard.press('Enter');
  await source.locator('h1').filter({hasText:'Orbit 3'}).waitFor();
  await source.locator('.library-cast').filter({hasText:'Actor 703'}).waitFor();
@@ -394,6 +404,11 @@ try {
    }};
    el.setConfig({type:'custom:mediarr-card',view:'library'});
  });
+ await source.locator('.cinema-loading-reel').waitFor();
+ await source.locator('.mediarr-search').fill('fixture');
+ await source.locator('.cinema-search-results').waitFor();
+ assert.equal(await source.locator('.cinema-loading-reel').count(),0,'an outstanding library read must leave search visible');
+ await source.locator('.mediarr-search').fill('');
  await source.locator('.cinema-loading-reel').waitFor();
  await page.emulateMedia({reducedMotion:'reduce'});
  assert.equal(await source.locator('.cinema-loading-reel').evaluate(node=>getComputedStyle(node).animationName),'none');

@@ -8,6 +8,11 @@ const row = extra => ({title:'Synthetic request',type:'Movie',media_type:'movie'
 const collect = (item, extraConfig={}, extraStates={}) => collectMediaLibrary(
   {seer_entity:'s',...extraConfig}, {states:{s:state([row(item)]),...extraStates}})[0];
 
+test('explicit unknown availability wins over conflicting nested legacy data',()=>{
+  assert.equal(collect({media_status:null,media:{status:5}}).stage,'waiting');
+  assert.equal(collect({media:{status:5}}).stage,'ready');
+});
+
 test('compact recent imports refresh when Plex evidence and its timestamp arrive', () => {
   const request = row({title:'Zulu', media_type:'tv', type:'TV Show', request_status:2, media_status:4});
   const older = row({title:'Alpha', tmdb_id:92, added_at:'1767326400'});

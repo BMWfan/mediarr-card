@@ -2,6 +2,21 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mediaBackdropImages, preloadMediaBackdrops, retainMediaBackdrops, setMediaBackdrop } from '../media-library.js';
 
+test('visible backdrop recovers at the same URL after a temporary outage', async () => {
+ const original=globalThis.Image, requests=[];
+ globalThis.Image=class {set src(url){requests.push(url);queueMicrotask(()=>requests.length===1?this.onerror():this.onload());}};
+ const target={style:{},isConnected:true};
+ try {
+   setMediaBackdrop(target,{key:'selected',banner:'/same.jpg'},{});
+   await new Promise(resolve=>setTimeout(resolve,1100));
+   assert.deepEqual(requests,['/same.jpg','/same.jpg']);
+   assert.equal(target.style.backgroundImage,'url("/same.jpg")');
+ } finally {
+   target.isConnected=false;
+   if(original===undefined)delete globalThis.Image;else globalThis.Image=original;
+ }
+});
+
 test('watchlist and trending selections stay ready beyond the recent-image limit', async () => {
  const original=globalThis.Image, requests=[];
  globalThis.Image=class {

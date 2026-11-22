@@ -202,6 +202,7 @@ function setMediaBackdrop(target, entry, card, preparedUrl) {
   if (target._mediarrBackdrop?.signature===signature) return;
   const previous=target._mediarrBackdrop;
   const oldImage=target.style.backgroundImage;
+  clearTimeout(previous?.retryTimer);
   previous?.fade?.cancel();
   const state={key,signature};target._mediarrBackdrop=state;
   const hero=target.matches?.('.cinema-hero-backdrop');
@@ -211,7 +212,14 @@ function setMediaBackdrop(target, entry, card, preparedUrl) {
   const current=()=>target.isConnected && target._mediarrBackdrop===state;
   const next=()=>{
     if (!current()) return;
-    if(index>=candidates.length){if(previous?.key!==key)target.style.backgroundImage='';return;}
+    if(index>=candidates.length){
+      if(previous?.key!==key)target.style.backgroundImage='';
+      if(candidates.length) {
+        state.retryDelay=Math.min((state.retryDelay||500)*2,30000);
+        state.retryTimer=setTimeout(()=>{if(current()){index=0;next();}},state.retryDelay);
+      }
+      return;
+    }
     const url=candidates[index++], record=loadBackdrop(card,url);
     const display=()=>{
       if(!current())return;
@@ -416,7 +424,7 @@ function collectMediaLibrary(config, hass) {
     // Request status (including FAILED=4 / COMPLETED=5) is not media availability.
     const seerrAvailable = group.refs.some(ref => {
       if (ref.provider !== 'seer') return false;
-      const status = ref.item.media_status ?? ref.item.media?.status;
+      const status = Object.hasOwn(ref.item,'media_status') ? ref.item.media_status : ref.item.media?.status;
       return status === 5 || status === '5' || (group.kind === 'tv' && (status === 4 || status === '4'));
     });
     group.stage = libraryRefs.length || hasFile || seerrAvailable ? 'ready' : requested ? 'waiting' : 'discover';
@@ -622,7 +630,7 @@ class MediaLibraryView {
   }
 
   label(de,en) { return this.card._mediaLabel(de,en); }
-  hasLibraryContent() { return Boolean(this.card._fullLibraryState?.groups || this.entries?.some(entry=>entry.stage==='ready'||entry.stage==='waiting')); }
+  hasLibraryContent() { return Boolean(this.detailKey || this.input?.value.trim() || this.card._fullLibraryState?.loaded || this.card._fullLibraryState?.groups || this.entries?.some(entry=>entry.stage==='ready'||entry.stage==='waiting')); }
   renderLibraryStatus(element) {
     const state=this.card._fullLibraryState;
     const initial=state.loading&&!this.hasLibraryContent()&&Date.now()-(state.loadStarted||0)>=150;
@@ -718,12 +726,31 @@ class MediaLibraryView {
       const match=entries.find(entry=>entry.kind===previous.kind&&((entry.ids.tmdb&&String(entry.ids.tmdb)===String(previous.ids.tmdb))||entry.refs.some(ref=>previous.refs.some(old=>ref.provider===old.provider&&ref.item.library_key&&ref.item.library_key===old.item.library_key&&ref.item.library_scope===old.item.library_scope))));
       if(match){if(this.detailKey)this.detailKey=match.key;this.selectedKey=match.key;if(this.collectionFocusKey===previous.key)this.collectionFocusKey=match.key;}
     }
+    const selected=entries.find(entry=>entry.key===(this.detailKey||this.selectedKey));
+    if(selected?.kind==='movie' && selected.item.collection===undefined && this.collectionContext?.parts?.some(part=>part.media_type==='movie'&&String(part.tmdb_id)===String(selected.ids.tmdb)))selected.item.collection=this.collectionContext;
     this.entries=entries;
   }
 
-  async loadLibrary(refresh=false, revalidate=false) {
+  loadLibrary(refresh=false, revalidate=false) {
     const state=this.card._fullLibraryState;
-    if(state.loading || (state.loaded&&!refresh&&!revalidate))return;
+    if(state.activeLoad){
+      if(refresh && !state.forcing){
+        state.queuedRefresh ||= state.activeLoad.then(()=>{
+          state.queuedRefresh=null;
+          if(this.card.isConnected)return (this.card._libraryView||this).loadLibrary(true);
+        });
+        return state.queuedRefresh;
+      }
+      return state.activeLoad;
+    }
+    if(state.loaded&&!refresh&&!revalidate)return Promise.resolve();
+    state.forcing=refresh;
+    state.activeLoad=this.fetchLibraryPages(refresh).finally(()=>{state.activeLoad=null;state.forcing=false;});
+    return state.activeLoad;
+  }
+
+  async fetchLibraryPages(refresh) {
+    const state=this.card._fullLibraryState;
     state.loading=true;state.loadStarted=Date.now();state.error=null;this.render();
     const loaderTimer=setTimeout(()=>{if(state.loading&&this.card.isConnected)this.render();},160);
     try {
@@ -910,7 +937,6 @@ class MediaLibraryView {
 
   renderDetails(entry) {
     const collectionScroll=this.focus.querySelector('.library-collection-rail')?.scrollLeft||0;
-    if(entry?.kind==='movie' && entry.item.collection===undefined && this.collectionContext?.parts?.some(part=>part.media_type==='movie'&&String(part.tmdb_id)===String(entry.ids.tmdb)))entry.item.collection=this.collectionContext;
     if (this._renderedDetailKey !== entry?.key) this.focus.scrollTop = 0;
     this._renderedDetailKey = entry?.key;
     const esc=escapeMediaHtml;
@@ -1490,13 +1516,20 @@ class CinemaLibraryView extends MediaLibraryView {
 
   openDetails(key,button) {
     clearTimeout(this.previewTimer);this.previewPoster=null;
+    this.returnButton=button;
+    this.returnRail=button?.closest('[data-rail]')?.dataset.rail;
     this.returnSurface=this.scrollSurface();this.previousScroll=this.returnSurface.scrollTop;this.returnKey=key;this.detailKey=key;this.render();this.scrollSurface().scrollTop=0;
     this.shell.querySelector('.cinema-back').focus({preventScroll:true});
   }
 
   back(restore=true) {
     this.detailKey=null;this.render();
-    if(restore){(this.returnSurface||this.scrollSurface()).scrollTop=this.previousScroll||0;[...this.shell.querySelectorAll('[data-select-key]')].find(el=>el.dataset.selectKey===this.returnKey)?.focus({preventScroll:true});}
+    if(restore){
+      (this.returnSurface||this.scrollSurface()).scrollTop=this.previousScroll||0;
+      const container=this.returnRail?this.home.querySelector(`[data-rail="${CSS.escape(this.returnRail)}"]`):this.input.value.trim()?this.results:this.home;
+      const opener=this.returnButton?.isConnected?this.returnButton:container?.querySelector(`[data-select-key="${CSS.escape(this.returnKey)}"]`);
+      opener?.focus({preventScroll:true});
+    }
   }
 
   scrollSurface() {

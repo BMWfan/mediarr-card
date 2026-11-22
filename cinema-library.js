@@ -444,13 +444,20 @@ export class CinemaLibraryView extends MediaLibraryView {
 
   openDetails(key,button) {
     clearTimeout(this.previewTimer);this.previewPoster=null;
+    this.returnButton=button;
+    this.returnRail=button?.closest('[data-rail]')?.dataset.rail;
     this.returnSurface=this.scrollSurface();this.previousScroll=this.returnSurface.scrollTop;this.returnKey=key;this.detailKey=key;this.render();this.scrollSurface().scrollTop=0;
     this.shell.querySelector('.cinema-back').focus({preventScroll:true});
   }
 
   back(restore=true) {
     this.detailKey=null;this.render();
-    if(restore){(this.returnSurface||this.scrollSurface()).scrollTop=this.previousScroll||0;[...this.shell.querySelectorAll('[data-select-key]')].find(el=>el.dataset.selectKey===this.returnKey)?.focus({preventScroll:true});}
+    if(restore){
+      (this.returnSurface||this.scrollSurface()).scrollTop=this.previousScroll||0;
+      const container=this.returnRail?this.home.querySelector(`[data-rail="${CSS.escape(this.returnRail)}"]`):this.input.value.trim()?this.results:this.home;
+      const opener=this.returnButton?.isConnected?this.returnButton:container?.querySelector(`[data-select-key="${CSS.escape(this.returnKey)}"]`);
+      opener?.focus({preventScroll:true});
+    }
   }
 
   scrollSurface() {
