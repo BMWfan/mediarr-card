@@ -1,4 +1,4 @@
-import {MediaLibraryView, mediaEntriesForCard, mediaText, mediaNames, mediaImage, mediaBackdropImages, preloadMediaBackdrops, setMediaBackdrop, mediaDownload, escapeMediaHtml, downloadBadge, hasUnwatchedMedia, seriesEpisodeLabel, metadataNamespace, mediaAddedTimestamp, inMediaLibrary} from './media-library.js';
+import {MediaLibraryView, mediaEntriesForCard, mediaText, mediaNames, mediaImage, mediaBackdropImages, preloadMediaBackdrops, retainMediaBackdrops, setMediaBackdrop, mediaDownload, escapeMediaHtml, downloadBadge, hasUnwatchedMedia, seriesEpisodeLabel, metadataNamespace, mediaAddedTimestamp, inMediaLibrary} from './media-library.js';
 
 const esc=escapeMediaHtml;
 const identity=item=>`${item.media_type}:${item.tmdb_id}`;
@@ -256,11 +256,15 @@ export class CinemaLibraryView extends MediaLibraryView {
     const own=curatedCinemaEntries(this.entries,{selection:this.selection,kind:this.kind,genre:this.genre,unseen:this.unseen,collectionKeys:this.collectionKeys});
     const hero=own.find(entry=>entry.key===this.heroKey)||own[0]||this.sourceEntries('trending')[0];
     this.heroKey=hero?.key;
-    preloadMediaBackdrops(this.card,own);
     const genres=[...new Set(this.entries.filter(entry=>entry.stage==='ready').flatMap(entry=>mediaNames(entry.item.genres||entry.item.genre)))].sort();
     const trending=this.sourceEntries('trending').length?this.sourceEntries('trending'):this.entries.filter(entry=>entry.stage==='discover'&&entry.refs.some(ref=>ref.provider==='tmdb'&&!ref.entityKey.includes('upcoming'))).slice(0,20);
     const personal=this.sourceEntries('personal').filter(entry=>entry.stage==='discover');
     const upcoming=this.upcomingMode==='all'?this.sourceEntries('upcoming'):this.entries.filter(entry=>entry.stage==='waiting'&&!mediaDownload(entry));
+    retainMediaBackdrops(this.card,'cinema',[
+      ...own.slice(0,this.railLimits.library||24),
+      ...trending.slice(0,this.railLimits.trending||24),
+      ...upcoming.slice(0,12)
+    ]);
     const options=[['recent',this.label('Zuletzt hinzugefügt','Recently added')],['unwatched',this.label('Noch nicht gesehen','Unwatched')],['started',this.label('Angefangen','Started')]];
     const homeMarkup=`${hero?this.heroMarkup(hero):`<section class="cinema-hero cinema-hero-empty"><div class="cinema-hero-copy"><h1>${esc(this.label('Dein nächster Filmabend','Your next movie night'))}</h1><p>${esc(this.label('Durchsuche Filme und Serien oder lade deine Plex-Mediathek.','Search movies and series or load your Plex library.'))}</p><button type="button" class="cinema-reload">${esc(this.label('Mediathek laden','Load library'))}</button></div></section>`}
       <section class="cinema-library-section"><div class="cinema-section-heading"><h2>${esc(this.label('Aus deiner Mediathek','From your library'))}</h2><div class="cinema-filters"><label><span class="sr-only">${esc(this.label('Auswahl','Selection'))}</span><select class="cinema-selection">${options.map(([key,title])=>`<option value="${key}" ${this.selection===key?'selected':''}>${esc(title)}</option>`).join('')}${this.collections.length?`<optgroup label="Plex">${this.collections.map(c=>`<option value="collection:${esc(c.id)}" ${this.selection==='collection:'+c.id?'selected':''}>${esc(c.title)}</option>`).join('')}</optgroup>`:''}</select></label><label><span class="sr-only">${esc(this.label('Medientyp','Media type'))}</span><select class="cinema-kind">${[['all',this.label('Filme & Serien','Movies & series')],['movie',this.label('Filme','Movies')],['tv',this.label('Serien','Series')]].map(([key,title])=>`<option value="${key}" ${this.kind===key?'selected':''}>${esc(title)}</option>`).join('')}</select></label><label><span class="sr-only">Genre</span><select class="cinema-genre"><option value="">Genre</option>${genres.map(g=>`<option value="${esc(g)}" ${this.genre===g?'selected':''}>${esc(g)}</option>`).join('')}</select></label><label class="cinema-unseen"><input type="checkbox" ${this.unseen||this.selection==='unwatched'?'checked':''} ${this.selection==='unwatched'?'disabled':''}>${esc(this.label('Ungesehen','Unwatched'))}</label></div></div>${this.selection.startsWith('collection:')&&this.collectionLoading?`<p role="status">${esc(this.label('Sammlung wird geladen …','Loading collection …'))}</p>`:this.selection.startsWith('collection:')&&this.collectionError?`<p role="status">${esc(this.label('Plex-Sammlung nicht erreichbar.','Plex collection unavailable.'))}</p>`:''}${this.rail('library',own)}</section>

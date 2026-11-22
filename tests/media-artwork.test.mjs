@@ -1,6 +1,33 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mediaBackdropImages, preloadMediaBackdrops, setMediaBackdrop } from '../media-library.js';
+import { mediaBackdropImages, preloadMediaBackdrops, retainMediaBackdrops, setMediaBackdrop } from '../media-library.js';
+
+test('watchlist and trending selections stay ready beyond the recent-image limit', async () => {
+ const original=globalThis.Image, requests=[];
+ globalThis.Image=class {
+   set src(url){requests.push(url);queueMicrotask(()=>this.onload());}
+ };
+ try {
+   const card={}, target={isConnected:true,style:{}};
+   const films=Array.from({length:48},(_,index)=>({key:String(index),banner:`/banner-${index}.jpg`}));
+   retainMediaBackdrops(card,'watchlist',films.slice(0,24));
+   retainMediaBackdrops(card,'trending',films.slice(20));
+   assert.equal(requests.length,3);
+   await new Promise(resolve=>setImmediate(resolve));
+   assert.equal(requests.length,48);
+   for(const film of films){
+     setMediaBackdrop(target,film,card);
+     assert.equal(target.style.backgroundImage,`url("${film.banner}")`);
+   }
+   assert.equal(requests.length,48);
+   retainMediaBackdrops(card,'watchlist',[]);
+   assert.ok(card._backdropImages.size<=28+16);
+   for(const film of films.slice(20))assert.ok(card._backdropImages.get(film.banner)?.ready);
+ } finally {
+   if(original===undefined) delete globalThis.Image;
+   else globalThis.Image=original;
+ }
+});
 
 test('a warmed film switch paints synchronously and reuses in-flight image loads', async () => {
  const originalImage=globalThis.Image, requests=[];

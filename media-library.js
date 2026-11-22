@@ -61,6 +61,15 @@ export function mediaBackdropImages(entry) {
     .map(mediaImage).filter(url=>url && url!==poster))];
 }
 
+function trimBackdrops(card) {
+  const images = card._backdropImages;
+  const pinned = card._backdropSelection?.urls;
+  let available = 16;
+  for (const url of [...images.keys()].reverse()) {
+    if (!pinned?.has(url) && --available < 0) images.delete(url);
+  }
+}
+
 function loadBackdrop(card, url) {
   const images = card._backdropImages ||= new Map();
   let record = images.get(url);
@@ -72,7 +81,7 @@ function loadBackdrop(card, url) {
   const image = new Image();
   record = {image, ready:false};
   images.set(url, record);
-  while (images.size > 16) images.delete(images.keys().next().value);
+  trimBackdrops(card);
   record.promise = new Promise(resolve => {
     let finished = false;
     const finish = ready => {
@@ -100,6 +109,25 @@ export function preloadMediaBackdrops(card, entries) {
     const url = mediaBackdropImages(entry)[0] || mediaImage(entry?.poster);
     if (url) loadBackdrop(card, url);
   }
+}
+
+export function retainMediaBackdrops(card, group, entries) {
+  const selection = card._backdropSelection ||= {groups:new Map(), urls:new Set(), queue:[], active:0};
+  const urls = entries.map(entry => mediaBackdropImages(entry)[0] || mediaImage(entry?.poster)).filter(Boolean);
+  const previous = selection.groups.get(group);
+  if (previous && previous.length === urls.length && previous.every((url,index)=>url===urls[index])) return;
+  selection.groups.set(group,urls);
+  selection.urls = new Set([...selection.groups.values()].flat());
+  if (card._backdropImages) trimBackdrops(card);
+  selection.queue = [...selection.urls].filter(url=>!card._backdropImages?.has(url));
+  const pump = () => {
+    while (selection.active < 3 && selection.queue.length) {
+      const url = selection.queue.shift();
+      selection.active++;
+      loadBackdrop(card,url).promise.finally(()=>{ selection.active--; pump(); });
+    }
+  };
+  pump();
 }
 
 export function setMediaBackdrop(target, entry, card) {
@@ -469,12 +497,13 @@ export class CompactMediaView {
 
   refresh() {
     const entries = mediaEntriesForCard(this.card).filter(entry => entry.watched !== true);
+    const waiting = entries.filter(entry=>entry.stage==='waiting');
+    retainMediaBackdrops(this.card,'compact-watchlist',waiting.slice(0,8));
     const signature = JSON.stringify([this.card._hass?.language,this.card.config.compact_items,entries.map(entry=>[entry.key,entry.stage,entry.title,entry.poster,entry.kind,inMediaLibrary(entry),mediaAddedTimestamp(entry),mediaDownload(entry)])]);
     if (signature === this.signature) return;
     this.signature = signature;
     const esc = escapeMediaHtml;
     const limit = Math.max(1, Math.min(8, Math.floor(Number(this.card.config.compact_items) || 4)));
-    const waiting = entries.filter(entry=>entry.stage==='waiting');
     // Manager/Seerr availability proves ownership, not a recent library import.
     const recent = entries.filter(entry=>entry.stage==='ready' && inMediaLibrary(entry)).sort((first,second)=>mediaAddedTimestamp(second)-mediaAddedTimestamp(first)||first.title.localeCompare(second.title));
     const firstRow = recent.length ? recent : entries.filter(entry=>entry.stage==='discover');
@@ -716,6 +745,7 @@ export class MediaLibraryView {
       (query ? matchesCatalog(entry) || `${entry.title} ${entry.year} ${entry.summary}`.toLocaleLowerCase().includes(query) : this.category==='library'?entry.stage==='ready':this.category === 'all' || entry.stage === this.category));
     const tabs = this.shell.querySelector('.library-tabs');
     preloadMediaBackdrops(this.card, visible);
+    retainMediaBackdrops(this.card,'library-watchlist',this.category==='waiting'?visible.slice(0,this.localLimit):[]);
     const focusedTab = tabs.querySelector('button:focus')?.dataset.category;
     tabs.innerHTML = ['all','library','discover','waiting','ready'].map(stage => `<button type="button" data-category="${stage}" aria-pressed="${this.category===stage}">${esc(this.stageLabel(stage))}</button>`).join('');
     tabs.querySelectorAll('button').forEach(button => button.onclick = () => { this.category=button.dataset.category; this.input.value=''; this.scheduleSearch(); });

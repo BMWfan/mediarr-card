@@ -115,6 +115,15 @@ function mediaBackdropImages(entry) {
     .map(mediaImage).filter(url=>url && url!==poster))];
 }
 
+function trimBackdrops(card) {
+  const images = card._backdropImages;
+  const pinned = card._backdropSelection?.urls;
+  let available = 16;
+  for (const url of [...images.keys()].reverse()) {
+    if (!pinned?.has(url) && --available < 0) images.delete(url);
+  }
+}
+
 function loadBackdrop(card, url) {
   const images = card._backdropImages ||= new Map();
   let record = images.get(url);
@@ -126,7 +135,7 @@ function loadBackdrop(card, url) {
   const image = new Image();
   record = {image, ready:false};
   images.set(url, record);
-  while (images.size > 16) images.delete(images.keys().next().value);
+  trimBackdrops(card);
   record.promise = new Promise(resolve => {
     let finished = false;
     const finish = ready => {
@@ -154,6 +163,25 @@ function preloadMediaBackdrops(card, entries) {
     const url = mediaBackdropImages(entry)[0] || mediaImage(entry?.poster);
     if (url) loadBackdrop(card, url);
   }
+}
+
+function retainMediaBackdrops(card, group, entries) {
+  const selection = card._backdropSelection ||= {groups:new Map(), urls:new Set(), queue:[], active:0};
+  const urls = entries.map(entry => mediaBackdropImages(entry)[0] || mediaImage(entry?.poster)).filter(Boolean);
+  const previous = selection.groups.get(group);
+  if (previous && previous.length === urls.length && previous.every((url,index)=>url===urls[index])) return;
+  selection.groups.set(group,urls);
+  selection.urls = new Set([...selection.groups.values()].flat());
+  if (card._backdropImages) trimBackdrops(card);
+  selection.queue = [...selection.urls].filter(url=>!card._backdropImages?.has(url));
+  const pump = () => {
+    while (selection.active < 3 && selection.queue.length) {
+      const url = selection.queue.shift();
+      selection.active++;
+      loadBackdrop(card,url).promise.finally(()=>{ selection.active--; pump(); });
+    }
+  };
+  pump();
 }
 
 function setMediaBackdrop(target, entry, card) {
@@ -523,12 +551,13 @@ class CompactMediaView {
 
   refresh() {
     const entries = mediaEntriesForCard(this.card).filter(entry => entry.watched !== true);
+    const waiting = entries.filter(entry=>entry.stage==='waiting');
+    retainMediaBackdrops(this.card,'compact-watchlist',waiting.slice(0,8));
     const signature = JSON.stringify([this.card._hass?.language,this.card.config.compact_items,entries.map(entry=>[entry.key,entry.stage,entry.title,entry.poster,entry.kind,inMediaLibrary(entry),mediaAddedTimestamp(entry),mediaDownload(entry)])]);
     if (signature === this.signature) return;
     this.signature = signature;
     const esc = escapeMediaHtml;
     const limit = Math.max(1, Math.min(8, Math.floor(Number(this.card.config.compact_items) || 4)));
-    const waiting = entries.filter(entry=>entry.stage==='waiting');
     // Manager/Seerr availability proves ownership, not a recent library import.
     const recent = entries.filter(entry=>entry.stage==='ready' && inMediaLibrary(entry)).sort((first,second)=>mediaAddedTimestamp(second)-mediaAddedTimestamp(first)||first.title.localeCompare(second.title));
     const firstRow = recent.length ? recent : entries.filter(entry=>entry.stage==='discover');
@@ -770,6 +799,7 @@ class MediaLibraryView {
       (query ? matchesCatalog(entry) || `${entry.title} ${entry.year} ${entry.summary}`.toLocaleLowerCase().includes(query) : this.category==='library'?entry.stage==='ready':this.category === 'all' || entry.stage === this.category));
     const tabs = this.shell.querySelector('.library-tabs');
     preloadMediaBackdrops(this.card, visible);
+    retainMediaBackdrops(this.card,'library-watchlist',this.category==='waiting'?visible.slice(0,this.localLimit):[]);
     const focusedTab = tabs.querySelector('button:focus')?.dataset.category;
     tabs.innerHTML = ['all','library','discover','waiting','ready'].map(stage => `<button type="button" data-category="${stage}" aria-pressed="${this.category===stage}">${esc(this.stageLabel(stage))}</button>`).join('');
     tabs.querySelectorAll('button').forEach(button => button.onclick = () => { this.category=button.dataset.category; this.input.value=''; this.scheduleSearch(); });
@@ -1255,11 +1285,15 @@ class CinemaLibraryView extends MediaLibraryView {
     const own=curatedCinemaEntries(this.entries,{selection:this.selection,kind:this.kind,genre:this.genre,unseen:this.unseen,collectionKeys:this.collectionKeys});
     const hero=own.find(entry=>entry.key===this.heroKey)||own[0]||this.sourceEntries('trending')[0];
     this.heroKey=hero?.key;
-    preloadMediaBackdrops(this.card,own);
     const genres=[...new Set(this.entries.filter(entry=>entry.stage==='ready').flatMap(entry=>mediaNames(entry.item.genres||entry.item.genre)))].sort();
     const trending=this.sourceEntries('trending').length?this.sourceEntries('trending'):this.entries.filter(entry=>entry.stage==='discover'&&entry.refs.some(ref=>ref.provider==='tmdb'&&!ref.entityKey.includes('upcoming'))).slice(0,20);
     const personal=this.sourceEntries('personal').filter(entry=>entry.stage==='discover');
     const upcoming=this.upcomingMode==='all'?this.sourceEntries('upcoming'):this.entries.filter(entry=>entry.stage==='waiting'&&!mediaDownload(entry));
+    retainMediaBackdrops(this.card,'cinema',[
+      ...own.slice(0,this.railLimits.library||24),
+      ...trending.slice(0,this.railLimits.trending||24),
+      ...upcoming.slice(0,12)
+    ]);
     const options=[['recent',this.label('Zuletzt hinzugefügt','Recently added')],['unwatched',this.label('Noch nicht gesehen','Unwatched')],['started',this.label('Angefangen','Started')]];
     const homeMarkup=`${hero?this.heroMarkup(hero):`<section class="cinema-hero cinema-hero-empty"><div class="cinema-hero-copy"><h1>${esc(this.label('Dein nächster Filmabend','Your next movie night'))}</h1><p>${esc(this.label('Durchsuche Filme und Serien oder lade deine Plex-Mediathek.','Search movies and series or load your Plex library.'))}</p><button type="button" class="cinema-reload">${esc(this.label('Mediathek laden','Load library'))}</button></div></section>`}
       <section class="cinema-library-section"><div class="cinema-section-heading"><h2>${esc(this.label('Aus deiner Mediathek','From your library'))}</h2><div class="cinema-filters"><label><span class="sr-only">${esc(this.label('Auswahl','Selection'))}</span><select class="cinema-selection">${options.map(([key,title])=>`<option value="${key}" ${this.selection===key?'selected':''}>${esc(title)}</option>`).join('')}${this.collections.length?`<optgroup label="Plex">${this.collections.map(c=>`<option value="collection:${esc(c.id)}" ${this.selection==='collection:'+c.id?'selected':''}>${esc(c.title)}</option>`).join('')}</optgroup>`:''}</select></label><label><span class="sr-only">${esc(this.label('Medientyp','Media type'))}</span><select class="cinema-kind">${[['all',this.label('Filme & Serien','Movies & series')],['movie',this.label('Filme','Movies')],['tv',this.label('Serien','Series')]].map(([key,title])=>`<option value="${key}" ${this.kind===key?'selected':''}>${esc(title)}</option>`).join('')}</select></label><label><span class="sr-only">Genre</span><select class="cinema-genre"><option value="">Genre</option>${genres.map(g=>`<option value="${esc(g)}" ${this.genre===g?'selected':''}>${esc(g)}</option>`).join('')}</select></label><label class="cinema-unseen"><input type="checkbox" ${this.unseen||this.selection==='unwatched'?'checked':''} ${this.selection==='unwatched'?'disabled':''}>${esc(this.label('Ungesehen','Unwatched'))}</label></div></div>${this.selection.startsWith('collection:')&&this.collectionLoading?`<p role="status">${esc(this.label('Sammlung wird geladen …','Loading collection …'))}</p>`:this.selection.startsWith('collection:')&&this.collectionError?`<p role="status">${esc(this.label('Plex-Sammlung nicht erreichbar.','Plex collection unavailable.'))}</p>`:''}${this.rail('library',own)}</section>
@@ -4592,7 +4626,7 @@ function deriveVisibleSections(config) {
 }
 
 
-const MEDIARR_BUILD = '0.6.0-dev.15';
+const MEDIARR_BUILD = '0.6.0-dev.16';
 console.log(`[mediarr-card] build ${MEDIARR_BUILD} loaded`);
 
 class MediarrCard extends HTMLElement {
@@ -4652,6 +4686,9 @@ class MediarrCard extends HTMLElement {
     expanded._catalogRequests = this._catalogRequests ||= new Map();
     expanded._fullLibraryState = this._fullLibraryState ||= {groups:null,loaded:false};
     expanded._mediaMetadataCache = this._mediaMetadataCache ||= new Map();
+    expanded._backdropImages = this._backdropImages ||= new Map();
+    expanded._backdropSelection = this._backdropSelection ||= {groups:new Map(), urls:new Set(), queue:[], active:0};
+    expanded._mediaBackdropCache = this._mediaBackdropCache ||= new Map();
     expanded._metadataBackendState = this._metadataBackendState ||= {unsupported:false};
     expanded.setConfig({ ...this.config });
     content.append(expanded);
