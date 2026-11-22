@@ -130,24 +130,34 @@ export function retainMediaBackdrops(card, group, entries) {
   pump();
 }
 
-export function setMediaBackdrop(target, entry, card) {
+export async function prepareMediaPreview(card,entry,current) {
+  const candidates=new Set([...mediaBackdropImages(entry),card._mediaBackdropCache?.get(entry.key),mediaImage(entry.poster)]);
+  for(const url of candidates) {
+    if(!current())return;
+    if(url && await loadBackdrop(card,url).promise)return url;
+  }
+}
+
+export function setMediaBackdrop(target, entry, card, preparedUrl) {
   if (!target) return;
   const key=entry?.key;
   const cache=card._mediaBackdropCache ||= new Map();
   const cached=key ? cache.get(key) : '';
-  const candidates=[...new Set([...mediaBackdropImages(entry),cached,mediaImage(entry?.poster)].filter(Boolean))];
+  const candidates=[...new Set([preparedUrl,...mediaBackdropImages(entry),cached,mediaImage(entry?.poster)].filter(Boolean))];
   const signature=JSON.stringify([key,candidates]);
   if (target._mediarrBackdrop?.signature===signature) return;
   const previous=target._mediarrBackdrop;
   const oldImage=target.style.backgroundImage;
   previous?.fade?.cancel();
   const state={key,signature};target._mediarrBackdrop=state;
-  if (previous?.key!==key) target.style.backgroundImage=cached ? `url(${JSON.stringify(cached)})` : '';
+  const hero=target.matches?.('.cinema-hero-backdrop');
+  if (previous?.key!==key && !(hero && key && oldImage && candidates.length)) target.style.backgroundImage=cached ? `url(${JSON.stringify(cached)})` : '';
   if (!key) return;
   let index=0;
   const current=()=>target.isConnected && target._mediarrBackdrop===state;
   const next=()=>{
-    if (!current() || index>=candidates.length) return;
+    if (!current()) return;
+    if(index>=candidates.length){if(previous?.key!==key)target.style.backgroundImage='';return;}
     const url=candidates[index++], record=loadBackdrop(card,url);
     const display=()=>{
       if(!current())return;
@@ -155,7 +165,7 @@ export function setMediaBackdrop(target, entry, card) {
       if(previous?.key!==key && oldImage && oldImage!=='none' && oldImage!==target.style.backgroundImage &&
          target.matches?.('.cinema-hero-backdrop') && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
         target.style.setProperty('--previous-banner',oldImage);
-        state.fade=target.animate([{opacity:1},{opacity:0}],{duration:180,easing:'ease-out',pseudoElement:'::before'});
+        state.fade=target.animate([{opacity:1},{opacity:0}],{duration:450,easing:'ease-in-out',pseudoElement:'::before'});
       }
       if(url!==mediaImage(entry.poster)) {
         cache.delete(key);cache.set(key,url);

@@ -69,6 +69,16 @@ try {
  await source.locator('.cinema-upcoming-card').filter({hasText:'Nordpfad'}).locator('img').waitFor();
  passed.push('real HA panel displays cinematic hero and curated poster rails without extra menu');
  const previewPoster=source.locator('[data-rail=trending] .cinema-poster').filter({hasText:'Trendingfilm'});
+ const duringSweep=await source.evaluate(el=>{
+   const home=el._libraryView.home;
+   const posters=[...home.querySelectorAll('[data-rail=library] .cinema-poster')].slice(1,5);
+   for(const poster of posters){
+     poster.dispatchEvent(new PointerEvent('pointerenter',{pointerType:'mouse'}));
+     poster.dispatchEvent(new PointerEvent('pointerleave',{pointerType:'mouse'}));
+   }
+   return home.querySelector('.cinema-hero h1').textContent;
+ });
+ assert.equal(duringSweep,'Sternenreise','passing over posters must leave the current preview visible');
  await previewPoster.hover();
  await source.locator('.cinema-hero h1').filter({hasText:'Trendingfilm'}).waitFor();
  const originalPoster=source.locator('[data-rail=library] .cinema-poster').filter({hasText:'Sternenreise'});

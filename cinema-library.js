@@ -1,4 +1,4 @@
-import {MediaLibraryView, mediaEntriesForCard, mediaText, mediaNames, mediaImage, mediaBackdropImages, preloadMediaBackdrops, retainMediaBackdrops, setMediaBackdrop, mediaDownload, escapeMediaHtml, downloadBadge, hasUnwatchedMedia, seriesEpisodeLabel, metadataNamespace, mediaAddedTimestamp, inMediaLibrary} from './media-library.js';
+import {MediaLibraryView, mediaEntriesForCard, mediaText, mediaNames, mediaImage, mediaBackdropImages, preloadMediaBackdrops, retainMediaBackdrops, prepareMediaPreview, setMediaBackdrop, mediaDownload, escapeMediaHtml, downloadBadge, hasUnwatchedMedia, seriesEpisodeLabel, metadataNamespace, mediaAddedTimestamp, inMediaLibrary} from './media-library.js';
 
 const esc=escapeMediaHtml;
 const identity=item=>`${item.media_type}:${item.tmdb_id}`;
@@ -283,7 +283,8 @@ export class CinemaLibraryView extends MediaLibraryView {
     this.bindImages(this.home);
     // Manager lists may have IDs but no cover; enrich only a bounded visible set.
     for(const entry of upcoming.slice(0,12).filter(entry=>!entry.poster))void this.loadMetadata(entry);
-    setMediaBackdrop(this.home.querySelector('.cinema-hero-backdrop'),hero,this.card);
+    setMediaBackdrop(this.home.querySelector('.cinema-hero-backdrop'),hero,this.card,this.preparedPreview);
+    this.preparedPreview=undefined;
     if(hero && (!hero.banner || hero.banner===hero.poster || hero.item.trailer===undefined))void this.loadMetadata(hero);
   }
 
@@ -311,15 +312,30 @@ export class CinemaLibraryView extends MediaLibraryView {
   }
 
   bindHome(hero) {
+    const cancelPreview=()=>{clearTimeout(this.previewTimer);this.previewPoster=null;};
     const preview=event=>{
-      const key=event.currentTarget.dataset.selectKey;
+      const poster=event.currentTarget,key=poster.dataset.selectKey;
+      cancelPreview();
       if(key===this.heroKey || event.pointerType==='touch')return;
-      this.heroKey=key;
-      this.render();
+      this.previewPoster=poster;
+      const current=()=>this.previewPoster===poster && poster.isConnected && !this.home.hidden && !this.detailKey && !this.input.value.trim();
+      this.previewTimer=setTimeout(async()=>{
+        if(!current())return;
+        const entry=this.entries.find(item=>item.key===key);
+        if(!entry)return;
+        const url=await prepareMediaPreview(this.card,entry,current);
+        if(!current())return;
+        this.preparedPreview=url;
+        this.heroKey=key;
+        this.render();
+        if(!matchMedia('(prefers-reduced-motion: reduce)').matches)
+          this.home.querySelector('.cinema-hero-copy')?.animate([{opacity:0.2},{opacity:1}],{duration:220,easing:'ease-out'});
+      },120);
     };
     for(const poster of this.home.querySelectorAll('.cinema-poster,.cinema-upcoming-card')) {
       poster.onpointerenter=preview;
       poster.onfocus=event=>{if(poster.matches(':focus-visible'))preview(event);};
+      poster.onpointerleave=poster.onblur=()=>{if(this.previewPoster===poster)cancelPreview();};
     }
     this.home.querySelectorAll('[data-select-key]').forEach(button=>button.onclick=()=>this.openDetails(button.dataset.selectKey,button));
     const primary=this.home.querySelector('.cinema-primary');
@@ -427,6 +443,7 @@ export class CinemaLibraryView extends MediaLibraryView {
   }
 
   openDetails(key,button) {
+    clearTimeout(this.previewTimer);this.previewPoster=null;
     this.returnSurface=this.scrollSurface();this.previousScroll=this.returnSurface.scrollTop;this.returnKey=key;this.detailKey=key;this.render();this.scrollSurface().scrollTop=0;
     this.shell.querySelector('.cinema-back').focus({preventScroll:true});
   }
