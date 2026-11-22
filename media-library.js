@@ -61,7 +61,47 @@ export function mediaBackdropImages(entry) {
     .map(mediaImage).filter(url=>url && url!==poster))];
 }
 
-// A refresh must not replace a loaded banner until its replacement actually loads.
+function loadBackdrop(card, url) {
+  const images = card._backdropImages ||= new Map();
+  let record = images.get(url);
+  if (record) {
+    images.delete(url);
+    images.set(url, record);
+    return record;
+  }
+  const image = new Image();
+  record = {image, ready:false};
+  images.set(url, record);
+  while (images.size > 16) images.delete(images.keys().next().value);
+  record.promise = new Promise(resolve => {
+    let finished = false;
+    const finish = ready => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      image.onload = image.onerror = null;
+      record.ready = ready;
+      if (!ready && images.get(url) === record) images.delete(url);
+      resolve(ready);
+    };
+    const timer = setTimeout(() => finish(false), 5000);
+    image.onerror = () => finish(false);
+    image.onload = () => {
+      if (image.decode) image.decode().then(() => finish(true), () => finish(false));
+      else finish(true);
+    };
+    image.src = url;
+  });
+  return record;
+}
+
+export function preloadMediaBackdrops(card, entries) {
+  for (const entry of entries.slice(0, 6)) {
+    const url = mediaBackdropImages(entry)[0] || mediaImage(entry?.poster);
+    if (url) loadBackdrop(card, url);
+  }
+}
+
 export function setMediaBackdrop(target, entry, card) {
   if (!target) return;
   const key=entry?.key;
@@ -71,7 +111,6 @@ export function setMediaBackdrop(target, entry, card) {
   const signature=JSON.stringify([key,candidates]);
   if (target._mediarrBackdrop?.signature===signature) return;
   const previous=target._mediarrBackdrop;
-  previous?.cancel?.();
   const state={key,signature};target._mediarrBackdrop=state;
   if (previous?.key!==key) target.style.backgroundImage=cached ? `url(${JSON.stringify(cached)})` : '';
   if (!key) return;
@@ -79,21 +118,17 @@ export function setMediaBackdrop(target, entry, card) {
   const current=()=>target.isConnected && target._mediarrBackdrop===state;
   const next=()=>{
     if (!current() || index>=candidates.length) return;
-    const url=candidates[index++],image=new Image();
-    let timer;
-    const clear=()=>{clearTimeout(timer);image.onload=image.onerror=null;};
-    state.cancel=clear;
-    image.onload=()=>{
-      clear();if(!current())return;
+    const url=candidates[index++], record=loadBackdrop(card,url);
+    const display=()=>{
+      if(!current())return;
       target.style.backgroundImage=`url(${JSON.stringify(url)})`;
       if(url!==mediaImage(entry.poster)) {
         cache.delete(key);cache.set(key,url);
         while(cache.size>32)cache.delete(cache.keys().next().value);
       }
     };
-    image.onerror=()=>{clear();next();};
-    timer=setTimeout(()=>{clear();next();},5000);
-    image.src=url;
+    if(record.ready) display();
+    else record.promise.then(ready=>ready?display():next());
   };
   next();
 }
@@ -680,6 +715,7 @@ export class MediaLibraryView {
     const visible = this.entries.filter(entry => (query || this.category==='library' || entry.watched !== true) &&
       (query ? matchesCatalog(entry) || `${entry.title} ${entry.year} ${entry.summary}`.toLocaleLowerCase().includes(query) : this.category==='library'?entry.stage==='ready':this.category === 'all' || entry.stage === this.category));
     const tabs = this.shell.querySelector('.library-tabs');
+    preloadMediaBackdrops(this.card, visible);
     const focusedTab = tabs.querySelector('button:focus')?.dataset.category;
     tabs.innerHTML = ['all','library','discover','waiting','ready'].map(stage => `<button type="button" data-category="${stage}" aria-pressed="${this.category===stage}">${esc(this.stageLabel(stage))}</button>`).join('');
     tabs.querySelectorAll('button').forEach(button => button.onclick = () => { this.category=button.dataset.category; this.input.value=''; this.scheduleSearch(); });

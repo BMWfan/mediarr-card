@@ -115,7 +115,47 @@ function mediaBackdropImages(entry) {
     .map(mediaImage).filter(url=>url && url!==poster))];
 }
 
-// A refresh must not replace a loaded banner until its replacement actually loads.
+function loadBackdrop(card, url) {
+  const images = card._backdropImages ||= new Map();
+  let record = images.get(url);
+  if (record) {
+    images.delete(url);
+    images.set(url, record);
+    return record;
+  }
+  const image = new Image();
+  record = {image, ready:false};
+  images.set(url, record);
+  while (images.size > 16) images.delete(images.keys().next().value);
+  record.promise = new Promise(resolve => {
+    let finished = false;
+    const finish = ready => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      image.onload = image.onerror = null;
+      record.ready = ready;
+      if (!ready && images.get(url) === record) images.delete(url);
+      resolve(ready);
+    };
+    const timer = setTimeout(() => finish(false), 5000);
+    image.onerror = () => finish(false);
+    image.onload = () => {
+      if (image.decode) image.decode().then(() => finish(true), () => finish(false));
+      else finish(true);
+    };
+    image.src = url;
+  });
+  return record;
+}
+
+function preloadMediaBackdrops(card, entries) {
+  for (const entry of entries.slice(0, 6)) {
+    const url = mediaBackdropImages(entry)[0] || mediaImage(entry?.poster);
+    if (url) loadBackdrop(card, url);
+  }
+}
+
 function setMediaBackdrop(target, entry, card) {
   if (!target) return;
   const key=entry?.key;
@@ -125,7 +165,6 @@ function setMediaBackdrop(target, entry, card) {
   const signature=JSON.stringify([key,candidates]);
   if (target._mediarrBackdrop?.signature===signature) return;
   const previous=target._mediarrBackdrop;
-  previous?.cancel?.();
   const state={key,signature};target._mediarrBackdrop=state;
   if (previous?.key!==key) target.style.backgroundImage=cached ? `url(${JSON.stringify(cached)})` : '';
   if (!key) return;
@@ -133,21 +172,17 @@ function setMediaBackdrop(target, entry, card) {
   const current=()=>target.isConnected && target._mediarrBackdrop===state;
   const next=()=>{
     if (!current() || index>=candidates.length) return;
-    const url=candidates[index++],image=new Image();
-    let timer;
-    const clear=()=>{clearTimeout(timer);image.onload=image.onerror=null;};
-    state.cancel=clear;
-    image.onload=()=>{
-      clear();if(!current())return;
+    const url=candidates[index++], record=loadBackdrop(card,url);
+    const display=()=>{
+      if(!current())return;
       target.style.backgroundImage=`url(${JSON.stringify(url)})`;
       if(url!==mediaImage(entry.poster)) {
         cache.delete(key);cache.set(key,url);
         while(cache.size>32)cache.delete(cache.keys().next().value);
       }
     };
-    image.onerror=()=>{clear();next();};
-    timer=setTimeout(()=>{clear();next();},5000);
-    image.src=url;
+    if(record.ready) display();
+    else record.promise.then(ready=>ready?display():next());
   };
   next();
 }
@@ -734,6 +769,7 @@ class MediaLibraryView {
     const visible = this.entries.filter(entry => (query || this.category==='library' || entry.watched !== true) &&
       (query ? matchesCatalog(entry) || `${entry.title} ${entry.year} ${entry.summary}`.toLocaleLowerCase().includes(query) : this.category==='library'?entry.stage==='ready':this.category === 'all' || entry.stage === this.category));
     const tabs = this.shell.querySelector('.library-tabs');
+    preloadMediaBackdrops(this.card, visible);
     const focusedTab = tabs.querySelector('button:focus')?.dataset.category;
     tabs.innerHTML = ['all','library','discover','waiting','ready'].map(stage => `<button type="button" data-category="${stage}" aria-pressed="${this.category===stage}">${esc(this.stageLabel(stage))}</button>`).join('');
     tabs.querySelectorAll('button').forEach(button => button.onclick = () => { this.category=button.dataset.category; this.input.value=''; this.scheduleSearch(); });
@@ -1219,6 +1255,7 @@ class CinemaLibraryView extends MediaLibraryView {
     const own=curatedCinemaEntries(this.entries,{selection:this.selection,kind:this.kind,genre:this.genre,unseen:this.unseen,collectionKeys:this.collectionKeys});
     const hero=own.find(entry=>entry.key===this.heroKey)||own[0]||this.sourceEntries('trending')[0];
     this.heroKey=hero?.key;
+    preloadMediaBackdrops(this.card,own);
     const genres=[...new Set(this.entries.filter(entry=>entry.stage==='ready').flatMap(entry=>mediaNames(entry.item.genres||entry.item.genre)))].sort();
     const trending=this.sourceEntries('trending').length?this.sourceEntries('trending'):this.entries.filter(entry=>entry.stage==='discover'&&entry.refs.some(ref=>ref.provider==='tmdb'&&!ref.entityKey.includes('upcoming'))).slice(0,20);
     const personal=this.sourceEntries('personal').filter(entry=>entry.stage==='discover');
@@ -1361,6 +1398,7 @@ class CinemaLibraryView extends MediaLibraryView {
     const query=this.input.value.trim().toLocaleLowerCase();
     const ids=new Set(this.catalog.map(identity));
     const visible=this.entries.filter(entry=>ids.has(entryIdentity(entry))||`${entry.title} ${entry.year} ${entry.summary}`.toLocaleLowerCase().includes(query));
+    preloadMediaBackdrops(this.card,visible);
     this.shell.querySelector('.mediarr-search-status').textContent=`${visible.length} ${this.label('Treffer · Deine Mediathek und neue Titel','matches · Your library and new titles')}`;
     this.searchStatus.textContent=this.searching?this.label('Suche läuft …','Searching …'):this.searchError?this.label('Katalogsuche nicht verfügbar. Treffer aus deinen Daten werden angezeigt.','Catalog search unavailable. Showing matches from your data.'):query.length<2?this.label('Ab zwei Zeichen auch neue Titel finden.','Type at least two characters to find new titles.'):'';
     const resultsMarkup=visible.slice(0,this.localLimit).map(entry=>`<button type="button" class="cinema-search-result" data-select-key="${esc(entry.key)}"><span class="cinema-result-poster">${entry.poster?`<img src="${esc(entry.poster)}" alt="">`:'<ha-icon icon="mdi:movie-open-outline"></ha-icon>'}${downloadBadge(entry,this.label.bind(this))}</span><span class="cinema-result-copy"><strong>${esc(entry.title)}</strong><small>${esc([entry.year,entry.kind==='tv'?this.label('Serie','Series'):this.label('Film','Movie'),entry.rating?`★ ${entry.rating}`:''].filter(Boolean).join(' · '))}</small><span>${esc(entry.summary)}</span></span><span class="cinema-availability cinema-availability-${entry.stage}">${esc(this.status(entry))}</span></button>`).join('')||`<p class="cinema-empty">${esc(this.label('Keine passenden Titel gefunden.','No matching titles found.'))}</p>`;

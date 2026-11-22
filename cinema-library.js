@@ -1,4 +1,4 @@
-import {MediaLibraryView, mediaEntriesForCard, mediaText, mediaNames, mediaImage, mediaBackdropImages, setMediaBackdrop, mediaDownload, escapeMediaHtml, downloadBadge, hasUnwatchedMedia, seriesEpisodeLabel, metadataNamespace, mediaAddedTimestamp, inMediaLibrary} from './media-library.js';
+import {MediaLibraryView, mediaEntriesForCard, mediaText, mediaNames, mediaImage, mediaBackdropImages, preloadMediaBackdrops, setMediaBackdrop, mediaDownload, escapeMediaHtml, downloadBadge, hasUnwatchedMedia, seriesEpisodeLabel, metadataNamespace, mediaAddedTimestamp, inMediaLibrary} from './media-library.js';
 
 const esc=escapeMediaHtml;
 const identity=item=>`${item.media_type}:${item.tmdb_id}`;
@@ -256,6 +256,7 @@ export class CinemaLibraryView extends MediaLibraryView {
     const own=curatedCinemaEntries(this.entries,{selection:this.selection,kind:this.kind,genre:this.genre,unseen:this.unseen,collectionKeys:this.collectionKeys});
     const hero=own.find(entry=>entry.key===this.heroKey)||own[0]||this.sourceEntries('trending')[0];
     this.heroKey=hero?.key;
+    preloadMediaBackdrops(this.card,own);
     const genres=[...new Set(this.entries.filter(entry=>entry.stage==='ready').flatMap(entry=>mediaNames(entry.item.genres||entry.item.genre)))].sort();
     const trending=this.sourceEntries('trending').length?this.sourceEntries('trending'):this.entries.filter(entry=>entry.stage==='discover'&&entry.refs.some(ref=>ref.provider==='tmdb'&&!ref.entityKey.includes('upcoming'))).slice(0,20);
     const personal=this.sourceEntries('personal').filter(entry=>entry.stage==='discover');
@@ -398,6 +399,7 @@ export class CinemaLibraryView extends MediaLibraryView {
     const query=this.input.value.trim().toLocaleLowerCase();
     const ids=new Set(this.catalog.map(identity));
     const visible=this.entries.filter(entry=>ids.has(entryIdentity(entry))||`${entry.title} ${entry.year} ${entry.summary}`.toLocaleLowerCase().includes(query));
+    preloadMediaBackdrops(this.card,visible);
     this.shell.querySelector('.mediarr-search-status').textContent=`${visible.length} ${this.label('Treffer · Deine Mediathek und neue Titel','matches · Your library and new titles')}`;
     this.searchStatus.textContent=this.searching?this.label('Suche läuft …','Searching …'):this.searchError?this.label('Katalogsuche nicht verfügbar. Treffer aus deinen Daten werden angezeigt.','Catalog search unavailable. Showing matches from your data.'):query.length<2?this.label('Ab zwei Zeichen auch neue Titel finden.','Type at least two characters to find new titles.'):'';
     const resultsMarkup=visible.slice(0,this.localLimit).map(entry=>`<button type="button" class="cinema-search-result" data-select-key="${esc(entry.key)}"><span class="cinema-result-poster">${entry.poster?`<img src="${esc(entry.poster)}" alt="">`:'<ha-icon icon="mdi:movie-open-outline"></ha-icon>'}${downloadBadge(entry,this.label.bind(this))}</span><span class="cinema-result-copy"><strong>${esc(entry.title)}</strong><small>${esc([entry.year,entry.kind==='tv'?this.label('Serie','Series'):this.label('Film','Movie'),entry.rating?`★ ${entry.rating}`:''].filter(Boolean).join(' · '))}</small><span>${esc(entry.summary)}</span></span><span class="cinema-availability cinema-availability-${entry.stage}">${esc(this.status(entry))}</span></button>`).join('')||`<p class="cinema-empty">${esc(this.label('Keine passenden Titel gefunden.','No matching titles found.'))}</p>`;
