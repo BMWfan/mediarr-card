@@ -4645,7 +4645,7 @@ function deriveVisibleSections(config) {
 }
 
 
-const MEDIARR_BUILD = '0.6.0-dev.16';
+const MEDIARR_BUILD = '0.6.0-dev.17';
 console.log(`[mediarr-card] build ${MEDIARR_BUILD} loaded`);
 
 class MediarrCard extends HTMLElement {
