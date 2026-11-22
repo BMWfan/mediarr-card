@@ -68,6 +68,14 @@ try {
  await page.screenshot({path:path.join(runtime,'cinema-home-desktop.png')});
  await source.locator('.cinema-upcoming-card').filter({hasText:'Nordpfad'}).locator('img').waitFor();
  passed.push('real HA panel displays cinematic hero and curated poster rails without extra menu');
+ const previewPoster=source.locator('[data-rail=trending] .cinema-poster').filter({hasText:'Trendingfilm'});
+ await previewPoster.hover();
+ await source.locator('.cinema-hero h1').filter({hasText:'Trendingfilm'}).waitFor();
+ const originalPoster=source.locator('[data-rail=library] .cinema-poster').filter({hasText:'Sternenreise'});
+ await page.keyboard.press('Tab');
+ await originalPoster.focus();
+ await source.locator('.cinema-hero h1').filter({hasText:'Sternenreise'}).waitFor();
+ assert.ok(await originalPoster.evaluate(button=>button.matches(':focus')));
  assert.equal(await source.locator('.cinema-primary').isDisabled(),true,'Play is disabled without a reachable Plex player');
  await source.evaluate(async el=>{window.__cinemaPlayersReady=true;await el._libraryView.loadPlayback();});
  await page.evaluate(()=>window.__cinemaPlayersReady=false);

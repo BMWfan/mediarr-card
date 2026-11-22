@@ -139,6 +139,8 @@ export function setMediaBackdrop(target, entry, card) {
   const signature=JSON.stringify([key,candidates]);
   if (target._mediarrBackdrop?.signature===signature) return;
   const previous=target._mediarrBackdrop;
+  const oldImage=target.style.backgroundImage;
+  previous?.fade?.cancel();
   const state={key,signature};target._mediarrBackdrop=state;
   if (previous?.key!==key) target.style.backgroundImage=cached ? `url(${JSON.stringify(cached)})` : '';
   if (!key) return;
@@ -150,6 +152,11 @@ export function setMediaBackdrop(target, entry, card) {
     const display=()=>{
       if(!current())return;
       target.style.backgroundImage=`url(${JSON.stringify(url)})`;
+      if(previous?.key!==key && oldImage && oldImage!=='none' && oldImage!==target.style.backgroundImage &&
+         target.matches?.('.cinema-hero-backdrop') && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        target.style.setProperty('--previous-banner',oldImage);
+        state.fade=target.animate([{opacity:1},{opacity:0}],{duration:180,easing:'ease-out',pseudoElement:'::before'});
+      }
       if(url!==mediaImage(entry.poster)) {
         cache.delete(key);cache.set(key,url);
         while(cache.size>32)cache.delete(cache.keys().next().value);

@@ -193,6 +193,8 @@ function setMediaBackdrop(target, entry, card) {
   const signature=JSON.stringify([key,candidates]);
   if (target._mediarrBackdrop?.signature===signature) return;
   const previous=target._mediarrBackdrop;
+  const oldImage=target.style.backgroundImage;
+  previous?.fade?.cancel();
   const state={key,signature};target._mediarrBackdrop=state;
   if (previous?.key!==key) target.style.backgroundImage=cached ? `url(${JSON.stringify(cached)})` : '';
   if (!key) return;
@@ -204,6 +206,11 @@ function setMediaBackdrop(target, entry, card) {
     const display=()=>{
       if(!current())return;
       target.style.backgroundImage=`url(${JSON.stringify(url)})`;
+      if(previous?.key!==key && oldImage && oldImage!=='none' && oldImage!==target.style.backgroundImage &&
+         target.matches?.('.cinema-hero-backdrop') && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        target.style.setProperty('--previous-banner',oldImage);
+        state.fade=target.animate([{opacity:1},{opacity:0}],{duration:180,easing:'ease-out',pseudoElement:'::before'});
+      }
       if(url!==mediaImage(entry.poster)) {
         cache.delete(key);cache.set(key,url);
         while(cache.size>32)cache.delete(cache.keys().next().value);
@@ -1241,7 +1248,8 @@ class CinemaLibraryView extends MediaLibraryView {
   render() {
     if(!this.shell)return;
     const railScroll=new Map([...this.home.querySelectorAll('[data-rail]')].map(el=>[el.dataset.rail,el.scrollLeft]));
-    const activeKey=this.home.querySelector('button:focus')?.dataset.selectKey;
+    const activeButton=this.home.querySelector('button:focus');
+    const activeKey=activeButton?.dataset.selectKey;
     const state=this.card._fullLibraryState;
     this.renderLibraryStatus(this.shell.querySelector('.cinema-library-status'));
     if(state.loading&&!this.hasLibraryContent()){this.home.hidden=true;this.shell.querySelector('.cinema-detail').hidden=true;this.shell.querySelector('.cinema-search-results').hidden=true;return;}
@@ -1283,12 +1291,12 @@ class CinemaLibraryView extends MediaLibraryView {
     }
     if(this.input.value.trim()){this.renderSearch();return;}
     const own=curatedCinemaEntries(this.entries,{selection:this.selection,kind:this.kind,genre:this.genre,unseen:this.unseen,collectionKeys:this.collectionKeys});
-    const hero=own.find(entry=>entry.key===this.heroKey)||own[0]||this.sourceEntries('trending')[0];
-    this.heroKey=hero?.key;
     const genres=[...new Set(this.entries.filter(entry=>entry.stage==='ready').flatMap(entry=>mediaNames(entry.item.genres||entry.item.genre)))].sort();
     const trending=this.sourceEntries('trending').length?this.sourceEntries('trending'):this.entries.filter(entry=>entry.stage==='discover'&&entry.refs.some(ref=>ref.provider==='tmdb'&&!ref.entityKey.includes('upcoming'))).slice(0,20);
     const personal=this.sourceEntries('personal').filter(entry=>entry.stage==='discover');
     const upcoming=this.upcomingMode==='all'?this.sourceEntries('upcoming'):this.entries.filter(entry=>entry.stage==='waiting'&&!mediaDownload(entry));
+    const hero=[...own,...trending,...personal,...upcoming].find(entry=>entry.key===this.heroKey)||own[0]||trending[0];
+    this.heroKey=hero?.key;
     retainMediaBackdrops(this.card,'cinema',[
       ...own.slice(0,this.railLimits.library||24),
       ...trending.slice(0,this.railLimits.trending||24),
@@ -1307,7 +1315,7 @@ class CinemaLibraryView extends MediaLibraryView {
     this.homeSignature=signature;patchCinemaDOM(this.home,homeMarkup);
     this.bindHome(hero);
     for(const el of this.home.querySelectorAll('[data-rail]'))el.scrollLeft=railScroll.get(el.dataset.rail)||0;
-    if(activeKey)[...this.home.querySelectorAll('[data-select-key]')].find(el=>el.dataset.selectKey===activeKey)?.focus({preventScroll:true});
+    if(activeKey && !activeButton.isConnected)[...this.home.querySelectorAll('[data-select-key]')].find(el=>el.dataset.selectKey===activeKey)?.focus({preventScroll:true});
     this.bindImages(this.home);
     // Manager lists may have IDs but no cover; enrich only a bounded visible set.
     for(const entry of upcoming.slice(0,12).filter(entry=>!entry.poster))void this.loadMetadata(entry);
@@ -1339,6 +1347,16 @@ class CinemaLibraryView extends MediaLibraryView {
   }
 
   bindHome(hero) {
+    const preview=event=>{
+      const key=event.currentTarget.dataset.selectKey;
+      if(key===this.heroKey || event.pointerType==='touch')return;
+      this.heroKey=key;
+      this.render();
+    };
+    for(const poster of this.home.querySelectorAll('.cinema-poster,.cinema-upcoming-card')) {
+      poster.onpointerenter=preview;
+      poster.onfocus=event=>{if(poster.matches(':focus-visible'))preview(event);};
+    }
     this.home.querySelectorAll('[data-select-key]').forEach(button=>button.onclick=()=>this.openDetails(button.dataset.selectKey,button));
     const primary=this.home.querySelector('.cinema-primary');
     if(primary)primary.onclick=()=>{
@@ -1520,6 +1538,7 @@ const cinemaStyles = `
   .cinema-home { padding-bottom:32px; }
   .cinema-hero { position:relative; min-height:420px; display:flex; align-items:center; isolation:isolate; overflow:hidden; background:radial-gradient(ellipse at 80% 20%,#183446,#090d12 70%); }
   .cinema-hero-backdrop { position:absolute; inset:0; z-index:-1; background-position:70% 28%; background-size:cover; }
+  .cinema-hero-backdrop::before { content:''; position:absolute; inset:0; opacity:0; background-image:var(--previous-banner,none); background-size:inherit; background-position:inherit; pointer-events:none; }
   .cinema-hero-backdrop::after { content:''; position:absolute; inset:0; background:linear-gradient(90deg,#090d12 0%,#090d12d9 23%,#090d1270 48%,transparent 80%),linear-gradient(0deg,#090d12 0%,#090d1240 35%,transparent 75%); }
   .cinema-hero-copy { padding:44px 40px 58px; width:min(54%,650px); box-sizing:border-box; }
   .cinema-hero h1 { font-size:clamp(2rem,3.6vw,3.6rem); letter-spacing:.04em; line-height:1.15; margin:0 0 14px; text-wrap:balance; text-shadow:0 3px 24px #000; }

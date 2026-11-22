@@ -30,6 +30,7 @@ export const cinemaStyles = `
   .cinema-home { padding-bottom:32px; }
   .cinema-hero { position:relative; min-height:420px; display:flex; align-items:center; isolation:isolate; overflow:hidden; background:radial-gradient(ellipse at 80% 20%,#183446,#090d12 70%); }
   .cinema-hero-backdrop { position:absolute; inset:0; z-index:-1; background-position:70% 28%; background-size:cover; }
+  .cinema-hero-backdrop::before { content:''; position:absolute; inset:0; opacity:0; background-image:var(--previous-banner,none); background-size:inherit; background-position:inherit; pointer-events:none; }
   .cinema-hero-backdrop::after { content:''; position:absolute; inset:0; background:linear-gradient(90deg,#090d12 0%,#090d12d9 23%,#090d1270 48%,transparent 80%),linear-gradient(0deg,#090d12 0%,#090d1240 35%,transparent 75%); }
   .cinema-hero-copy { padding:44px 40px 58px; width:min(54%,650px); box-sizing:border-box; }
   .cinema-hero h1 { font-size:clamp(2rem,3.6vw,3.6rem); letter-spacing:.04em; line-height:1.15; margin:0 0 14px; text-wrap:balance; text-shadow:0 3px 24px #000; }
