@@ -1176,6 +1176,11 @@ export const styles = `
   .media-download-badge { position: absolute; z-index: 2; bottom: 0; left: 0; right: 0; padding: 6px; background: rgba(3,14,25,.92); color: #d4f5ff; font-size: .65rem; line-height: 1.25; display: grid; gap: 5px; }
   .media-download-track { display: block; height: 4px; background: #435669; border-radius: 4px; overflow: hidden; }
   .media-download-track > span { display: block; height: 100%; background: #2bc9f3; }
+  .media-unpacking > span { width: 40%; border-radius: inherit; transform: translateX(75%); }
+  @media (prefers-reduced-motion: no-preference) {
+    .media-unpacking > span { animation: mediarr-unpacking 1.5s ease-in-out infinite alternate; }
+    @keyframes mediarr-unpacking { from { transform: translateX(0); } to { transform: translateX(150%); } }
+  }
   .compact-watchlist-posters .media-download-badge { font-size: .55rem; padding: 4px; }
   .library-metadata-retry { border: 1px solid #34465a; border-radius: 6px; color: #6cdcff; background: transparent; padding: 7px 10px; margin-bottom: 16px; cursor: pointer; }
 `;

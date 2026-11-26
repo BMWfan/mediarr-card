@@ -499,9 +499,24 @@ export function mediaDownload(entry) {
 export function downloadBadge(entry, label) {
   const download=mediaDownload(entry);
   if(!download)return '';
-  const text=({paused:label('Pausiert','Paused'),queued:label('Warteschlange','Queued'),importing:label('Importiert','Importing'),completed:label('Wird verarbeitet','Processing'),warning:label('Prüfung nötig','Needs attention')})[download.status] || label('Lädt herunter','Downloading');
-  const caption=`${text}${download.progress!==null?` · ${download.progress} %`:''}`;
-  return `<span class="media-download-badge" aria-label="${escapeMediaHtml(caption)}"><span>${escapeMediaHtml(caption)}</span>${download.progress!==null?`<span class="media-download-track" role="progressbar" aria-label="${escapeMediaHtml(text)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${download.progress}"><span style="width:${download.progress}%"></span></span>`:''}</span>`;
+  const labels = {
+    downloading: label('Lädt herunter','Downloading'),
+    unpacking: label('Wird entpackt','Unpacking'),
+    paused: label('Pausiert','Paused'),
+    queued: label('Warteschlange','Queued'),
+    importing: label('Importiert','Importing'),
+    warning: label('Prüfung nötig','Needs attention')
+  };
+  const text = labels[download.status] || label('Wird verarbeitet','Processing');
+  let caption = text;
+  let track = '';
+  if (download.status === 'unpacking') {
+    track = `<span class="media-download-track media-unpacking" role="progressbar" aria-label="${escapeMediaHtml(text)}"><span></span></span>`;
+  } else if (download.progress !== null) {
+    caption += ` · ${download.progress} %`;
+    track = `<span class="media-download-track" role="progressbar" aria-label="${escapeMediaHtml(text)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${download.progress}"><span style="width:${download.progress}%"></span></span>`;
+  }
+  return `<span class="media-download-badge" aria-label="${escapeMediaHtml(caption)}"><span>${escapeMediaHtml(caption)}</span>${track}</span>`;
 }
 
 export class CompactMediaView {

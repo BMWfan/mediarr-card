@@ -553,9 +553,24 @@ function mediaDownload(entry) {
 function downloadBadge(entry, label) {
   const download=mediaDownload(entry);
   if(!download)return '';
-  const text=({paused:label('Pausiert','Paused'),queued:label('Warteschlange','Queued'),importing:label('Importiert','Importing'),completed:label('Wird verarbeitet','Processing'),warning:label('Prüfung nötig','Needs attention')})[download.status] || label('Lädt herunter','Downloading');
-  const caption=`${text}${download.progress!==null?` · ${download.progress} %`:''}`;
-  return `<span class="media-download-badge" aria-label="${escapeMediaHtml(caption)}"><span>${escapeMediaHtml(caption)}</span>${download.progress!==null?`<span class="media-download-track" role="progressbar" aria-label="${escapeMediaHtml(text)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${download.progress}"><span style="width:${download.progress}%"></span></span>`:''}</span>`;
+  const labels = {
+    downloading: label('Lädt herunter','Downloading'),
+    unpacking: label('Wird entpackt','Unpacking'),
+    paused: label('Pausiert','Paused'),
+    queued: label('Warteschlange','Queued'),
+    importing: label('Importiert','Importing'),
+    warning: label('Prüfung nötig','Needs attention')
+  };
+  const text = labels[download.status] || label('Wird verarbeitet','Processing');
+  let caption = text;
+  let track = '';
+  if (download.status === 'unpacking') {
+    track = `<span class="media-download-track media-unpacking" role="progressbar" aria-label="${escapeMediaHtml(text)}"><span></span></span>`;
+  } else if (download.progress !== null) {
+    caption += ` · ${download.progress} %`;
+    track = `<span class="media-download-track" role="progressbar" aria-label="${escapeMediaHtml(text)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${download.progress}"><span style="width:${download.progress}%"></span></span>`;
+  }
+  return `<span class="media-download-badge" aria-label="${escapeMediaHtml(caption)}"><span>${escapeMediaHtml(caption)}</span>${track}</span>`;
 }
 
 class CompactMediaView {
@@ -4644,6 +4659,11 @@ const styles = `
   .media-download-badge { position: absolute; z-index: 2; bottom: 0; left: 0; right: 0; padding: 6px; background: rgba(3,14,25,.92); color: #d4f5ff; font-size: .65rem; line-height: 1.25; display: grid; gap: 5px; }
   .media-download-track { display: block; height: 4px; background: #435669; border-radius: 4px; overflow: hidden; }
   .media-download-track > span { display: block; height: 100%; background: #2bc9f3; }
+  .media-unpacking > span { width: 40%; border-radius: inherit; transform: translateX(75%); }
+  @media (prefers-reduced-motion: no-preference) {
+    .media-unpacking > span { animation: mediarr-unpacking 1.5s ease-in-out infinite alternate; }
+    @keyframes mediarr-unpacking { from { transform: translateX(0); } to { transform: translateX(150%); } }
+  }
   .compact-watchlist-posters .media-download-badge { font-size: .55rem; padding: 4px; }
   .library-metadata-retry { border: 1px solid #34465a; border-radius: 6px; color: #6cdcff; background: transparent; padding: 7px 10px; margin-bottom: 16px; cursor: pointer; }
 `;

@@ -1,5 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {downloadBadge} from '../media-library.js';
+test('download badge follows the current processing phase', () => {
+  const item = {download_status:'downloading', download_progress:72};
+  const render = () => downloadBadge({refs:[{item}]}, de => de);
+  assert.match(render(), /Lädt herunter · 72 %/);
+  item.download_status = 'unpacking';
+  assert.match(render(), /Wird entpackt/);
+  assert.match(render(), /role="progressbar" aria-label="Wird entpackt"/);
+  assert.doesNotMatch(render(), /Lädt herunter|aria-valuenow|%/);
+  item.download_progress = null;
+  assert.match(render(), /media-unpacking/);
+  item.download_status = 'processing';
+  assert.match(render(), /Wird verarbeitet/);
+  assert.doesNotMatch(render(), /media-unpacking/);
+});
 import {collectMediaLibrary, mediaImage, mediaCast, mediaEntriesForCard, mediaKind, normalizeMediaItem, mergeCatalogEntries, mediaDownload} from '../media-library.js';
 const state = data => ({state:'1',attributes:{data}});
 test('learned typed identity reconciles owned films before catalog matching',()=>{

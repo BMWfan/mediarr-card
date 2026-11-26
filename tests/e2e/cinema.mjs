@@ -257,6 +257,27 @@ try {
  passed.push('mobile live updates preserve loaded poster nodes, native controls and focus');
  await page.screenshot({path:path.join(runtime,'cinema-home-mobile.png')});
  passed.push('mobile layout has usable horizontal poster rails, no page overflow and reachable cast');
+ const touch = await page.context().newCDPSession(page);
+ await touch.send('Emulation.setTouchEmulationEnabled', {enabled:true});
+ async function tapControl(control) {
+   await control.scrollIntoViewIfNeeded();
+   const box = await control.boundingBox();
+   assert.ok(box);
+   const point = {x:box.x + box.width / 2, y:box.y + box.height / 2};
+   await touch.send('Input.dispatchTouchEvent', {type:'touchStart', touchPoints:[point]});
+   await touch.send('Input.dispatchTouchEvent', {type:'touchEnd', touchPoints:[]});
+ }
+ await page.setViewportSize({width:820,height:1180});
+ assert.equal(await source.evaluate(el=>el.scrollWidth>el.clientWidth),false);
+ await tapControl(source.locator('.cinema-library-section .cinema-poster').first());
+ await source.locator('.cinema-back').waitFor();
+ await page.setViewportSize({width:1180,height:820});
+ assert.equal(await source.evaluate(el=>el.scrollWidth>el.clientWidth),false);
+ await tapControl(source.locator('.cinema-back'));
+ await source.locator('.cinema-home').waitFor();
+ await touch.send('Emulation.setTouchEmulationEnabled', {enabled:false});
+ await touch.detach();
+ passed.push('tablet touch opens details in portrait and returns to home after rotation');
  await page.setViewportSize({width:1536,height:1080});
  await source.evaluate(el=>{el.setConfig({...window.__cinemaConfig,view:'compact'});el.hass=window.__cinemaHass;});
  await source.locator('.mediarr-open-button').click();
