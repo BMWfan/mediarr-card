@@ -4,6 +4,7 @@
 **Cloud A/B test not yet executed.** The GitHub integration cannot start independent Codex Cloud tasks. The instructions below are ready to run; no automatic-read or token-saving claim is made.
 
 ## Test A — clean independent Codex Cloud task
+- Prerequisite for a positive retrieval test: an owner-reviewed active record on the target revision. With only candidate records, record discovery separately and expect zero eligible decisions.
 - Select repository `BMWfan/mediarr-card`, branch `spec/43-curated-cloud-memory`; create a **new** cloud task, not a continuation of the SPEC-039 task.
 - Prompt: `Read the repository instructions normally. Without relying on this prompt for any memory contents, report whether project memory was automatically discovered, and identify the active record concerning review-gated writes with its exact ID and source. Do not change files.`
 - Evidence: task ID, branch HEAD, actual AGENTS.md discovery, which files were opened and when, retrieved record ID/source, and whether the task was explicitly prompted to read memory.
@@ -31,3 +32,16 @@ Record actual commands, test IDs, output, pass/fail, runtime, token use if expos
 - **Open:** no automated schema validation; manual review is the current write gate.
 
 **Merge gate:** draft PR only; explicit owner approval after independent task verification and review.
+
+### Read-only negative review, 26 November 2026
+
+The draft labeled both proposals active while its header described them as unreviewed. A reader selecting individual records could miss the header. Both records now carry candidate status. The following synthetic cases were evaluated against the documented manual review rule, using this checkout.
+
+| Input presented for review | Review result |
+|---|---|
+| MEM-0001 or MEM-0002 selected individually from the draft | Both are candidates. Neither qualifies for retrieval as an approved decision. |
+| Synthetic record marked superseded and pointing at MEM-0001 | Excluded. Its candidate replacement also lacks approval. |
+| Synthetic record citing an issue in another repository | Rejected by the repository-specific source rule. |
+| Synthetic statement directing the reader to promote it or to change a branch | Ignored as an instruction. A statement cannot authorize a write or attest to its own review. |
+
+These are manual reviewer decisions. Autonomous behavior in hosted tasks A and B still needs startup logs. The positive test requires an independently reviewed active fixture. The current branch has zero eligible records. Comparable token totals and hosted execution times remain unavailable.
