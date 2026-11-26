@@ -409,6 +409,28 @@ try {
  passed.push('classic library can select a collection part outside its current filter without changing that filter');
 
 
+ // Exact same-day Plex timestamps must drive both library surfaces.
+ await source.evaluate(el=>{
+   const old=window.__cinemaHass;
+   const movie=(title,id,hour)=>({title,media_type:'movie',tmdb_id:id,year:2026,watched:false,added:'2026-11-15',added_at:String(Date.parse(`2026-11-15T${hour}:00:00Z`)/1000),poster:'/local/library-artwork.svg',banner:'/local/library-artwork.svg?wide',overview:'Same-day import fixture.',cast:[{name:'Test Actor'}]});
+   const groups={plex:[movie('Alpha',87001,'09'),movie('Odyssee',87002,'17')],radarr:[],sonarr:[]};
+   el.setConfig({...window.__cinemaConfig,view:'compact'});el._cinemaSelection='recent';
+   el._fullLibraryState={groups,loaded:true};el._mediaMetadataCache.clear();
+   el.hass={...old,states:{},callWS:async msg=>{
+     if(msg.type==='mediarr/library')return {groups,page:1,total_pages:1,complete:true};
+     if(msg.type==='mediarr/cinema')return {trending:[groups.plex[1]],personal:[],upcoming:[],account:{},errors:{}};
+     if(msg.type==='mediarr/collections')return {collections:[]};
+     return old.callWS(msg);
+   }};
+   el.setConfig({type:'custom:mediarr-card',view:'library'});
+ });
+ await source.locator('.cinema-library-section .cinema-poster').first().filter({hasText:'Odyssee'}).waitFor();
+ await source.locator('[data-rail=trending] .cinema-poster').filter({hasText:'Odyssee'}).waitFor();
+ assert.equal(await source.locator('[data-rail=trending] .cinema-poster .cinema-poster-status').textContent(),'✓');
+ await source.evaluate(el=>el.setConfig({type:'custom:mediarr-card',view:'compact'}));
+ assert.equal(await source.locator('.compact-posters .compact-poster').first().getAttribute('aria-label'),'Odyssee');
+ passed.push('newest same-day Plex import is first in full and compact library while Trending marks that same movie available');
+
  // Cache contract: first-load feedback only, retained content during refresh/errors.
  await source.evaluate(el=>{
    el.setConfig({...window.__cinemaConfig,view:'compact'});
