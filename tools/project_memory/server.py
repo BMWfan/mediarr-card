@@ -1,5 +1,6 @@
 """Dependency-free, repository-scoped MCP memory spike (stdio JSON-RPC)."""
 import hashlib
+from contextlib import closing, contextmanager
 import json
 import os
 from pathlib import Path
@@ -22,14 +23,15 @@ def db_path():
     return base / "memory.sqlite3"
 
 
+@contextmanager
 def connect():
-    db = sqlite3.connect(db_path())
-    db.execute("PRAGMA journal_mode=WAL")
-    db.execute("""CREATE TABLE IF NOT EXISTS memories (
-        id TEXT PRIMARY KEY, repository TEXT NOT NULL, kind TEXT NOT NULL,
-        content TEXT NOT NULL, source TEXT NOT NULL, created_at TEXT NOT NULL,
-        valid INTEGER NOT NULL DEFAULT 1)""")
-    return db
+    with closing(sqlite3.connect(db_path())) as db, db:
+        db.execute("PRAGMA journal_mode=WAL")
+        db.execute("""CREATE TABLE IF NOT EXISTS memories (
+            id TEXT PRIMARY KEY, repository TEXT NOT NULL, kind TEXT NOT NULL,
+            content TEXT NOT NULL, source TEXT NOT NULL, created_at TEXT NOT NULL,
+            valid INTEGER NOT NULL DEFAULT 1)""")
+        yield db
 
 
 def add(content, source, kind="decision"):

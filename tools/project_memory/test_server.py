@@ -32,7 +32,7 @@ class MemoryTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             memory.add("other repo", "https://github.com/BMWfan/paperless-ai/issues/1")
         with self.assertRaises(ValueError):
-            memory.add("api_key=abcdef123456", "local-test:fixture")
+            memory.add("api_key=dummy", "local-test:fixture")
 
     def test_mcp_handshake(self):
         self.assertEqual(memory.handle({"method": "initialize"})["serverInfo"]["name"], memory.SERVER)

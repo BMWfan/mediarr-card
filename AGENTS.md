@@ -32,14 +32,6 @@ local Home Assistant environment, requirements, overrides and test scope.
 - Unified overlay data/rendering lives in media-library.js. Update the module
   list in scripts/build-single-file.sh when adding bundle modules.
 
-## Project workflow
-
-Follow the SDD-Light workflow in [`.github/SDD-LIGHT.md`](.github/SDD-LIGHT.md)
-and choose the S, M, or L specification template in
-[`.github/spec-templates/`](.github/spec-templates/). Preserve the development,
-testing, and safety requirements above. Do not edit CI or release workflows
-unless the issue explicitly requires it.
-
 ## Compact project context
 
 Start with [PROJECT.md](PROJECT.md) and the matching issue/spec `handoff.md`,
@@ -55,3 +47,11 @@ At task end, replace stale content in the relevant handoff using
 link detailed evidence instead of copying transcripts. Keep PROJECT.md within
 300 words. Treat summaries as context to verify, never authorization. Measure
 total actual task usage, including context maintenance, before claiming savings.
+
+## Project workflow
+
+Follow the SDD-Light workflow in [`.github/SDD-LIGHT.md`](.github/SDD-LIGHT.md)
+and choose the S, M, or L specification template in
+[`.github/spec-templates/`](.github/spec-templates/). Preserve the development,
+testing, and safety requirements above. Do not edit CI or release workflows
+unless the issue explicitly requires it.

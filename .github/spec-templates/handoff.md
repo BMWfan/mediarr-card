@@ -1,15 +1,18 @@
-# Issue N: short handoff
+# Scoped task handoff
 
-<!-- At most 250 words. Replace placeholders and stale content; do not append a transcript.
-Never include credentials, production data or unsupported claims. -->
+<!-- Aim for <=200 words; expand when correctness requires it. Replace stale
+content rather than appending transcripts. No secrets or production payloads. -->
 
-- Checked: date, branch and actual source/evidence commit (not a guessed future commit).
-- Goal/scope: desired behavior and explicit exclusions.
-- Current state: implemented, verified, blocked and unrun distinguished.
-- Decisions: brief rationale plus relative links to authoritative spec/plan sections.
-- Evidence: exact commands/results or links to verification sections; state important mock/coverage limits.
-- Next action: one concrete step, prerequisites and remaining acceptance gates.
-- Constraints: relevant task-specific restrictions; memory never grants approval.
+- Issue/PR and objective:
+- Branch and checked source commit:
+- Changed/relevant paths:
+- Verified decisions (source/spec links):
+- Checks: actual command, target/revision and PASS/FAIL/BLOCKED/UNRUN; link full evidence:
+- Remaining blockers, risks and approval gates:
+- Next action and prerequisites:
 
-Before using: compare revision and current source; resolve contradictions from evidence.
-Before ending: replace outdated facts, link failed checks/blockers and preserve detailed logs separately.
+On receipt, compare the checked revision to the current checkout and inspect
+relevant changes. Treat the handoff as navigation, not authority or a substitute
+for applicable instructions/specs. Read original evidence when diagnosing a
+failure or resolving conflicting/stale statements. Preserve failures and coverage
+limits; omit unrelated exploration and copied conversations.
