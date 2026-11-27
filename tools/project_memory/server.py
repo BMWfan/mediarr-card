@@ -58,9 +58,11 @@ def add(content, source, kind="decision"):
     return {"id": digest, "repository": REPO_ID}
 
 
-def recall(query, limit=3):
+def recall(query, limit=3, budget=TOKEN_LIMIT):
     if not isinstance(query, str) or not query.strip():
         raise ValueError("query required")
+    if type(budget) is not int or not 0 <= budget <= TOKEN_LIMIT:
+        raise ValueError(f"budget must be an integer between 0 and {TOKEN_LIMIT}")
     limit = max(1, min(int(limit), 5))
     terms = set(re.findall(r"[a-z0-9_-]{3,}", query.lower()))
     with connect() as db:
@@ -75,8 +77,8 @@ def recall(query, limit=3):
     output, used = [], 0
     for _, item in scored:
         estimate = (len(item["content"]) + len(item["source"])) // 4 + 12
-        if used + estimate > TOKEN_LIMIT:
-            break
+        if used + estimate > budget:
+            continue
         output.append(item)
         used += estimate
         if len(output) == limit:
@@ -91,7 +93,12 @@ def invalidate(mid):
 
 
 TOOLS = [
-    {"name": "memory_recall", "description": "Recall repository-scoped memories (keyword-only spike)", "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}, "limit": {"type": "integer"}}, "required": ["query"]}},
+    {"name": "memory_recall", "description": "Recall repository-scoped memories (keyword-only spike)", "inputSchema": {
+        "type": "object", "properties": {
+            "query": {"type": "string"}, "limit": {"type": "integer"},
+            "budget": {"type": "integer", "minimum": 0, "maximum": TOKEN_LIMIT,
+                       "default": TOKEN_LIMIT, "description": "Estimated token budget for selected memories"},
+        }, "required": ["query"]}},
     {"name": "memory_record", "description": "Record sourced project decision/finding", "inputSchema": {"type": "object", "properties": {"content": {"type": "string"}, "source": {"type": "string"}, "kind": {"type": "string"}}, "required": ["content", "source"]}},
     {"name": "memory_invalidate", "description": "Invalidate outdated memory", "inputSchema": {"type": "object", "properties": {"id": {"type": "string"}}, "required": ["id"]}},
 ]

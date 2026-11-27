@@ -34,6 +34,17 @@ class MemoryTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             memory.add("api_key=dummy", "local-test:fixture")
 
+    def test_recall_budget_can_skip_a_large_match(self):
+        memory.add("cinema poster " + "long " * 100, "local-test:fixture")
+        small = memory.add("cinema", "local-test:fixture")
+        result = memory.recall("cinema poster", budget=30)
+        self.assertEqual([row["id"] for row in result["memories"]], [small["id"]])
+        self.assertLessEqual(result["estimated_tokens"], 30)
+        self.assertEqual(memory.recall("cinema", budget=0)["memories"], [])
+        for invalid in (-1, True, memory.TOKEN_LIMIT + 1):
+            with self.assertRaises(ValueError):
+                memory.recall("cinema", budget=invalid)
+
     def test_mcp_handshake(self):
         self.assertEqual(memory.handle({"method": "initialize"})["serverInfo"]["name"], memory.SERVER)
         self.assertEqual(len(memory.handle({"method": "tools/list"})["tools"]), 3)
