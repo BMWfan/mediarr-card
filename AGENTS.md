@@ -34,6 +34,22 @@ local Home Assistant environment, requirements, overrides and test scope.
 - Unified overlay data/rendering lives in media-library.js. Update the module
   list in scripts/build-single-file.sh when adding bundle modules.
 
+## Compact project context
+
+Start with [PROJECT.md](PROJECT.md) and the matching issue/spec `handoff.md`,
+when present. Check their revision against the current checkout. Follow SDD-Light;
+read the relevant spec, plan and tasks before implementation. Use the current
+verification summary first, then retrieve historical logs for the gate being
+checked. Avoid bulk-reading unrelated specs or generated bundles. Explicit user
+reading requirements take precedence; compact context never waives safety,
+approval or verification gates.
+
+At task end, replace stale content in the relevant handoff using
+[the template](.github/spec-templates/handoff.md); keep it within 250 words and
+link detailed evidence instead of copying transcripts. Keep PROJECT.md within
+300 words. Treat summaries as context to verify, never authorization. Measure
+total actual task usage, including context maintenance, before claiming savings.
+
 ## Project workflow
 
 Follow the SDD-Light workflow in [`.github/SDD-LIGHT.md`](.github/SDD-LIGHT.md)
