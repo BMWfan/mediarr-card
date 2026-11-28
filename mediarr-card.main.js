@@ -75,7 +75,7 @@ function deriveVisibleSections(config) {
 }
 
 
-const MEDIARR_BUILD = '0.6.0-dev.9';
+const MEDIARR_BUILD = '0.6.0-dev.20';
 console.log(`[mediarr-card] build ${MEDIARR_BUILD} loaded`);
 
 class MediarrCard extends HTMLElement {
@@ -135,6 +135,9 @@ class MediarrCard extends HTMLElement {
     expanded._catalogRequests = this._catalogRequests ||= new Map();
     expanded._fullLibraryState = this._fullLibraryState ||= {groups:null,loaded:false};
     expanded._mediaMetadataCache = this._mediaMetadataCache ||= new Map();
+    expanded._backdropImages = this._backdropImages ||= new Map();
+    expanded._backdropSelection = this._backdropSelection ||= {groups:new Map(), urls:new Set(), queue:[], active:0};
+    expanded._mediaBackdropCache = this._mediaBackdropCache ||= new Map();
     expanded._metadataBackendState = this._metadataBackendState ||= {unsupported:false};
     expanded.setConfig({ ...this.config });
     content.append(expanded);

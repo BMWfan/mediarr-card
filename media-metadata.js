@@ -42,6 +42,8 @@ export async function fetchMediaMetadata(hass, entry, language = 'en', region = 
     if (!result || !['movie','tv'].includes(result.media_type) || !Number.isSafeInteger(result.tmdb_id) || result.tmdb_id <= 0) {
       throw {code:'metadata_invalid',message:'Invalid metadata response.'};
     }
+    if((request.media_type!=='unknown'&&result.media_type!==request.media_type)||(request.tmdb_id&&result.tmdb_id!==request.tmdb_id))throw {code:'metadata_invalid'};
+    for(const name of ['imdb','tvdb'])if(entry.ids?.[name]&&result[`${name}_id`]&&String(entry.ids[name])!==String(result[`${name}_id`]))throw {code:'metadata_invalid'};
     return result;
   } finally { clearTimeout(timeout); }
 }

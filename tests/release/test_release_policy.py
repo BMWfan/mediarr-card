@@ -3,6 +3,7 @@ import contextlib
 import io
 import json
 import os
+import re
 from pathlib import Path
 import tempfile
 import textwrap
@@ -10,10 +11,16 @@ import unittest
 from unittest.mock import patch
 
 ROOT=next(parent for parent in Path(__file__).resolve().parents if (parent/'.github/workflows/release-on-main.yml').exists())
-WORKFLOW=(ROOT/'.github/workflows/release-on-main.yml').read_text()
+WORKFLOW=(ROOT/'.github/workflows/release-on-main.yml').read_text(encoding='utf-8')
 BODY=textwrap.dedent(WORKFLOW.split("python3 <<'PY'\n",1)[1].split('\n          PY',1)[0])
 
 class ReleasePolicyTests(unittest.TestCase):
+    def test_hacs_package_source_and_bundled_build_identify_the_same_version(self):
+        version=json.loads((ROOT/'package.json').read_text(encoding='utf-8'))['version']
+        for name in ['mediarr-card.main.js','mediarr-card.js']:
+            match=re.search(r"const MEDIARR_BUILD = '([^']+)';",(ROOT/name).read_text(encoding='utf-8'))
+            self.assertIsNotNone(match,name)
+            self.assertEqual(match.group(1),version,name)
     def guard(self,version,kind,confirmation=None,ref='refs/heads/main'):
         with tempfile.TemporaryDirectory() as folder:
             output=str(Path(folder)/'output')

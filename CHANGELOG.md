@@ -2,6 +2,13 @@
 
 All notable changes to this fork are documented in this file.
 
+## 0.6.0-dev.10
+
+- Show canonical TMDB film-series parts beneath the unchanged single synopsis.
+- Select individual parts with real library/watchlist/missing status, watched state and existing guarded play/request actions.
+- Preserve full-page and compact-overlay scrolling; support keyboard and mobile poster rails.
+- Pair with sensor v0.8.0-dev.9 for collection metadata.
+
 ## 0.6.0-dev.9 (2026-11-13)
 
 - Verify Card rendering and interactions against actual Home Assistant 2026.11.1 / frontend 20261028.5.

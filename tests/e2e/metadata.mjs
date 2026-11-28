@@ -64,6 +64,79 @@ try {
  await expanded.locator('.library-metadata-status').filter({hasText:'aktualisierte Mediarr'}).waitFor();
  passed.push('missing TMDB configuration and outdated backend are explicit, retryable states');
  await page.keyboard.press('Escape');await page.locator('mediarr-overlay-host').waitFor({state:'detached'});
+ // Synthetic refresh regression: a broken preferred banner must use landscape fallback.
+ const artwork=await fs.readFile(path.join(root,'tests/fixtures/library-artwork.svg'),'utf8');
+ await page.route('**/banner-*.svg',route=>route.fulfill({status:route.request().url().includes('missing')?404:200,contentType:'image/svg+xml',body:route.request().url().includes('missing')?'not an image':artwork}));
+ await source.evaluate(el=>{
+   const row={title:'Banner fixture',type:'movie',media_type:'movie',tmdb_id:7101,watched:false,
+     poster:'/local/banner-poster.svg',banner:'/local/banner-initial.svg',backdrop:'/local/banner-alternative.svg',library_key:'0:7101'};
+   el._fullLibraryState={loaded:true,complete:true,groups:null};el._metadataBackendState={unsupported:true};
+   el._mediaMetadataCache.clear();el._initialLibrarySelection=null;el._cinemaSelection='recent';
+   el.setConfig({...el.config,view:'library',library_layout:'cinema',visible_sections:['plex'],plex_entity:'sensor.banner_fixture'});
+   el.hass={...el._hass,states:{...el._hass.states,'sensor.banner_fixture':{entity_id:'sensor.banner_fixture',state:'1',attributes:{data:[row]}}}};
+   el._libraryView.detailKey=null;el._libraryView.input.value='';el._libraryView.refresh();
+ });
+ const waitBackdrop=(selector,name)=>source.locator(selector).evaluate((el,name)=>new Promise((resolve,reject)=>{
+   const deadline=Date.now()+3000;
+   const check=()=>el.style.backgroundImage.includes(name)?resolve():Date.now()>deadline?reject(new Error('Expected synthetic backdrop '+name+'; actual='+el.style.backgroundImage+'; connected='+el.isConnected+'; class='+el.className)):setTimeout(check,25);
+   check();
+ }),name);
+ await waitBackdrop('.cinema-hero-backdrop','banner-initial');
+ await source.evaluate(el=>{
+   const id='sensor.banner_fixture',sensor=el._hass.states[id];
+   el.hass={...el._hass,states:{...el._hass.states,[id]:{...sensor,attributes:{data:sensor.attributes.data.map(item=>({...item,banner:'/local/banner-missing.svg'}))}}}};
+ });
+ await waitBackdrop('.cinema-hero-backdrop','banner-alternative');
+ passed.push('a failed refreshed banner falls back to available landscape artwork');
+ await source.evaluate(el=>{
+   const id='sensor.banner_fixture',sensor=el._hass.states[id];
+   el.hass={...el._hass,states:{...el._hass.states,[id]:{...sensor,attributes:{data:sensor.attributes.data.map(item=>({...item,backdrop:'/local/banner-third.svg'}))}}}};
+ });
+ await waitBackdrop('.cinema-hero-backdrop','banner-third');
+ passed.push('metadata-only backdrop changes update the hero despite unchanged preferred URL');
+
+ await source.locator('.cinema-hero [data-select-key]').click();
+ await waitBackdrop('.library-backdrop','banner-third');
+ await source.evaluate(el=>{
+   const id='sensor.banner_fixture',sensor=el._hass.states[id];
+   el.hass={...el._hass,states:{...el._hass.states,[id]:{...sensor,attributes:{data:sensor.attributes.data.map(item=>({...item,banner:'',backdrop:'',fanart:''}))}}}};
+ });
+ await waitBackdrop('.library-backdrop','banner-third');
+ await page.setViewportSize({width:390,height:844});
+ await waitBackdrop('.library-backdrop','banner-third');
+ await source.locator('.cinema-back').click();
+ await waitBackdrop('.cinema-hero-backdrop','banner-third');
+ passed.push('same-title sparse updates retain the last loaded banner across home/details and mobile');
+ let lateRoute,resolveLate;
+ const lateRequested=new Promise(resolve=>{resolveLate=resolve;});
+ await page.route('**/banner-late.svg',route=>{lateRoute=route;resolveLate();});
+ await source.evaluate(el=>{
+   const id='sensor.banner_fixture',sensor=el._hass.states[id];
+   el.hass={...el._hass,states:{...el._hass.states,[id]:{...sensor,attributes:{data:sensor.attributes.data.map(item=>({...item,banner:'/local/banner-late.svg'}))}}}};
+ });
+ await lateRequested;
+ await source.evaluate(el=>{
+   const id='sensor.banner_fixture',sensor=el._hass.states[id];
+   el.hass={...el._hass,states:{...el._hass.states,[id]:{...sensor,attributes:{data:[
+     {title:'Other banner fixture',type:'movie',media_type:'movie',tmdb_id:7102,watched:false,poster:'/local/banner-poster.svg',banner:'/local/banner-second.svg',library_key:'0:7102'}
+   ]}}}};
+ });
+ await waitBackdrop('.cinema-hero-backdrop','banner-second');
+ const finished=page.waitForResponse(response=>response.url().includes('banner-late.svg'));
+ await lateRoute.fulfill({status:200,contentType:'image/svg+xml',body:artwork});
+ await (await finished).finished();
+ const finalBackdrop=await source.locator('.cinema-hero-backdrop').evaluate(el=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve(el.style.backgroundImage)))));
+ assert.ok(finalBackdrop.includes('banner-second'),'late old-title artwork must never overwrite the current title');
+ passed.push('delayed artwork from an old title cannot overwrite a new selection');
+ await source.evaluate(el=>{
+   const id='sensor.banner_fixture',sensor=el._hass.states[id];
+   el.hass={...el._hass,states:{...el._hass.states,[id]:{...sensor,attributes:{data:[]}}}};
+ });
+ await source.locator('.cinema-hero-empty').waitFor();
+ assert.equal(await source.locator('.cinema-hero-empty .cinema-hero-copy').evaluate(el=>el.style.backgroundImage),'');
+ passed.push('an empty library cannot retain artwork from the previous title');
+
+
  assert.deepEqual(errors,[]);
  await fs.writeFile(path.join(runtime,'metadata-test-results.json'),JSON.stringify({passed,errors},null,2));
  console.log(`PASS: ${passed.length} metadata browser checks\n${passed.join('\n')}`);

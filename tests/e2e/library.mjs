@@ -64,6 +64,13 @@ try {
  await results.filter({hasText:'Sternenreise'}).click();
  assert.equal(await expanded.locator('.library-heading h1').textContent(),'Sternenreise');
  assert.equal(await expanded.locator('.library-person').count(),3);
+ const retainedCast = await expanded.evaluate(el=>{
+   const view = el._libraryView;
+   const actor = view.focus.querySelector('.library-person');
+   view.refresh();
+   return actor !== null && actor === view.focus.querySelector('.library-person');
+ });
+ assert.equal(retainedCast,true,'refreshing unchanged details must preserve the cast element while scrolling');
  assert.ok((await expanded.locator('.library-metadata').textContent()).includes('8.4'));
  assert.equal(await expanded.locator('.library-request').isDisabled(),true,'missing service must not present a working request');
  await page.screenshot({path:path.join(runtime,'library-desktop.png')});

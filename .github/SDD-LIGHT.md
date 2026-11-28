@@ -43,6 +43,28 @@ Use the stages in order, recording decisions in the issue or specification:
 9. **Owner-approved Merge** — the user explicitly approves merge and any
    release. Agents do not merge, release, or deploy.
 
+### Iterating on a UI design
+
+When the owner is still deciding how a UI should look or feel, keep the design
+round in one isolated draft PR. Use a short running note in the issue or PR:
+what are we trying, and what should the owner see or be able to do? Revise
+that note as the design changes. The SDD-Light stages apply to the design as
+a whole; individual visual adjustments do not each need a new specification,
+plan, or independent review.
+
+Check each experiment according to its effect. For a change to banner fade
+duration, inspect the transition in the UI. For a change to hover, focus, or
+tap behavior, test the affected input methods. If an experiment changes cache
+retention, resource use, or an action such as submitting a media request,
+check that behavior and its risks during the experiment.
+
+When the owner confirms the design, record the accepted behavior and criteria
+in the issue or PR. Apply the appropriate specification size to the cumulative
+diff and complete one final review of the whole change: regression and
+accessibility checks, HACS build verification, and independent AI review.
+Design acceptance settles what to ship. Publishing a prerelease, deploying,
+and merging still require their respective explicit owner approvals.
+
 ### Specification size
 
 - **S (Small):** issue and PR description, acceptance criteria, and regression

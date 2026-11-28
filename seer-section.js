@@ -15,7 +15,8 @@ export class SeerSection extends BaseSection {
       1: { text: 'Pending', icon: 'mdi:clock-outline', class: 'status-pending' },
       2: { text: 'Approved', icon: 'mdi:check-circle-outline', class: 'status-approved' },
       3: { text: 'Declined', icon: 'mdi:close-circle-outline', class: 'status-declined' },
-      4: { text: 'Available', icon: 'mdi:download-circle-outline', class: 'status-available' }
+      4: { text: 'Failed', icon: 'mdi:alert-circle-outline', class: 'status-failed' },
+      5: { text: 'Completed', icon: 'mdi:check-circle-outline', class: 'status-completed' }
     };
   }
 
@@ -133,7 +134,7 @@ export class SeerSection extends BaseSection {
     let actionButton = '';
     if (sectionKey !== 'seer') {
       if (existingRequest) {
-        const statusInfo = this._getStatusInfo(existingRequest.status);
+        const statusInfo = this._getStatusInfo(existingRequest.request_status ?? existingRequest.status);
         actionButton = `
           <div class="request-button-container">
             <button class="request-button ${statusInfo.class}" disabled>
@@ -154,8 +155,8 @@ export class SeerSection extends BaseSection {
       }
     }
 
-    if (item.status) {
-      const statusInfo = this._getStatusInfo(item.status);
+    if (item.request_status ?? item.status) {
+      const statusInfo = this._getStatusInfo(item.request_status ?? item.status);
       cardInstance.info.innerHTML = `
         <div class="title">${this._escapeHtml(title)}</div>
         <div class="details">
@@ -411,7 +412,8 @@ export class SeerSection extends BaseSection {
   }
 
   _getStatusInfo(statusCode) {
-    const status = this.statusMap[statusCode] || {
+    const scalar = typeof statusCode === 'number' || typeof statusCode === 'string';
+    const status = scalar && Object.hasOwn(this.statusMap, statusCode) ? this.statusMap[statusCode] : {
       text: 'Unknown',
       icon: 'mdi:help-circle-outline',
       class: 'status-unknown'

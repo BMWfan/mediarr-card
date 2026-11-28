@@ -1,7 +1,48 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {downloadBadge} from '../media-library.js';
+test('download badge follows the current processing phase', () => {
+  const item = {download_status:'downloading', download_progress:72};
+  const render = () => downloadBadge({refs:[{item}]}, de => de);
+  assert.match(render(), /Lädt herunter · 72 %/);
+  item.download_status = 'unpacking';
+  assert.match(render(), /Wird entpackt/);
+  assert.match(render(), /role="progressbar" aria-label="Wird entpackt"/);
+  assert.doesNotMatch(render(), /Lädt herunter|aria-valuenow|%/);
+  item.download_progress = null;
+  assert.match(render(), /media-unpacking/);
+  item.download_status = 'processing';
+  assert.match(render(), /Wird verarbeitet/);
+  assert.doesNotMatch(render(), /media-unpacking/);
+});
 import {collectMediaLibrary, mediaImage, mediaCast, mediaEntriesForCard, mediaKind, normalizeMediaItem, mergeCatalogEntries, mediaDownload} from '../media-library.js';
 const state = data => ({state:'1',attributes:{data}});
+test('learned typed identity reconciles owned films before catalog matching',()=>{
+ const card={config:{plex_entity:'p'},_hass:{language:'de',states:{p:state([{title:'Translated film',type:'movie',year:2020,watched:true,library_key:'0:7'}])}}};
+ const local=mediaEntriesForCard(card)[0];
+ card._mediaMetadataCache=new Map([[`de:${local.key}`,{timestamp:Date.now(),data:{media_type:'movie',tmdb_id:7,title:'Canonical film',year:'2020',poster:'https://image.tmdb.org/t/p/w500/film.jpg'}}]]);
+ const entries=mediaEntriesForCard(card,[{title:'Canonical film',media_type:'movie',tmdb_id:7},{title:'Unrelated series',media_type:'tv',tmdb_id:7}]);
+ assert.equal(entries.length,2);
+ assert.equal(entries.find(x=>x.kind==='movie').stage,'ready');
+ assert.equal(entries.find(x=>x.kind==='movie').watched,true);
+ assert.equal(entries.find(x=>x.kind==='tv').stage,'discover');
+ assert.equal(mediaEntriesForCard(card,[{title:'Canonical film',media_type:'movie',tmdb_id:7}]).length,1);
+});
+test('a requested movie becoming available remains in the combined film list',()=>{
+ const card={config:{radarr_entity:'r',plex_entity:'p'},_hass:{language:'de',states:{
+  r:state([{title:'Filmabend',type:'movie',tmdb_id:77}]),p:state([]),
+ }}};
+ const catalog=[{title:'Filmabend',media_type:'movie',tmdb_id:77}];
+ let entries=mediaEntriesForCard(card,catalog);
+ assert.equal(entries.length,1);assert.equal(entries[0].stage,'waiting');
+ card._hass.states.p=state([{title:'Filmabend',type:'movie',tmdb_id:77,library_key:'0:77',watched:false}]);
+ entries=mediaEntriesForCard(card,catalog);
+ assert.equal(entries.length,1);assert.equal(entries[0].stage,'ready');
+ assert.equal(entries[0].ids.tmdb,'77');
+ assert.equal(entries.filter(entry=>entry.stage==='waiting').length,0);
+ assert.equal(entries.filter(entry=>entry.kind==='movie').length,1);
+ assert.equal(mediaEntriesForCard(card,catalog).length,1);
+});
 test('legacy Plex episodes merge into the unique dated series regardless of source order',()=>{
  for (const reverse of [false,true]) {
   const sources=[['plex_full_entity','full'],['plex_entity','recent']];
